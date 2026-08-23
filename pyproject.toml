@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oddsrail"
+version = "0.3.0"
+description = "MCP server giving AI trading agents access to prediction markets (Polymarket, Kalshi) with on-chain builder-code attribution and trading signals."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "oddsrail" }]
+keywords = [
+    "mcp", "model-context-protocol", "prediction-markets", "polymarket",
+    "kalshi", "ai-agents", "trading", "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "mcp[cli]>=2.0.0",
+    "httpx>=0.28",
+    "polymarket-client>=0.6.0",
+    "cryptography>=42.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/hmesutozsoy/oddsrail"
+Repository = "https://github.com/hmesutozsoy/oddsrail"
+Issues = "https://github.com/hmesutozsoy/oddsrail/issues"
+
+[project.scripts]
+oddsrail = "oddsrail.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["oddsrail"]
+
+[tool.hatch.build.targets.sdist]
+include = ["oddsrail", "README.md", "LICENSE", "server.json", "llms.txt"]

@@ -1,5 +1,7 @@
 # oddsrail
 
+<!-- mcp-name: io.github.hmesutozsoy/oddsrail -->
+
 **The rail AI agents use to trade prediction markets.**
 
 An MCP server that gives any agent (Claude Code, Claude Desktop, or anything
@@ -24,7 +26,17 @@ on resolution risk — that's our paid layer.
 
 ## Quickstart
 
-Python 3.11+ required. Create the venv, install, then plug into Claude Code:
+Python 3.11+ required.
+
+```bash
+pip install oddsrail
+```
+
+```bash
+claude mcp add --transport stdio oddsrail -- oddsrail
+```
+
+Or from a clone, without installing:
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
