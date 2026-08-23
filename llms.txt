@@ -1,0 +1,40 @@
+# oddsrail
+
+> An MCP server that gives AI trading agents access to prediction markets
+> (Polymarket today, Kalshi next), with on-chain builder-code attribution on
+> routed orders and premium signal tools.
+
+Self-hosted and non-custodial: the operator runs the server themselves and
+private keys never leave their machine. Orders are dry-run by default.
+
+## What an agent can do with it
+
+- `search_markets(query, limit)` — find markets by text; returns token ids,
+  best bid/ask, spread, 24h volume, liquidity, end date, resolution status
+- `get_market(id_or_slug)` — one market's details
+- `get_orderbook(token_id)` — live bids/asks
+- `price_history(token_id, hours, fidelity_minutes)` — recent price series
+- `get_positions(address)` — a wallet's current positions
+- `overshoot_signal(token_id, hours, threshold)` — detects fresh price jumps
+  (panic moves) and reports whether a fade setup is active, plus that
+  market's historical reversion tendency
+- `dispute_risk(id_or_slug)` — 0-100 score for how likely a market's
+  resolution gets contested (UMA dispute risk), with transparent reasons
+- `place_order(token_id, side, price, size)` — limit order; price is an
+  implied probability in (0,1); dry-run unless the operator enables trading
+- `cancel_order(order_id)`, `open_orders()`
+- `builder_stats(time_period)` — public builder leaderboard and this
+  operator's attributed trades
+
+## Install
+
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+claude mcp add --transport stdio oddsrail -- /abs/path/oddsrail/.venv/bin/python -m oddsrail.server
+
+## Notes for agents
+
+- Prices are implied probabilities in (0,1), not cents.
+- `place_order` returns `{"dry_run": true, ...}` unless the operator has set
+  ODDSRAIL_DRY_RUN=0 — check this before assuming an order was placed.
+- Polymarket API domains are blocked on some networks (e.g. Turkey); run the
+  server where they resolve.

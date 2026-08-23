@@ -24,10 +24,14 @@ on resolution risk — that's our paid layer.
 
 ## Quickstart
 
-The venv is already built (`.venv`, Python 3.12). Plug into Claude Code:
+Python 3.11+ required. Create the venv, install, then plug into Claude Code:
 
 ```bash
-claude mcp add --transport stdio oddsrail -- /Users/mesutozsoy/Desktop/oddsrail/.venv/bin/python -m oddsrail.server
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
+
+```bash
+claude mcp add --transport stdio oddsrail -- /abs/path/to/oddsrail/.venv/bin/python -m oddsrail.server
 ```
 
 Then ask the agent: *"search markets about the World Cup final and run the
