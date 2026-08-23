@@ -54,12 +54,26 @@ overshoot signal on the favorite"*.
 | `POLYMARKET_PRIVATE_KEY` | unset | Operator wallet key; required only for real trading. Never leaves this machine. |
 | `POLYMARKET_WALLET_ADDRESS` | unset | Proxy/deposit wallet address, if the account uses one. |
 
+## Status — live-verified 2026-08-23
+
+All 10 callable tools were driven end-to-end through a real MCP client
+session against live Polymarket, from the Finland VPS (`/opt/oddsrail`).
+Verified working: search, market lookup, orderbook (9/65 levels), price
+history (361 pts), overshoot signal, dispute-risk, builder leaderboard,
+dry-run order, open orders, server info.
+
+Field mappings were corrected against the real API during that run — the
+docs-guessed shapes were wrong in three places (`outcomes` is a dict keyed
+`yes`/`no`, `search()` nests markets inside events, and book/volume/
+resolution data live in `prices`/`metrics`/`state`/`resolution`
+sub-objects).
+
 ## ⚠️ Network note
 
 Polymarket API domains are **blocked on Turkish networks (BTK)** — local
 testing fails TLS with a block page. Run the server where Polymarket is
-reachable (the Finland VPS, a VPN, or any unblocked network). The signal
-logic and MCP layer are fully testable offline.
+reachable (the Finland VPS at `/opt/oddsrail`, a VPN, or any unblocked
+network). The signal logic and MCP layer are fully testable offline.
 
 ## Tools (12)
 
@@ -89,11 +103,28 @@ logic and MCP layer are fully testable offline.
   then $0.001). Keep free tiers of both signals so registries can index the
   server.
 
+## What the builder economy looks like (live, 2026-08-23)
+
+Pulled from the public leaderboard via `builder_stats`:
+
+| | weekly | all-time |
+|---|---|---|
+| #1 (betmoar) | $2.31M | $2.10B |
+| median of top 25 | $127K | $88.2M |
+| **entry to top 25** | **$42K** | $36.8M |
+
+The instructive rows are the small-user ones: MagicMarkets routes $354K/week
+with **1 active user**, Gate $1.11M/week with 2, PolymarketScan $277K with 3.
+Those are bot operators routing their own flow — oddsrail's exact target
+customer — and they show a single serious agent trader is worth real volume.
+Wallets (MetaMask, 37K users) dominate on user count, not on volume per user.
+
 ## Roadmap
 
-1. Live smoke test from an unblocked network (VPS) — search → book →
-   history → dry-run order end-to-end
-2. Register builder code; first attributed order on a tiny size
+1. ~~Live smoke test from an unblocked network~~ — done 2026-08-23, all tools pass
+2. Register builder code (polymarket.com → Settings → Builders), set fees to
+   0 bps at launch, export `ODDSRAIL_BUILDER_CODE`; first attributed order on
+   a tiny size
 3. Kalshi as venue #2 (no official Kalshi MCP exists; auth is RSA-PSS
    request signing — bring-your-own key, keeps us non-custodial)
 4. x402 paid wrapping for the two signals once the mcp-2.x conflict clears
