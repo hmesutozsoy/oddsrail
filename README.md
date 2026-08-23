@@ -135,3 +135,15 @@ Wallets (MetaMask, 37K users) dominate on user count, not on volume per user.
 5. Registry listings: official MCP registry (`mcp-publisher`, PyPI
    `mcp-name:` marker), Smithery (needs public streamable-HTTP + a free
    tool for their scanner), Glama (`glama.json`)
+
+## Listing / distribution
+
+- **GitHub**: https://github.com/hmesutozsoy/oddsrail (public, MIT)
+- **Glama**: auto-crawls GitHub; `glama.json` in the repo root claims
+  maintainership.
+- **Official MCP registry**: `server.json` is ready. Publishing needs the
+  package on PyPI first (the registry verifies ownership via an
+  `mcp-name: io.github.hmesutozsoy/oddsrail` marker in the PyPI README),
+  then `mcp-publisher login github && mcp-publisher publish`.
+- **Smithery**: requires a public HTTPS streamable-HTTP endpoint — available
+  once oddsrail is hosted rather than run locally over stdio.
