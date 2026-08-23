@@ -13,6 +13,7 @@ import os
 
 from mcp.server.mcpserver import MCPServer
 
+from . import kalshi as kx
 from . import polymarket as pm
 from . import signals
 from . import trading
@@ -25,7 +26,10 @@ srv = MCPServer(
         "ODDSRAIL_DRY_RUN=0 and POLYMARKET_PRIVATE_KEY to trade. Prices are "
         "implied probabilities in (0,1). Orders carry the operator's builder "
         "code (ODDSRAIL_BUILDER_CODE) signed into the order for on-chain "
-        "attribution."
+        "attribution. Kalshi tools are prefixed kalshi_ and need the "
+        "operator's own API key for private endpoints; Kalshi prices are "
+        "probabilities in (0,1) here, translated to its YES-book bid/ask "
+        "internally."
     ),
 )
 
@@ -139,18 +143,84 @@ async def builder_stats(time_period: str = "WEEK") -> str:
     return _j(out)
 
 
+# ------------------------------ kalshi (venue #2) --------------------------- #
+
+@srv.tool(description="Search Kalshi markets. Kalshi has no text-search "
+                      "endpoint, so this pages open markets and filters on "
+                      "title/ticker; auto-generated MVE combo shards are "
+                      "excluded. Prices are dollar strings, not cents.")
+async def kalshi_search_markets(query: str = "", limit: int = 10,
+                                min_volume: float = 0.0) -> str:
+    return _j(await kx.search_markets(query=query, limit=limit,
+                                      min_volume=min_volume))
+
+
+@srv.tool(description="Get one Kalshi market by ticker.")
+async def kalshi_get_market(ticker: str) -> str:
+    return _j(await kx.get_market(ticker))
+
+
+@srv.tool(description="Kalshi orderbook for a ticker, normalised to a YES-book "
+                      "bid/ask view (Kalshi publishes bid ladders only; asks "
+                      "are derived as 1 - NO bid). Raw ladders included.")
+async def kalshi_get_orderbook(ticker: str, depth: int = 10) -> str:
+    return _j(await kx.get_orderbook(ticker, depth))
+
+
+@srv.tool(description="Recent public trades for a Kalshi ticker.")
+async def kalshi_get_trades(ticker: str, limit: int = 50) -> str:
+    return _j(await kx.get_trades(ticker, limit))
+
+
+@srv.tool(description="Kalshi account balance (needs the operator's API key).")
+async def kalshi_balance() -> str:
+    return _j(await kx.get_balance())
+
+
+@srv.tool(description="Kalshi positions (needs the operator's API key).")
+async def kalshi_positions(limit: int = 50) -> str:
+    return _j(await kx.get_positions(limit))
+
+
+@srv.tool(description="Kalshi resting orders (needs the operator's API key).")
+async def kalshi_open_orders(limit: int = 50) -> str:
+    return _j(await kx.open_orders(limit))
+
+
+@srv.tool(description="Place a Kalshi limit order. State it naturally: "
+                      "outcome yes|no, action buy|sell, price = probability of "
+                      "THAT outcome in (0,1). Translated to Kalshi's YES-book "
+                      "bid/ask internally. DRY-RUN by default.")
+async def kalshi_place_order(ticker: str, outcome: str, action: str,
+                             price: float, count: float,
+                             time_in_force: str = "good_till_cancelled") -> str:
+    return _j(await kx.place_order(ticker, outcome, action, price, count,
+                                   time_in_force))
+
+
+@srv.tool(description="Cancel a Kalshi order by id (respects dry-run).")
+async def kalshi_cancel_order(order_id: str) -> str:
+    return _j(await kx.cancel_order(order_id))
+
+
 @srv.tool(description="Server status: dry-run state, attribution config, "
                       "and which capabilities are enabled.")
 def server_info() -> str:
     return _j({
         "name": "oddsrail",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "dry_run": trading.dry_run(),
         "trading_key_configured": bool(os.environ.get("POLYMARKET_PRIVATE_KEY")),
         "builder_code_configured": bool(trading.builder_code()),
         "attribution": "on-chain (CLOB V2 builder field)",
         "custody": "none — self-hosted, keys stay local",
-        "venues": ["polymarket"],
+        "venues": {
+            "polymarket": {"attribution": "on-chain builder code",
+                           "trading_key": bool(os.environ.get("POLYMARKET_PRIVATE_KEY"))},
+            "kalshi": {"attribution": "none available on REST",
+                       "credentials": kx.has_credentials(),
+                       "environment": "demo" if os.environ.get("KALSHI_DEMO") else "production"},
+        },
         "premium_tools": ["overshoot_signal", "dispute_risk"],
     })
 

@@ -1,8 +1,8 @@
 # oddsrail
 
 > An MCP server that gives AI trading agents access to prediction markets
-> (Polymarket today, Kalshi next), with on-chain builder-code attribution on
-> routed orders and premium signal tools.
+> across Polymarket and Kalshi, with on-chain builder-code attribution on
+> routed Polymarket orders and premium signal tools.
 
 Self-hosted and non-custodial: the operator runs the server themselves and
 private keys never leave their machine. Orders are dry-run by default.
@@ -25,6 +25,20 @@ private keys never leave their machine. Orders are dry-run by default.
 - `cancel_order(order_id)`, `open_orders()`
 - `builder_stats(time_period)` — public builder leaderboard and this
   operator's attributed trades
+
+## Kalshi tools
+
+- `kalshi_search_markets(query, limit, min_volume)`, `kalshi_get_market(ticker)`,
+  `kalshi_get_orderbook(ticker, depth)`, `kalshi_get_trades(ticker, limit)`
+- `kalshi_balance()`, `kalshi_positions()`, `kalshi_open_orders()`
+- `kalshi_place_order(ticker, outcome, action, price, count)` — outcome yes|no,
+  action buy|sell, price is the probability of THAT outcome in (0,1)
+- `kalshi_cancel_order(order_id)`
+
+Kalshi notes: prices are dollar strings not cents; the raw orderbook is
+bids-only on both sides (a NO bid at 0.99 is a YES ask at 0.01) but
+`kalshi_get_orderbook` returns a normal best-first bid/ask view. Kalshi needs
+the operator's own API key for private endpoints; read tools do not.
 
 ## Install
 
