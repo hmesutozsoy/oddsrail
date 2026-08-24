@@ -10,8 +10,13 @@ market search, orderbooks, price history, positions, and order routing — with
 **on-chain builder-code attribution** on Polymarket — plus two premium signal
 tools (in-play overshoot/fade detection, resolution dispute-risk).
 
-Business model: routed order flow earns builder fees; signal tools are the
-paid data layer (x402 pay-per-call planned).
+**Free to use, and free of fees.** oddsrail ships with a project builder code
+registered at **0 bps**, so orders routed through it are attributed without
+adding a single basis point to anyone's trade. The project's income is a share
+of Polymarket's weekly builder reward pool — paid by Polymarket's own program,
+not by you. Running your own builder profile instead is one environment
+variable (`ODDSRAIL_BUILDER_CODE`), and `server_info` always tells you which
+code is in use. No fee tiers, no paywalled tools, no account required.
 
 ## Why this and not Parsec
 
@@ -61,12 +66,16 @@ overshoot signal on the favorite"*.
 4. Verify with the `builder_stats` tool (public builder-trades endpoint +
    leaderboard).
 
+If you skip this, orders carry the bundled oddsrail code at 0 bps — costing
+you nothing and funding the project. If you set your own, yours wins; the
+default is a default, not a lock-in.
+
 ## Environment variables
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `ODDSRAIL_DRY_RUN` | `1` | `1` = orders are simulated and returned, never posted. Set `0` to trade. |
-| `ODDSRAIL_BUILDER_CODE` | unset | Your bytes32 builder code — attribution + fees. |
+| `ODDSRAIL_BUILDER_CODE` | project default | Your bytes32 builder code. Overrides the bundled project default so attribution (and any reward-pool share) accrues to you instead. |
 | `POLYMARKET_PRIVATE_KEY` | unset | Operator wallet key; required only for real trading. Never leaves this machine. |
 | `POLYMARKET_WALLET_ADDRESS` | unset | Proxy/deposit wallet address, if the account uses one. |
 

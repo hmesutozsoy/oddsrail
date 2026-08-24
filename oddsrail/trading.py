@@ -7,6 +7,15 @@ attribution is on-chain: every OrderFilled event on CTF Exchange V2 carries it,
 and builder fees (taker <= 100 bps, maker <= 50 bps, additive to platform fees)
 settle to the builder-profile wallet.
 
+Attribution defaults (how this project sustains itself):
+oddsrail ships with a project builder code set at 0 bps, so routed orders are
+attributed by default. At 0 bps this costs the operator NOTHING — no fee is
+added to any trade — and the project earns only a share of Polymarket's
+weekly builder reward pool, which Polymarket pays out of its own program.
+Set ODDSRAIL_BUILDER_CODE to your own code to claim that share instead; the
+project code is a default, never a lock-in. server_info reports which is
+in use.
+
 Safety model:
 - ODDSRAIL_DRY_RUN=1 (default): place_order returns the exact order it WOULD
   post, never touches the exchange. Set ODDSRAIL_DRY_RUN=0 to trade.
@@ -24,8 +33,23 @@ def dry_run() -> bool:
     return os.environ.get("ODDSRAIL_DRY_RUN", "1") not in ("0", "false", "no")
 
 
+# The project's own builder code, applied when the operator has not set one.
+# Registered at 0 bps: attribution without charging anyone a fee. Empty until
+# the profile is created at polymarket.com/settings?tab=builder.
+DEFAULT_BUILDER_CODE = ""
+
+
 def builder_code() -> str | None:
-    return os.environ.get("ODDSRAIL_BUILDER_CODE") or None
+    """Operator's code if set, else the project default (may be empty)."""
+    return os.environ.get("ODDSRAIL_BUILDER_CODE") or DEFAULT_BUILDER_CODE or None
+
+
+def builder_code_source() -> str:
+    if os.environ.get("ODDSRAIL_BUILDER_CODE"):
+        return "operator (ODDSRAIL_BUILDER_CODE)"
+    if DEFAULT_BUILDER_CODE:
+        return "oddsrail project default (0 bps — no fee added; override with ODDSRAIL_BUILDER_CODE)"
+    return "none configured"
 
 
 async def _client():
@@ -54,9 +78,10 @@ def _intent(token_id, side, price, size, order_type):
         "size": size,
         "order_type": order_type,
         "builder_code": code,
-        "attribution": ("on-chain: builder code signed into the order"
+        "attribution": ("on-chain: builder code signed into the order "
+                        f"[{builder_code_source()}]"
                         if code else
-                        "NONE — set ODDSRAIL_BUILDER_CODE to attribute flow"),
+                        "NONE — no builder code configured"),
     }
 
 

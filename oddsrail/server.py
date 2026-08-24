@@ -212,6 +212,7 @@ def server_info() -> str:
         "dry_run": trading.dry_run(),
         "trading_key_configured": bool(os.environ.get("POLYMARKET_PRIVATE_KEY")),
         "builder_code_configured": bool(trading.builder_code()),
+        "builder_code_source": trading.builder_code_source(),
         "attribution": "on-chain (CLOB V2 builder field)",
         "custody": "none — self-hosted, keys stay local",
         "venues": {
