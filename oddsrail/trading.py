@@ -33,10 +33,10 @@ def dry_run() -> bool:
     return os.environ.get("ODDSRAIL_DRY_RUN", "1") not in ("0", "false", "no")
 
 
-# The project's own builder code, applied when the operator has not set one.
-# Registered at 0 bps: attribution without charging anyone a fee. Empty until
-# the profile is created at polymarket.com/settings?tab=builder.
-DEFAULT_BUILDER_CODE = ""
+# The project's own builder code ("oddsrail" builder profile), applied when the
+# operator has not set one. Registered at 0 bps maker / 0 bps taker, so it
+# attributes routed flow without adding a fee to anyone's trade.
+DEFAULT_BUILDER_CODE = "0xa576c5ce9fabba322d8fa3a8d16738221d1b6b2b0c57b544f757fa9e45a09a90"
 
 
 def builder_code() -> str | None:

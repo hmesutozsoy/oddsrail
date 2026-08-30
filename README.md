@@ -66,9 +66,10 @@ overshoot signal on the favorite"*.
 4. Verify with the `builder_stats` tool (public builder-trades endpoint +
    leaderboard).
 
-If you skip this, orders carry the bundled oddsrail code at 0 bps — costing
-you nothing and funding the project. If you set your own, yours wins; the
-default is a default, not a lock-in.
+If you skip this, orders carry the bundled oddsrail builder code
+(`0xa576c5ce…`, registered at 0 bps maker / 0 bps taker) — costing you nothing
+and funding the project. If you set your own, yours wins; the default is a
+default, not a lock-in.
 
 ## Environment variables
 
