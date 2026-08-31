@@ -108,8 +108,14 @@ default, not a lock-in.
 **Offline tests:** 47 tests covering the paths where a bug costs money — the
 Kalshi yes/no→bid/ask translation, Kelly sizing, book walking, cross-venue
 pairing, signal edge cases, and the dry-run safety net. They need no keys and
-no network: `pip install -e ".[dev]" && pytest`. CI runs them on Python 3.11,
-3.12 and 3.13.
+no network:
+
+```bash
+pip install -e ".[dev]" && pytest
+```
+
+(A GitHub Actions workflow for 3.11/3.12/3.13 is in
+`docs/maintainers/ci-workflow.yml`, not yet enabled.)
 
 **Live venues:** every read tool and both dry-run order paths have been driven
 end-to-end against real Polymarket and Kalshi through a real MCP client
