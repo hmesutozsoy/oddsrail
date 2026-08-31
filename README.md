@@ -114,8 +114,7 @@ no network:
 pip install -e ".[dev]" && pytest
 ```
 
-(A GitHub Actions workflow for 3.11/3.12/3.13 is in
-`docs/maintainers/ci-workflow.yml`, not yet enabled.)
+CI runs them on Python 3.11, 3.12 and 3.13 on every push and pull request.
 
 **Live venues:** every read tool and both dry-run order paths have been driven
 end-to-end against real Polymarket and Kalshi through a real MCP client
