@@ -103,26 +103,32 @@ default, not a lock-in.
 | `POLYMARKET_PRIVATE_KEY` | unset | Operator wallet key; required only for real trading. Never leaves this machine. |
 | `POLYMARKET_WALLET_ADDRESS` | unset | Proxy/deposit wallet address, if the account uses one. |
 
-## Status — live-verified 2026-08-23
+## Status
 
-All 10 callable tools were driven end-to-end through a real MCP client
-session against live Polymarket, from the Finland VPS (`/opt/oddsrail`).
-Verified working: search, market lookup, orderbook (9/65 levels), price
-history (361 pts), overshoot signal, dispute-risk, builder leaderboard,
-dry-run order, open orders, server info.
+**Offline tests:** 47 tests covering the paths where a bug costs money — the
+Kalshi yes/no→bid/ask translation, Kelly sizing, book walking, cross-venue
+pairing, signal edge cases, and the dry-run safety net. They need no keys and
+no network: `pip install -e ".[dev]" && pytest`. CI runs them on Python 3.11,
+3.12 and 3.13.
 
-Field mappings were corrected against the real API during that run — the
-docs-guessed shapes were wrong in three places (`outcomes` is a dict keyed
-`yes`/`no`, `search()` nests markets inside events, and book/volume/
-resolution data live in `prices`/`metrics`/`state`/`resolution`
-sub-objects).
+**Live venues:** every read tool and both dry-run order paths have been driven
+end-to-end against real Polymarket and Kalshi through a real MCP client
+session. Two attributed Polymarket orders (a buy and a sell) have been placed
+and confirmed on-chain.
 
-## ⚠️ Network note
+**Not yet exercised live:** the Kalshi *order placement* path. Its request
+shape is unit-tested and its endpoint verified, but no order has been sent to
+a real Kalshi account. Treat `kalshi_place_order` as unproven and start in
+dry-run.
 
-Polymarket API domains are **blocked on Turkish networks (BTK)** — local
-testing fails TLS with a block page. Run the server where Polymarket is
-reachable (the Finland VPS at `/opt/oddsrail`, a VPN, or any unblocked
-network). The signal logic and MCP layer are fully testable offline.
+## Network note
+
+Polymarket's API is blocked in some jurisdictions (it geoblocks the US, and
+some national filters block it outright — Turkey among them). If the read
+tools return TLS or connection errors, that is where to look first: run
+oddsrail somewhere the venue is reachable. Kalshi is US-regulated and applies
+its own geographic rules. The signal logic, the MCP layer and the whole test
+suite run fine offline regardless.
 
 ## Kalshi (venue #2)
 
@@ -151,9 +157,9 @@ Two shapes on this API are easy to get wrong, so oddsrail normalises both:
 
 Order placement speaks natural terms — `outcome` (yes/no), `action`
 (buy/sell), `price` = probability of that outcome — and translates to Kalshi's
-YES-book `bid`/`ask` internally (buy NO @ 0.25 becomes ask @ 0.75). That
-translation is unit-tested, since it is the obvious place to ship an
-inverted-position bug.
+YES-book `bid`/`ask` internally (buy NO @ 0.25 becomes ask @ 0.75). That translation is
+exhaustively unit-tested (`tests/test_money_paths.py`), since it is the
+obvious place to ship an inverted-position bug.
 
 Credentials: `KALSHI_KEY_ID` plus `KALSHI_PRIVATE_KEY_PATH` (PKCS#8 PEM) or
 `KALSHI_PRIVATE_KEY`. Set `KALSHI_DEMO=1` to hit the demo environment. Read
@@ -224,7 +230,7 @@ the expertise, which a flat tool list cannot convey.
   close times, resolution sources, UMA dispute status and market structure on
   **live data with no pre-curated pair list**, returning `ok` / `caution` /
   `block` with reasons — and listing the checks it did *not* perform.
-- **`position_size(bankroll, price, fair_value)`** — fractional-Kelly sizing,
+- **`position_size(bankroll_usd, price, fair_value)`** — fractional-Kelly sizing,
   capped, refusing negative-edge bets, returning its own assumptions.
 
 ## Tools (32)
@@ -269,21 +275,22 @@ Kalshi: `kalshi_search_markets`, `kalshi_get_market`, `kalshi_get_orderbook`,
   then $0.001). Keep free tiers of both signals so registries can index the
   server.
 
-## What the builder economy looks like (live, 2026-08-23)
+## Who this is for
 
-Pulled from the public leaderboard via `builder_stats`:
+Polymarket's public builder leaderboard shows what a single operator routing
+their own flow is worth. Pulled **2026-08-31** via this server's own
+`builder_stats` tool — re-run it, the numbers move:
 
-| | weekly | all-time |
-|---|---|---|
-| #1 (betmoar) | $2.31M | $2.10B |
-| median of top 25 | $127K | $88.2M |
-| **entry to top 25** | **$42K** | $36.8M |
+| | weekly volume |
+|---|---|
+| #1 (traderline) | $7.70M |
+| median of top 25 | $533K |
+| entry to top 25 | $140K |
 
-The instructive rows are the small-user ones: MagicMarkets routes $354K/week
-with **1 active user**, Gate $1.11M/week with 2, PolymarketScan $277K with 3.
-Those are bot operators routing their own flow — oddsrail's exact target
-customer — and they show a single serious agent trader is worth real volume.
-Wallets (MetaMask, 37K users) dominate on user count, not on volume per user.
+The instructive rows are the small ones: **MagicMarkets routes $901K/week with
+a single active user**; Jupiter $515K with one; Sharkbetting $1.15M with two.
+Those are bot operators routing their own flow — which is exactly who this is
+built for.
 
 ## Roadmap
 
@@ -303,7 +310,7 @@ Wallets (MetaMask, 37K users) dominate on user count, not on volume per user.
 - **Glama**: auto-crawls GitHub; `glama.json` in the repo root claims
   maintainership.
 - **PyPI**: https://pypi.org/project/oddsrail/ — `pip install oddsrail`
-- **Official MCP registry**: listed as `io.github.hmesutozsoy/oddsrail`
+- **Official MCP registry**: listed as `app.oddsrail/polymarket-kalshi-arbitrage`
   (published 2026-08-30, status active). Re-publish after a version bump with
   `mcp-publisher publish`; keep `server.json`'s version in step with
   `pyproject.toml` or the registry rejects it.

@@ -209,6 +209,13 @@ async def search_markets_detailed(query: str = "", limit: int = 10,
                                 "series_ticker", "category")).lower()
             for m in ev.get("markets") or []:
                 scanned_markets += 1
+                # An OPEN event can contain markets that have already closed;
+                # filtering only the event let closed markets surface as top
+                # hits. Kalshi reports "active" here even when you filtered on
+                # status=open.
+                if status == "open" and str(m.get("status", "")).lower() not in (
+                        "active", "open", ""):
+                    continue
                 if float(_d(m.get("volume_fp")) or 0) < min_volume:
                     continue
                 m_text = " ".join(str(m.get(k, "")) for k in

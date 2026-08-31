@@ -29,8 +29,14 @@ import os
 _secure = None
 
 
+# Exactly these three values turn off the safety net; each reads unambiguously
+# as "dry run: off". Anything else — unset, empty, a typo, a different case —
+# stays dry, so a mistake fails to "no trade" rather than "wrong trade".
+_LIVE_VALUES = ("0", "false", "no")
+
+
 def dry_run() -> bool:
-    return os.environ.get("ODDSRAIL_DRY_RUN", "1") not in ("0", "false", "no")
+    return os.environ.get("ODDSRAIL_DRY_RUN", "1") not in _LIVE_VALUES
 
 
 # The project's own builder code ("oddsrail" builder profile), applied when the

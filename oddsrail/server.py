@@ -21,8 +21,11 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
+VERSION = "0.8.0"
+
 srv = MCPServer(
     name="oddsrail",
+    version=VERSION,
     instructions=(
         "Prediction-market rail for trading agents. Read tools need no keys. "
         "place_order defaults to dry-run; the operator must set "
@@ -54,6 +57,25 @@ TRADE = ToolAnnotations(read_only_hint=False, destructive_hint=True,
                         idempotent_hint=False, open_world_hint=True)
 
 
+def _err(e: Exception, hint: str = "") -> str:
+    """Turn an exception into something an agent can act on.
+
+    The MCP layer otherwise surfaces only "Error executing tool <name>" — no
+    status, no URL, no cause — which an agent cannot self-correct from, so it
+    retries blindly.
+    """
+    out = {"error": str(e) or type(e).__name__, "error_type": type(e).__name__}
+    resp = getattr(e, "response", None)
+    if resp is not None:
+        out["http_status"] = getattr(resp, "status_code", None)
+        req = getattr(e, "request", None)
+        if req is not None:
+            out["url"] = str(getattr(req, "url", ""))
+    if hint:
+        out["hint"] = hint
+    return _j(out)
+
+
 # ------------------------------ market data -------------------------------- #
 
 @srv.tool(description="Search Polymarket markets by text (Gamma public-search "
@@ -61,19 +83,30 @@ TRADE = ToolAnnotations(read_only_hint=False, destructive_hint=True,
                       "Returns token ids, prices, metrics, resolution info.",
            annotations=READ, structured_output=False)
 async def search_markets(query: str = "", limit: int = 10) -> str:
-    return _j(await pm.search_markets(query=query, limit=limit))
+    try:
+        return _j(await pm.search_markets(query=query, limit=limit))
+    except Exception as e:
+        return _err(e, "check the query; an empty query lists open markets")
 
 
 @srv.tool(description="Get one market's details by slug (or id).",
            annotations=READ, structured_output=False)
 async def get_market(id_or_slug: str) -> str:
-    return _j(await pm.get_market(id_or_slug))
+    try:
+        return _j(await pm.get_market(id_or_slug))
+    except Exception as e:
+        return _err(e, "no market with that slug or id — run search_markets first "
+                      "and use the `slug` field")
 
 
 @srv.tool(description="Get the live orderbook (bids/asks) for a CLOB token id.",
            annotations=READ, structured_output=False)
 async def get_orderbook(token_id: str) -> str:
-    return _j(await pm.get_orderbook(token_id))
+    try:
+        return _j(await pm.get_orderbook(token_id))
+    except Exception as e:
+        return _err(e, "token_id is the long numeric CLOB id from a market's "
+                      "outcomes.yes.token_id — not the slug or condition_id")
 
 
 @srv.tool(description="Recent price history for a CLOB token id: hours back, "
@@ -81,7 +114,10 @@ async def get_orderbook(token_id: str) -> str:
            annotations=READ, structured_output=False)
 async def price_history(token_id: str, hours: float = 6.0,
                         fidelity_minutes: int = 1) -> str:
-    times, prices = await pm.price_history(token_id, hours, fidelity_minutes)
+    try:
+        times, prices = await pm.price_history(token_id, hours, fidelity_minutes)
+    except Exception as e:
+        return _err(e, "token_id is the numeric CLOB id from outcomes.yes.token_id")
     return _j({"points": len(times),
                "series": [[t, p] for t, p in zip(times, prices)]})
 
@@ -163,13 +199,19 @@ async def open_orders() -> str:
 async def builder_stats(time_period: str = "WEEK") -> str:
     out = {"leaderboard": await pm.builder_leaderboard(time_period)}
     code = trading.builder_code()
+    own = bool(os.environ.get("ODDSRAIL_BUILDER_CODE"))
     if code:
+        key = "my_trades" if own else "bundled_default_code_trades"
         try:
-            out["my_trades"] = await pm.builder_trades(code)
+            out[key] = await pm.builder_trades(code)
         except Exception as e:
-            out["my_trades_error"] = str(e)
-    else:
-        out["note"] = "set ODDSRAIL_BUILDER_CODE to track your attributed flow"
+            out[f"{key}_error"] = str(e)
+        if not own:
+            out["note"] = ("these trades belong to the BUNDLED oddsrail builder "
+                           "code, not to you — they are whatever flow the "
+                           "default has attributed project-wide. Set "
+                           "ODDSRAIL_BUILDER_CODE to your own code to track "
+                           "yours.")
     return _j(out)
 
 
@@ -254,6 +296,9 @@ async def kalshi_cancel_order(order_id: str) -> str:
 async def find_markets(query: str, limit: int = 10,
                        venues: str = "both") -> str:
     want = str(venues or "both").lower()
+    if want not in ("both", "polymarket", "kalshi"):
+        return _j({"error": f"unknown venues={venues!r}",
+                   "valid": ["both", "polymarket", "kalshi"]})
     out = []
     if want in ("both", "polymarket"):
         try:
@@ -428,6 +473,9 @@ async def resolution_criteria(venue: str, market_id: str) -> str:
 async def closing_soon(hours: float = 24.0, limit: int = 10,
                        venues: str = "both") -> str:
     want = str(venues or "both").lower()
+    if want not in ("both", "polymarket", "kalshi"):
+        return _j({"error": f"unknown venues={venues!r}",
+                   "valid": ["both", "polymarket", "kalshi"]})
     out = {}
     if want in ("both", "polymarket"):
         try:
@@ -552,7 +600,7 @@ open UMA dispute (dispute_risk), and anything resolving within 24h."""
 def server_info() -> str:
     return _j({
         "name": "oddsrail",
-        "version": "0.7.0",
+        "version": VERSION,
         "dry_run": trading.dry_run(),
         "trading_key_configured": bool(os.environ.get("POLYMARKET_PRIVATE_KEY")),
         "builder_code_configured": bool(trading.builder_code()),
@@ -570,7 +618,54 @@ def server_info() -> str:
     })
 
 
+USAGE = f"""oddsrail {VERSION} — MCP server for AI agents trading prediction
+markets (Polymarket + Kalshi).
+
+This is NOT an interactive CLI. It speaks the Model Context Protocol over
+stdio, so it is meant to be launched by an MCP client:
+
+    claude mcp add --transport stdio oddsrail -- oddsrail
+
+Then ask your agent: "find markets about the world cup and quote the cost of
+100 shares on the favourite".
+
+Environment:
+  ODDSRAIL_DRY_RUN          1 (default) simulates orders and never sends them.
+                            Only "0", "false" or "no" enable real trading.
+  ODDSRAIL_BUILDER_CODE     your Polymarket builder code; overrides the
+                            bundled default so attribution accrues to you.
+  POLYMARKET_PRIVATE_KEY    required only for real trading. Never leaves this
+                            machine.
+  POLYMARKET_WALLET_ADDRESS proxy/deposit wallet, if your account uses one.
+  KALSHI_KEY_ID             Kalshi API key id (private endpoints only).
+  KALSHI_PRIVATE_KEY_PATH   PKCS#8 PEM for Kalshi request signing.
+  KALSHI_DEMO=1             use Kalshi's demo environment.
+
+Read-only tools need no credentials at all.
+Docs: https://github.com/hmesutozsoy/oddsrail
+"""
+
+
 def main() -> None:
+    import sys
+    args = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in args):
+        print(USAGE)
+        return
+    if any(a in ("-V", "--version") for a in args):
+        print(f"oddsrail {VERSION}")
+        return
+    if args:
+        print(f"oddsrail: unrecognised argument {args[0]!r}\n", file=sys.stderr)
+        print(USAGE, file=sys.stderr)
+        raise SystemExit(2)
+    # A bare run on a terminal is almost always someone expecting a CLI; say so
+    # on stderr (never stdout — that carries the JSON-RPC stream) and continue,
+    # since a client may still be piping us stdio.
+    if sys.stdin.isatty():
+        print(f"oddsrail {VERSION}: MCP stdio server, waiting for a client on "
+              f"stdin.\nNot an interactive CLI — see `oddsrail --help`.",
+              file=sys.stderr)
     srv.run(transport="stdio")
 
 
