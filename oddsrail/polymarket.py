@@ -9,6 +9,8 @@ book/volume/resolution data live in the prices/metrics/state/resolution
 sub-objects rather than at the top level.
 """
 
+from decimal import Decimal
+
 import httpx
 
 CLOB = "https://clob.polymarket.com"
@@ -114,8 +116,43 @@ async def get_market(id_or_slug: str, full: bool = False):
 
 
 async def get_orderbook(token_id: str):
+    """Best-first bid/ask view of a Polymarket book.
+
+    The raw SDK model orders bids ascending and asks descending — the BEST
+    level of each is the LAST element. Handing that to an agent unlabelled
+    invites it to read bids[0]/asks[0] (every LLM prior says index 0 is best)
+    and price against the worst levels on the book. Normalised here to match
+    kalshi.get_orderbook, with the untouched payload kept under "raw".
+    """
     c = await public()
-    return dump(await c.get_order_book(token_id=token_id))
+    raw = dump(await c.get_order_book(token_id=token_id))
+    bids = list(reversed(raw.get("bids") or []))     # -> best (highest) first
+    asks = list(reversed(raw.get("asks") or []))     # -> best (lowest) first
+    best_bid = bids[0].get("price") if bids else None
+    best_ask = asks[0].get("price") if asks else None
+    spread = None
+    if best_bid is not None and best_ask is not None:
+        try:
+            spread = str(Decimal(str(best_ask)) - Decimal(str(best_bid)))
+        except Exception:
+            spread = None
+    return {
+        "venue": "polymarket",
+        "token_id": token_id,
+        "bids": bids,
+        "asks": asks,
+        "best_bid": best_bid,
+        "best_ask": best_ask,
+        "spread": spread,
+        "tick_size": raw.get("tick_size"),
+        "min_order_size": raw.get("min_order_size"),
+        "neg_risk": raw.get("neg_risk"),
+        "note": ("bids/asks are BEST-FIRST here (the raw API orders them the "
+                 "other way). Prices are implied probabilities in (0,1); "
+                 "min_order_size is in shares, and the exchange also enforces "
+                 "a $1 minimum notional on marketable orders."),
+        "raw": raw,
+    }
 
 
 async def price_history(token_id: str, hours: float = 6.0,

@@ -144,7 +144,10 @@ tools need no key at all.
   historical reversion tendency (ported from the polymarket-wc analyzer)
 - `dispute_risk` — premium: transparent 0–100 heuristic for contested
   (UMA-dispute-prone) resolutions
-- `place_order`, `cancel_order`, `open_orders` — trading, dry-run by default
+- `place_order`, `cancel_order`, `open_orders` — trading, dry-run by default.
+  `price` is a probability in (0,1), `size` is in SHARES, and the exchange
+  enforces a **$1 minimum notional** on marketable orders. Trading tools carry
+  `destructiveHint` annotations so clients can gate them.
 - `builder_stats` — attribution verification + public builder leaderboard
 - `server_info` — config status, per-venue
 

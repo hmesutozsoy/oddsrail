@@ -19,6 +19,16 @@ import statistics
 # --------------------------------------------------------------------------- #
 
 def _price_at(times, prices, t):
+    """Step-function lookup, honest about the edges of the series.
+
+    bisect alone returns the LAST price for any t past the end of the data,
+    so a jump detected near "now" would get a full reversion table computed
+    from prices that do not exist yet — reported as 0.0 ("did not retrace")
+    when the truth is "unknown". That biases the freshest signal, which is
+    exactly the one a fade decision rests on. Out of range => None.
+    """
+    if not times or t < times[0] or t > times[-1]:
+        return None
     i = bisect.bisect_right(times, t) - 1
     return prices[i] if i >= 0 else None
 

@@ -68,7 +68,7 @@ async def _client():
     return _secure
 
 
-def _intent(token_id, side, price, size, order_type):
+def _intent(token_id, side, price, size, post_only):
     code = builder_code()
     return {
         "exchange": "polymarket",
@@ -76,7 +76,8 @@ def _intent(token_id, side, price, size, order_type):
         "side": side,
         "price": price,
         "size": size,
-        "order_type": order_type,
+        "size_unit": "shares (notional = price * size, in USDC)",
+        "post_only": post_only,
         "builder_code": code,
         "attribution": ("on-chain: builder code signed into the order "
                         f"[{builder_code_source()}]"
@@ -86,7 +87,7 @@ def _intent(token_id, side, price, size, order_type):
 
 
 async def place_order(token_id: str, side: str, price: float, size: float,
-                      order_type: str = "GTC"):
+                      post_only: bool = False):
     side = side.upper()
     if side not in ("BUY", "SELL"):
         raise ValueError("side must be BUY or SELL")
@@ -95,17 +96,35 @@ async def place_order(token_id: str, side: str, price: float, size: float,
     if size <= 0:
         raise ValueError("size must be positive (number of shares)")
 
-    intent = _intent(token_id, side, price, size, order_type)
+    intent = _intent(token_id, side, price, size, post_only)
     if dry_run():
         return {"dry_run": True, "would_post": intent,
                 "note": "set ODDSRAIL_DRY_RUN=0 to post real orders"}
 
     client = await _client()
-    resp = await client.place_limit_order(
-        token_id=token_id, price=str(price), size=str(size), side=side,
-        builder_code=builder_code())
     from .polymarket import dump
-    return {"dry_run": False, "posted": intent, "response": dump(resp)}
+    try:
+        resp = await client.place_limit_order(
+            token_id=token_id, price=str(price), size=str(size), side=side,
+            post_only=post_only, builder_code=builder_code())
+    except Exception as e:
+        return {"dry_run": False, "accepted": False,
+                "error_type": type(e).__name__, "error": str(e),
+                "submitted": intent,
+                "note": "the exchange rejected the request; nothing was signed onto the book"}
+    d = dump(resp)
+    # The SDK models rejection as a RETURN VALUE (ok=False), not an exception.
+    # Reporting that under a key called "posted" — next to an attribution
+    # string claiming the order was signed on-chain — reads to an agent as
+    # success. Branch on it.
+    ok = bool(d.get("ok", True)) if isinstance(d, dict) else True
+    if not ok:
+        return {"dry_run": False, "accepted": False,
+                "rejected_code": d.get("code"),
+                "rejected_reason": d.get("message"),
+                "submitted": intent,
+                "note": "rejected by the exchange — no order rests, nothing was attributed"}
+    return {"dry_run": False, "accepted": True, "order": d, "submitted": intent}
 
 
 async def cancel_order(order_id: str):
@@ -113,7 +132,16 @@ async def cancel_order(order_id: str):
         return {"dry_run": True, "would_cancel": order_id}
     client = await _client()
     from .polymarket import dump
-    return dump(await client.cancel_order(order_id))
+    try:
+        # SDK signature is cancel_order(*, order_id=...) — keyword-only.
+        return {"ok": True, "order_id": order_id,
+                "response": dump(await client.cancel_order(order_id=order_id))}
+    except Exception as e:
+        # An agent pulling a stale quote off a moving market needs to know
+        # whether it is still exposed, not just that Python raised.
+        return {"ok": False, "order_id": order_id,
+                "error_type": type(e).__name__, "error": str(e),
+                "still_resting": "unknown — call open_orders to confirm"}
 
 
 async def open_orders():
