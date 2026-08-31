@@ -1,6 +1,6 @@
 # oddsrail
 
-<!-- mcp-name: io.github.hmesutozsoy/oddsrail -->
+<!-- mcp-name: io.github.hmesutozsoy/oddsrail-polymarket-kalshi -->
 
 **The rail AI agents use to trade prediction markets.**
 
