@@ -26,6 +26,18 @@ private keys never leave their machine. Orders are dry-run by default.
 - `builder_stats(time_period)` — public builder leaderboard and this
   operator's attributed trades
 
+## Cross-venue tools (prefer these when the venue is not already decided)
+
+- `find_markets(query, limit, venues)` — searches both venues, one normalised
+  shape: venue, market_id, title, yes_price/no_price as probabilities in
+  (0,1), best_bid/best_ask, spread, volume_24h, close_time, trade_with
+- `quote_cost(venue, market_id, side, size)` — true cost of a size by walking
+  the book: avg_price, slippage_vs_best, notional, levels_consumed, fillable.
+  Call this before sizing any trade.
+- `compare_venues(query)` — candidate same-event listings across venues. NOT
+  arbitrage: a price difference is not profit, matches are fuzzy, and it
+  usually returns nothing. Verify resolution criteria by hand.
+
 ## Kalshi tools
 
 - `kalshi_search_markets(query, limit, min_volume)`, `kalshi_get_market(ticker)`,

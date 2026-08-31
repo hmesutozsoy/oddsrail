@@ -115,6 +115,22 @@ async def get_market(id_or_slug: str, full: bool = False):
     return d if full else slim_market(d)
 
 
+async def get_market_by_token(token_id: str, full: bool = False):
+    """Resolve a market from a CLOB token id.
+
+    get_market() takes a slug or numeric id, so passing a 77-digit token id
+    there 422s. Gamma can filter markets by clob_token_ids, which is the only
+    way back from "the thing you trade" to "the thing that describes it" —
+    needed to read a market's fee schedule when all you hold is a token id.
+    """
+    c = await public()
+    page = await c.list_markets(clob_token_ids=token_id, page_size=1).first_page()
+    items = dump(list(page.items))
+    if not items:
+        return None
+    return items[0] if full else slim_market(items[0])
+
+
 async def get_orderbook(token_id: str):
     """Best-first bid/ask view of a Polymarket book.
 

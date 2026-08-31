@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oddsrail"
-version = "0.4.0"
+version = "0.5.0"
 description = "MCP server giving AI trading agents access to prediction markets (Polymarket, Kalshi) with on-chain builder-code attribution and trading signals."
 readme = "README.md"
 requires-python = ">=3.11"

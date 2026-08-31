@@ -14,6 +14,7 @@ import os
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
+from . import crossvenue as xv
 from . import kalshi as kx
 from . import polymarket as pm
 from . import signals
@@ -240,13 +241,144 @@ async def kalshi_cancel_order(order_id: str) -> str:
     return _j(await kx.cancel_order(order_id))
 
 
+# ------------------------------ cross-venue --------------------------------- #
+
+@srv.tool(description="Search BOTH Polymarket and Kalshi at once and return "
+                      "one normalised shape per market: venue, market_id (the "
+                      "id that venue's place_order takes), title, yes/no price "
+                      "as probabilities in (0,1), best bid/ask, spread, 24h "
+                      "volume, close time. Use this instead of the per-venue "
+                      "search tools when you do not already know the venue.",
+           annotations=READ, structured_output=False)
+async def find_markets(query: str, limit: int = 10,
+                       venues: str = "both") -> str:
+    want = str(venues or "both").lower()
+    out = []
+    if want in ("both", "polymarket"):
+        try:
+            for m in await pm.search_markets(query=query, limit=limit):
+                out.append(xv.unify_polymarket(m))
+        except Exception as e:
+            out.append({"venue": "polymarket", "error": str(e)})
+    kalshi_scan = None
+    if want in ("both", "kalshi"):
+        try:
+            det = await kx.search_markets_detailed(query=query, limit=limit)
+            for m in det["markets"]:
+                out.append(xv.unify_kalshi(m))
+            kalshi_scan = {k: det[k] for k in
+                           ("scanned_markets", "pages_read", "truncated")}
+        except Exception as e:
+            out.append({"venue": "kalshi", "error": str(e)})
+    live = [m for m in out if "error" not in m]
+    live.sort(key=lambda m: -(m.get("volume_24h") or 0))
+    errs = [m for m in out if "error" in m]
+    return _j({"markets": live[: limit * 2], "venue_errors": errs or None,
+               "kalshi_scan": kalshi_scan,
+               "note": ("prices are implied probabilities in (0,1) on both "
+                        "venues; pass market_id to the tool named in "
+                        "trade_with. If kalshi_scan.truncated is true, the "
+                        "Kalshi side is incomplete — it has no text search, "
+                        "so absence there is not evidence of absence.")})
+
+
+@srv.tool(description="Find markets that may be the SAME event on both "
+                      "Polymarket and Kalshi. NOT an arbitrage scanner: "
+                      "matches are candidates from title similarity plus a "
+                      "close-date check, and a price difference between two "
+                      "candidates is not profit. Identical wording does not "
+                      "mean identical resolution criteria — read both, and run "
+                      "quote_cost on each leg, before acting.",
+           annotations=READ, structured_output=False)
+async def compare_venues(query: str, limit: int = 10,
+                         min_similarity: float = 0.5,
+                         max_close_days_apart: int = 7) -> str:
+    unified = []
+    try:
+        for m in await pm.search_markets(query=query, limit=limit):
+            unified.append(xv.unify_polymarket(m))
+    except Exception as e:
+        return _j({"error": f"polymarket search failed: {e}"})
+    kalshi_scan = None
+    try:
+        det = await kx.search_markets_detailed(query=query, limit=limit)
+        for m in det["markets"]:
+            unified.append(xv.unify_kalshi(m))
+        kalshi_scan = {k: det[k] for k in
+                       ("scanned_markets", "pages_read", "truncated")}
+    except Exception as e:
+        return _j({"error": f"kalshi search failed: {e}"})
+    pairs = xv.pair_across_venues(unified, min_similarity=min_similarity,
+                                  max_close_days_apart=max_close_days_apart)
+    return _j({"candidates": pairs[:limit], "candidates_found": len(pairs),
+               "searched": {"polymarket": sum(1 for m in unified if m["venue"] == "polymarket"),
+                            "kalshi": sum(1 for m in unified if m["venue"] == "kalshi")},
+               "kalshi_scan": kalshi_scan,
+               "note": ("yes_price_difference > 0 means Kalshi prices YES "
+                        "higher. It is a DIFFERENCE, not an edge: cross-venue "
+                        "entity resolution is unsolved here, so treat every "
+                        "row as a lead to verify by hand, never as a signal to "
+                        "trade. Zero candidates usually means no same-event "
+                        "listing was found, which is the common case.")})
+
+
+@srv.tool(description="What a given size would ACTUALLY cost, by walking the "
+                      "order book rather than reading the top level. Returns "
+                      "average fill price, slippage vs best, notional, and the "
+                      "levels consumed — plus the venue's fee schedule where "
+                      "it publishes one. Call this before sizing any trade, "
+                      "and on both legs before acting on a cross-venue gap.",
+           annotations=READ, structured_output=False)
+async def quote_cost(venue: str, market_id: str, side: str,
+                     size: float) -> str:
+    v = str(venue or "").lower()
+    sd = str(side or "").upper()
+    if sd not in ("BUY", "SELL"):
+        return _j({"error": "side must be BUY or SELL"})
+    if size <= 0:
+        return _j({"error": "size must be positive (number of shares)"})
+
+    if v == "polymarket":
+        ob = await pm.get_orderbook(market_id)
+        levels = ob["asks"] if sd == "BUY" else ob["bids"]
+        walk = xv.walk_book(levels, size)
+        fees = {"note": "could not resolve this token to a market"}
+        try:
+            full = await pm.get_market_by_token(market_id, full=True)
+            if full:
+                fees = xv.polymarket_fee_note(full)
+                fees["market"] = full.get("question")
+        except Exception as e:
+            fees = {"note": f"fee lookup failed: {e}"}
+        return _j({"venue": "polymarket", "market_id": market_id, "side": sd,
+                   "cost": walk, "fees": fees,
+                   "best_bid": ob.get("best_bid"), "best_ask": ob.get("best_ask"),
+                   "min_order_size": ob.get("min_order_size"),
+                   "note": "prices are probabilities; notional is in USDC. "
+                           "The exchange also enforces a $1 minimum notional "
+                           "on marketable orders."})
+
+    if v == "kalshi":
+        ob = await kx.get_orderbook(market_id, depth=50)
+        levels = ob["yes_asks"] if sd == "BUY" else ob["yes_bids"]
+        walk = xv.walk_book(levels, size)
+        return _j({"venue": "kalshi", "market_id": market_id, "side": sd,
+                   "cost": walk, "fees": xv.KALSHI_FEE_NOTE,
+                   "best_yes_bid": ob.get("best_yes_bid"),
+                   "best_yes_ask": ob.get("best_yes_ask"),
+                   "note": "quoted on the YES book; buying NO at q is selling "
+                           "YES at (1-q)."})
+
+    return _j({"error": "venue must be 'polymarket' or 'kalshi'"})
+
+
 @srv.tool(description="Server status: dry-run state, attribution config, "
                       "and which capabilities are enabled.",
            annotations=READ, structured_output=False)
 def server_info() -> str:
     return _j({
         "name": "oddsrail",
-        "version": "0.4.0",
+        "version": "0.5.0",
         "dry_run": trading.dry_run(),
         "trading_key_configured": bool(os.environ.get("POLYMARKET_PRIVATE_KEY")),
         "builder_code_configured": bool(trading.builder_code()),

@@ -11,6 +11,7 @@ rules-based score with reasons, not a trained model.
 """
 
 import bisect
+import re
 import statistics
 
 
@@ -157,13 +158,20 @@ def dispute_risk(market: dict) -> dict:
     desc = " ".join(str(market.get(k, "")) for k in
                     ("description", "question", "title")).lower()
 
-    hits = [w for w in _AMBIGUOUS if w in desc]
+    def _has(phrase: str) -> bool:
+        # Word-boundary match: plain substring makes "major" fire on
+        # "majority" and "formal" fire on "informal", inflating the score
+        # on wording that is not actually ambiguous.
+        return re.search(r"(?<![a-z])" + re.escape(phrase) + r"(?![a-z])",
+                         desc) is not None
+
+    hits = [w for w in _AMBIGUOUS if _has(w)]
     if hits:
         pts = min(35, 12 * len(hits))
         score += pts
         reasons.append(f"+{pts}: ambiguous resolution wording ({', '.join(hits[:4])})")
 
-    clean_hits = [w for w in _CLEAN if w in desc]
+    clean_hits = [w for w in _CLEAN if _has(w)]
     if clean_hits:
         score -= 15
         reasons.append(f"-15: objective settlement source named ({clean_hits[0]})")
@@ -177,12 +185,17 @@ def dispute_risk(market: dict) -> dict:
         score += 10
         reasons.append("+10: resolution proposed, challenge window open")
 
-    if market.get("negRisk") or market.get("neg_risk"):
+    state = market.get("state") or {}
+    metrics = market.get("metrics") or {}
+    if (market.get("negRisk") or market.get("neg_risk")
+            or (isinstance(state, dict) and state.get("neg_risk"))):
         score += 5
         reasons.append("+5: neg-risk (multi-outcome) market — more edge cases")
 
     try:
-        vol = float(market.get("volume", 0) or 0)
+        vol = float(market.get("volume")
+                    or (metrics.get("volume") if isinstance(metrics, dict) else 0)
+                    or 0)
         if vol > 5_000_000:
             score += 15
             reasons.append("+15: large open interest (>$5M) — worth manipulating")

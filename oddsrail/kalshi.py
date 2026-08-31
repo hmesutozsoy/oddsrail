@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import time
 from decimal import Decimal
 
@@ -114,6 +115,22 @@ async def _post(path: str, body: dict):
         return r.json()
 
 
+def matches(query: str, text: str) -> bool:
+    """Word-boundary match, not naive substring.
+
+    Plain `q in text` makes "fed" match "confederation" and "FDP ... German
+    Bundestag", which is how a Fed-rate search returns German election
+    markets. Boundaries keep multi-word queries working ("bitcoin price")
+    while refusing accidental infixes.
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return True
+    t = (text or "").lower()
+    return all(re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", t)
+               for w in q.split())
+
+
 def _d(v) -> Decimal | None:
     try:
         return Decimal(str(v))
@@ -127,7 +144,8 @@ def slim_market(m: dict) -> dict:
         "venue": "kalshi",
         "ticker": m.get("ticker"),
         "event_ticker": m.get("event_ticker"),
-        "title": m.get("title"),
+        "title": m.get("title") or m.get("event_title"),
+        "event_title": m.get("event_title"),
         "yes_sub_title": m.get("yes_sub_title"),
         "status": m.get("status"),
         "yes_bid": m.get("yes_bid_dollars"),
@@ -145,31 +163,84 @@ def slim_market(m: dict) -> dict:
 
 
 async def search_markets(query: str = "", limit: int = 10,
-                         status: str = "open", min_volume: float = 0.0):
-    """Kalshi has no text-search endpoint, so this pages recent open markets
-    and filters client-side on title/ticker. MVE combo shards are excluded —
-    they are auto-generated, illiquid, and drown real markets otherwise."""
-    out, cursor, pages = [], None, 0
+                         status: str = "open", min_volume: float = 0.0,
+                         max_pages: int = 15):
+    """Kalshi has no text-search endpoint, so this pages open markets and
+    filters client-side on title/ticker. MVE combo shards are excluded — they
+    are auto-generated, illiquid, and drown real markets otherwise.
+
+    Returns a plain list for the common case. Because the scan is bounded, an
+    empty result is ambiguous — "no such market" and "did not page far enough"
+    look identical — so callers that need to tell them apart should use
+    search_markets_detailed(), which reports whether the scan was truncated.
+    """
+    res = await search_markets_detailed(query, limit, status, min_volume, max_pages)
+    return res["markets"]
+
+
+async def search_markets_detailed(query: str = "", limit: int = 10,
+                                  status: str = "open", min_volume: float = 0.0,
+                                  max_pages: int = 8):
+    """Search Kalshi by EVENT, not by market.
+
+    Kalshi has no text-search endpoint, so the naive approach is to page
+    /markets and filter client-side — but market tickers are machine strings
+    (KXMLBHIT-26AUG311845MIAWSH-WSHDLILE4-1) and there are tens of thousands
+    of them, so a bounded scan finds nothing. Events are the human-readable
+    index ("Fed funds rate at end of 2026"), there are far fewer of them, and
+    `with_nested_markets` returns their markets in the same response — so one
+    pass over events covers vastly more ground than the same page budget spent
+    on markets.
+    """
     q = (query or "").lower()
-    while len(out) < limit and pages < 5:
-        params = {"limit": 200, "status": status, "mve_filter": "exclude"}
+    out, cursor, pages, scanned_events, scanned_markets = [], None, 0, 0, 0
+
+    while len(out) < limit and pages < max_pages:
+        params = {"limit": 200, "status": status, "with_nested_markets": "true"}
         if cursor:
             params["cursor"] = cursor
-        data = await _get("/markets", params)
-        batch = data.get("markets") or []
-        for m in batch:
-            if float(_d(m.get("volume_fp")) or 0) < min_volume:
-                continue
-            hay = f"{m.get('title','')} {m.get('ticker','')} {m.get('yes_sub_title','')}".lower()
-            if q and q not in hay:
-                continue
-            out.append(m)
+        data = await _get("/events", params)
+        events = data.get("events") or []
+        scanned_events += len(events)
+
+        for ev in events:
+            ev_text = " ".join(str(ev.get(k, "")) for k in
+                               ("title", "sub_title", "event_ticker",
+                                "series_ticker", "category")).lower()
+            for m in ev.get("markets") or []:
+                scanned_markets += 1
+                if float(_d(m.get("volume_fp")) or 0) < min_volume:
+                    continue
+                m_text = " ".join(str(m.get(k, "")) for k in
+                                  ("title", "yes_sub_title", "ticker")).lower()
+                if q and not (matches(q, ev_text) or matches(q, m_text)):
+                    continue
+                # nested markets omit the parent title; carry it through so the
+                # agent sees "Fed funds rate at end of 2026" not a bare strike
+                m = dict(m)
+                m.setdefault("event_title", ev.get("title"))
+                if not m.get("title"):
+                    m["title"] = ev.get("title")
+                out.append(m)
+
         cursor = data.get("cursor")
         pages += 1
-        if not cursor or not batch:
+        if not cursor or not events:
             break
+
     out.sort(key=lambda m: -float(_d(m.get("volume_fp")) or 0))
-    return [slim_market(m) for m in out[:limit]]
+    truncated = bool(cursor) and len(out) < limit
+    return {
+        "markets": [slim_market(m) for m in out[:limit]],
+        "scanned_events": scanned_events,
+        "scanned_markets": scanned_markets,
+        "pages_read": pages,
+        "truncated": truncated,
+        "note": ("searched Kalshi by event title (it has no text-search "
+                 f"endpoint); covered {scanned_events} events / "
+                 f"{scanned_markets} markets. truncated=true means the scan hit "
+                 "its page budget with matches possibly still ahead."),
+    }
 
 
 async def get_market(ticker: str):

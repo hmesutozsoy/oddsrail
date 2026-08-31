@@ -136,7 +136,38 @@ Credentials: `KALSHI_KEY_ID` plus `KALSHI_PRIVATE_KEY_PATH` (PKCS#8 PEM) or
 `KALSHI_PRIVATE_KEY`. Set `KALSHI_DEMO=1` to hit the demo environment. Read
 tools need no key at all.
 
-## Tools (21)
+## Cross-venue tools
+
+- **`find_markets(query)`** — searches Polymarket *and* Kalshi in one call and
+  returns one normalised shape per market: `venue`, `market_id` (the id that
+  venue's order tool takes), `title`, yes/no price as probabilities in (0,1),
+  best bid/ask, spread, 24h volume, close time, and `trade_with` naming the
+  tool to call. Use this when you do not already know the venue.
+- **`quote_cost(venue, market_id, side, size)`** — what a size would *actually*
+  cost, by walking the book rather than reading the top level. Returns average
+  fill price, slippage vs best, notional, levels consumed, and whether the size
+  is fillable at all — plus Polymarket's per-market fee schedule where it
+  publishes one. Kalshi does not publish fees in its market payload, so they
+  are reported as unknown rather than estimated.
+- **`compare_venues(query)`** — candidate same-event listings across venues.
+  **Not an arbitrage scanner.** Matching an event across venues is an
+  unsolved entity-resolution problem: naive title overlap cheerfully pairs a
+  Brazilian election with a Ukrainian one and reports a 70-point "gap" that is
+  fiction. Two gates apply (title similarity ≥ 0.5 *and* close dates within a
+  week), so it usually returns nothing — which is the honest answer. A price
+  delta between candidates is reported as `yes_price_difference`, never as
+  profit.
+
+### Kalshi search
+
+Kalshi has no text-search endpoint. oddsrail searches by **event** (the
+human-readable index, with `with_nested_markets`) rather than paging tens of
+thousands of machine-named markets, and matches on word boundaries — without
+that, "fed" matches "German Bundestag" and a Fed-rate query returns German
+election markets. Results carry `truncated`, because a bounded scan means an
+empty result is not proof a market does not exist.
+
+## Tools (24)
 
 - `search_markets`, `get_market`, `get_orderbook`, `price_history`,
   `get_positions` — read-only, no keys
@@ -149,6 +180,7 @@ tools need no key at all.
   enforces a **$1 minimum notional** on marketable orders. Trading tools carry
   `destructiveHint` annotations so clients can gate them.
 - `builder_stats` — attribution verification + public builder leaderboard
+- `find_markets`, `compare_venues`, `quote_cost` — cross-venue (above)
 - `server_info` — config status, per-venue
 
 Kalshi: `kalshi_search_markets`, `kalshi_get_market`, `kalshi_get_orderbook`,

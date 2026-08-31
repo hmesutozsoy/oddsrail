@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.hmesutozsoy/oddsrail",
-  "description": "Prediction markets for AI agents: Polymarket + Kalshi data, signals, attributed order routing",
+  "description": "Cross-venue prediction markets for AI agents: Polymarket + Kalshi, costed and attributed",
   "repository": {
     "url": "https://github.com/hmesutozsoy/oddsrail",
     "source": "github"
   },
-  "version": "0.4.0",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "oddsrail",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       },
