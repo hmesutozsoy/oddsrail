@@ -368,3 +368,41 @@ async def cancel_order(order_id: str):
         r = await c.delete(url, headers=headers)
         r.raise_for_status()
         return r.json()
+
+
+async def resolution_criteria(ticker: str) -> dict:
+    """Full rules text + the event's settlement sources for one market."""
+    d = await _get(f"/markets/{ticker}")
+    m = d.get("market") or {}
+    ev = {}
+    if m.get("event_ticker"):
+        try:
+            ev = (await _get(f"/events/{m['event_ticker']}")).get("event") or {}
+        except Exception:
+            ev = {}
+    return {
+        "venue": "kalshi",
+        "ticker": ticker,
+        "title": m.get("title"),
+        "yes_means": m.get("yes_sub_title"),
+        "rules_primary": m.get("rules_primary"),
+        "rules_secondary": m.get("rules_secondary"),
+        "settlement_sources": ev.get("settlement_sources"),
+        "close_time": m.get("close_time"),
+        "expected_expiration_time": m.get("expected_expiration_time"),
+        "note": ("rules_primary is the resolution contract on Kalshi; "
+                 "settlement_sources names who the outcome is read from"),
+    }
+
+
+async def closing_soon(hours: float = 24.0, limit: int = 15,
+                       min_volume: float = 0.0):
+    """Open Kalshi markets closing within `hours`, by volume."""
+    now = int(time.time())
+    data = await _get("/markets", {
+        "limit": 200, "status": "open", "mve_filter": "exclude",
+        "min_close_ts": now, "max_close_ts": now + int(hours * 3600)})
+    ms = [m for m in (data.get("markets") or [])
+          if float(_d(m.get("volume_fp")) or 0) >= min_volume]
+    ms.sort(key=lambda m: -float(_d(m.get("volume_fp")) or 0))
+    return [slim_market(m) for m in ms[:limit]]

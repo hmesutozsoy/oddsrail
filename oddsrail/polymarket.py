@@ -221,3 +221,39 @@ async def builder_trades(builder_code: str):
                         params={"builder_code": builder_code})
         r.raise_for_status()
         return r.json()
+
+
+async def resolution_criteria(id_or_slug: str) -> dict:
+    """The full text an agent must read before trusting a market's price:
+    what exactly resolves YES, who resolves it, and the UMA status."""
+    m = await get_market(id_or_slug, full=True)
+    res = m.get("resolution") or {}
+    state = m.get("state") or {}
+    return {
+        "venue": "polymarket",
+        "question": m.get("question"),
+        "description": m.get("description"),
+        "resolution_source": res.get("source") or "(none named)",
+        "resolved_by": res.get("resolved_by"),
+        "uma_resolution_status": res.get("uma_resolution_status"),
+        "end_date": state.get("end_date"),
+        "neg_risk": state.get("neg_risk"),
+        "note": ("description IS the resolution contract on Polymarket; "
+                 "ambiguous wording here is where UMA disputes come from"),
+    }
+
+
+async def closing_soon(hours: float = 24.0, limit: int = 15):
+    """Open markets that close within `hours` — where trading concentrates."""
+    import datetime as _dt
+    c = await public()
+    now = _dt.datetime.now(_dt.timezone.utc)
+    page = await c.list_markets(
+        closed=False,
+        end_date_min=now.isoformat(),
+        end_date_max=(now + _dt.timedelta(hours=hours)).isoformat(),
+        page_size=max(limit, 20)).first_page()
+    ms = [slim_market(m) for m in dump(list(page.items))]
+    ms = [m for m in ms if m.get("accepting_orders")]
+    ms.sort(key=lambda m: -float(m.get("volume_24hr") or 0))
+    return ms[:limit]

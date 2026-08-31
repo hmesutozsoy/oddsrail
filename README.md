@@ -167,7 +167,22 @@ that, "fed" matches "German Bundestag" and a Fed-rate query returns German
 election markets. Results carry `truncated`, because a bounded scan means an
 empty result is not proof a market does not exist.
 
-## Tools (24)
+## Order lifecycle & discovery
+
+- `order_status(order_id)` — resting / partially_filled / filled / gone, with
+  size_matched. The answer an agent needs after place_order.
+- `my_fills()`, `my_positions()` — the operator's executions and holdings,
+  no address juggling. (Fills come from the Data API activity feed — the
+  SDK's list_account_trades returns the market's *public* tape and is not
+  used.)
+- `cancel_all_orders()` — kill switch: flatten every resting order at once.
+- `resolution_criteria(venue, market_id)` — the full resolution contract:
+  what resolves YES, who resolves it, from which sources. Read it before
+  trusting a price.
+- `closing_soon(hours)` — markets closing within N hours on either venue,
+  where activity concentrates.
+
+## Tools (30)
 
 - `search_markets`, `get_market`, `get_orderbook`, `price_history`,
   `get_positions` — read-only, no keys

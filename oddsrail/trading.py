@@ -151,3 +151,69 @@ async def open_orders():
     from .polymarket import dump
     page = await client.list_open_orders().first_page()
     return dump(list(page.items))
+
+
+async def order_status(order_id: str):
+    """Lifecycle answer for one order: resting / filled / gone.
+
+    Without this an agent that placed an order was blind — open_orders shows
+    presence but not fill progress, and a vanished id is ambiguous between
+    "filled" and "cancelled". get_order reports size_matched directly.
+    """
+    if not os.environ.get("POLYMARKET_PRIVATE_KEY"):
+        return {"note": "no trading key configured"}
+    client = await _client()
+    from .polymarket import dump
+    try:
+        d = dump(await client.get_order(order_id=order_id))
+        matched = float(d.get("size_matched") or 0)
+        size = float(d.get("original_size") or d.get("size") or 0)
+        state = ("filled" if size and matched >= size else
+                 "partially_filled" if matched > 0 else "resting")
+        return {"found": True, "state": state, "size_matched": matched,
+                "original_size": size, "order": d}
+    except Exception as e:
+        return {"found": False,
+                "note": ("order not found — it either fully filled and left the "
+                         "book, was cancelled, or never existed. my_fills() "
+                         "shows recent executions."),
+                "error_type": type(e).__name__, "error": str(e)[:200]}
+
+
+async def cancel_all_orders():
+    """Kill switch: pull every resting order on the operator's account."""
+    if dry_run():
+        return {"dry_run": True,
+                "would_cancel": "ALL resting orders on the operator account"}
+    client = await _client()
+    from .polymarket import dump
+    try:
+        return {"ok": True, "response": dump(await client.cancel_all())}
+    except Exception as e:
+        return {"ok": False, "error_type": type(e).__name__, "error": str(e),
+                "still_resting": "unknown — call open_orders to confirm"}
+
+
+def operator_wallet() -> str | None:
+    return (os.environ.get("POLYMARKET_WALLET_ADDRESS")
+            or os.environ.get("POLYMARKET_FUNDER") or None)
+
+
+async def my_fills(limit: int = 25):
+    """Recent executions for the operator wallet, from the Data API activity
+    feed. Deliberately NOT list_account_trades(): that SDK call returns the
+    market's PUBLIC tape (other people's trades) — a verified footgun."""
+    wallet = operator_wallet()
+    if not wallet:
+        return {"note": "set POLYMARKET_WALLET_ADDRESS to see fills"}
+    import httpx
+    async with httpx.AsyncClient(timeout=20.0) as h:
+        r = await h.get("https://data-api.polymarket.com/activity",
+                        params={"user": wallet, "limit": limit, "type": "TRADE"})
+        r.raise_for_status()
+        acts = r.json()
+    return {"wallet": wallet, "fills": [
+        {"time": a.get("timestamp"), "side": a.get("side"),
+         "size": a.get("size"), "price": a.get("price"),
+         "market": str(a.get("title"))[:80], "tx": a.get("transactionHash")}
+        for a in (acts if isinstance(acts, list) else [])]}

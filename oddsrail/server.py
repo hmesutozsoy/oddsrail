@@ -372,13 +372,83 @@ async def quote_cost(venue: str, market_id: str, side: str,
     return _j({"error": "venue must be 'polymarket' or 'kalshi'"})
 
 
+# ------------------------------ lifecycle & discovery ----------------------- #
+
+@srv.tool(description="Status of one Polymarket order: resting, partially "
+                      "filled, filled, or gone. The lifecycle answer an agent "
+                      "needs after place_order.",
+           annotations=READ, structured_output=False)
+async def order_status(order_id: str) -> str:
+    return _j(await trading.order_status(order_id))
+
+
+@srv.tool(description="Recent executions (fills) for the operator wallet — "
+                      "confirms what actually traded, with tx hashes.",
+           annotations=READ, structured_output=False)
+async def my_fills(limit: int = 25) -> str:
+    return _j(await trading.my_fills(limit))
+
+
+@srv.tool(description="The operator's current Polymarket positions (uses the "
+                      "configured wallet; no address needed).",
+           annotations=READ, structured_output=False)
+async def my_positions(limit: int = 50) -> str:
+    w = trading.operator_wallet()
+    if not w:
+        return _j({"note": "set POLYMARKET_WALLET_ADDRESS to see positions"})
+    return _j({"wallet": w, "positions": await pm.get_positions(w, limit)})
+
+
+@srv.tool(description="KILL SWITCH — cancel every resting Polymarket order on "
+                      "the operator account at once. Use when exposure must "
+                      "go to zero fast. Respects dry-run.",
+           annotations=TRADE, structured_output=False)
+async def cancel_all_orders() -> str:
+    return _j(await trading.cancel_all_orders())
+
+
+@srv.tool(description="READ BEFORE TRUSTING A PRICE: the full resolution "
+                      "contract for a market — what exactly resolves YES, who "
+                      "resolves it, from which sources. venue is 'polymarket' "
+                      "(pass slug or id) or 'kalshi' (pass ticker).",
+           annotations=READ, structured_output=False)
+async def resolution_criteria(venue: str, market_id: str) -> str:
+    v = str(venue or "").lower()
+    if v == "polymarket":
+        return _j(await pm.resolution_criteria(market_id))
+    if v == "kalshi":
+        return _j(await kx.resolution_criteria(market_id))
+    return _j({"error": "venue must be 'polymarket' or 'kalshi'"})
+
+
+@srv.tool(description="Markets closing within N hours on either venue, by "
+                      "volume — where trading activity concentrates.",
+           annotations=READ, structured_output=False)
+async def closing_soon(hours: float = 24.0, limit: int = 10,
+                       venues: str = "both") -> str:
+    want = str(venues or "both").lower()
+    out = {}
+    if want in ("both", "polymarket"):
+        try:
+            out["polymarket"] = await pm.closing_soon(hours, limit)
+        except Exception as e:
+            out["polymarket_error"] = str(e)[:200]
+    if want in ("both", "kalshi"):
+        try:
+            out["kalshi"] = await kx.closing_soon(hours, limit)
+        except Exception as e:
+            out["kalshi_error"] = str(e)[:200]
+    return _j(out)
+
+
+
 @srv.tool(description="Server status: dry-run state, attribution config, "
                       "and which capabilities are enabled.",
            annotations=READ, structured_output=False)
 def server_info() -> str:
     return _j({
         "name": "oddsrail",
-        "version": "0.5.0",
+        "version": "0.6.0",
         "dry_run": trading.dry_run(),
         "trading_key_configured": bool(os.environ.get("POLYMARKET_PRIVATE_KEY")),
         "builder_code_configured": bool(trading.builder_code()),
