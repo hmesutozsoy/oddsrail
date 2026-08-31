@@ -1,6 +1,6 @@
 # oddsrail
 
-<!-- mcp-name: io.github.hmesutozsoy/oddsrail-polymarket-kalshi -->
+<!-- mcp-name: app.oddsrail/polymarket-kalshi-arbitrage -->
 
 **The rail AI agents use to trade prediction markets.**
 
@@ -205,7 +205,29 @@ empty result is not proof a market does not exist.
 - `closing_soon(hours)` — markets closing within N hours on either venue,
   where activity concentrates.
 
-## Tools (30)
+## Workflow prompts
+
+MCP prompts show up in clients as ready-made workflows, and they encode the
+*order* of operations that keeps an agent out of trouble — the sequencing is
+the expertise, which a flat tool list cannot convey.
+
+- `/find_fade_setup(query, bankroll)` — signal → book → cost → resolution →
+  size → dry-run, with the rejection criteria at each step
+- `/check_cross_venue_edge(query)` — candidates → settlement audit → cost on
+  both legs, and says plainly when the answer is "no edge"
+- `/daily_review` — positions, resting orders, fills, closing-soon, attribution
+
+## Risk & settlement
+
+- **`settlement_audit(polymarket_id, kalshi_ticker)`** — the check that decides
+  whether a cross-venue price difference is an edge or a mismatch. Compares
+  close times, resolution sources, UMA dispute status and market structure on
+  **live data with no pre-curated pair list**, returning `ok` / `caution` /
+  `block` with reasons — and listing the checks it did *not* perform.
+- **`position_size(bankroll, price, fair_value)`** — fractional-Kelly sizing,
+  capped, refusing negative-edge bets, returning its own assumptions.
+
+## Tools (32)
 
 - `search_markets`, `get_market`, `get_orderbook`, `price_history`,
   `get_positions` — read-only, no keys

@@ -14,6 +14,7 @@ import os
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
+from . import audit as au
 from . import crossvenue as xv
 from . import kalshi as kx
 from . import polymarket as pm
@@ -442,13 +443,116 @@ async def closing_soon(hours: float = 24.0, limit: int = 10,
 
 
 
+# ------------------------------ audit & sizing ------------------------------ #
+
+@srv.tool(description="Settlement-divergence audit for a cross-venue pair, on "
+                      "LIVE data (no pre-curated pair list). Compares close "
+                      "times, resolution sources, UMA dispute status and market "
+                      "structure, and returns ok / caution / block with "
+                      "reasons. Run this before treating any cross-venue price "
+                      "difference as an edge.",
+           annotations=READ, structured_output=False)
+async def settlement_audit(polymarket_id: str, kalshi_ticker: str,
+                           notional_usd: float = 0.0) -> str:
+    try:
+        pm_rc = await pm.resolution_criteria(polymarket_id)
+    except Exception as e:
+        return _j({"error": f"could not load Polymarket leg: {e}"})
+    try:
+        kx_rc = await kx.resolution_criteria(kalshi_ticker)
+    except Exception as e:
+        return _j({"error": f"could not load Kalshi leg: {e}"})
+    return _j(au.audit_pair(pm_rc, kx_rc, notional_usd or None))
+
+
+@srv.tool(description="Fractional-Kelly position size for a binary contract, "
+                      "given your bankroll, the market price, and YOUR fair "
+                      "value estimate. Caps at a fraction of full Kelly and "
+                      "refuses negative-edge bets. Returns its assumptions — "
+                      "subtract quote_cost before trusting the number.",
+           annotations=READ, structured_output=False)
+def position_size(bankroll_usd: float, price: float, fair_value: float,
+                  max_fraction_of_kelly: float = 0.25) -> str:
+    return _j(au.kelly_size(bankroll_usd, price, fair_value,
+                            max_fraction_of_kelly))
+
+
+# ------------------------------ workflow prompts ---------------------------- #
+# Prompts surface in MCP clients as ready-made workflows. They encode the
+# ORDER of operations that keeps an agent out of trouble — the sequencing is
+# the expertise, and a tool list alone does not convey it.
+
+@srv.prompt(description="Find and evaluate a fade (mean-reversion) setup on "
+                        "prediction markets, end to end.")
+def find_fade_setup(query: str = "", bankroll_usd: str = "100") -> str:
+    return f"""Find a fade setup on prediction markets{f' related to: {query}' if query else ''}.
+
+Work in this order and stop if a step fails:
+1. find_markets({query!r}) — pick liquid candidates (volume_24h > 10000).
+2. For each candidate, overshoot_signal(token_id) — you want
+   fade_setup_active=true AND median_reversion_120s > 0.2. If
+   median_reversion_120s is null, the series had no measurable history:
+   treat that as no signal, not as a weak one.
+3. get_orderbook(token_id) — confirm the book is two-sided. bids/asks are
+   already best-first here.
+4. quote_cost(venue, market_id, side, size) — the reversion must beat
+   slippage + fees, not just the headline move. Most setups die here.
+5. resolution_criteria — a market that resolves ambiguously can strand the
+   position regardless of price action.
+6. position_size(bankroll_usd={bankroll_usd}, price, fair_value) where
+   fair_value is the pre-jump price if you believe it fully reverts.
+7. place_order(...) — dry-run first and read back the intent before setting
+   ODDSRAIL_DRY_RUN=0.
+
+Report the candidates you rejected and why; a rejected setup is a result."""
+
+
+@srv.prompt(description="Check whether a cross-venue price difference is a "
+                        "real edge or a settlement mismatch.")
+def check_cross_venue_edge(query: str) -> str:
+    return f"""Investigate whether {query!r} offers a genuine cross-venue edge.
+
+1. compare_venues({query!r}) — candidates only. It returns nothing for most
+   queries, which is the honest answer, not a failure.
+2. For any candidate: settlement_audit(polymarket_id, kalshi_ticker).
+   A 'block' verdict ends it — the legs do not hedge each other and the
+   price difference is not an edge.
+3. On 'ok' or 'caution': quote_cost on BOTH legs at the size you would
+   actually trade. Cross-venue differences are usually smaller than the
+   combined slippage.
+4. Read resolution_criteria on both sides yourself. Identical wording does
+   not mean identical settlement.
+5. Only then size the trade.
+
+State plainly if the conclusion is 'no edge here' — that is the usual and
+correct outcome."""
+
+
+@srv.prompt(description="Daily review of open exposure: positions, resting "
+                        "orders, recent fills, attribution.")
+def daily_review() -> str:
+    return """Review current prediction-market exposure.
+
+1. my_positions() — what is held, and at what marks.
+2. open_orders() — what is still resting; for anything stale, order_status()
+   to see whether it partially filled.
+3. my_fills(limit=25) — what actually executed since the last review.
+4. closing_soon(hours=24) — positions or orders in markets about to resolve
+   need a decision now.
+5. builder_stats() — confirm routed flow is being attributed.
+
+Flag: resting orders far from the current book, positions in markets with an
+open UMA dispute (dispute_risk), and anything resolving within 24h."""
+
+
+
 @srv.tool(description="Server status: dry-run state, attribution config, "
                       "and which capabilities are enabled.",
            annotations=READ, structured_output=False)
 def server_info() -> str:
     return _j({
         "name": "oddsrail",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "dry_run": trading.dry_run(),
         "trading_key_configured": bool(os.environ.get("POLYMARKET_PRIVATE_KEY")),
         "builder_code_configured": bool(trading.builder_code()),
