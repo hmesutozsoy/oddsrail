@@ -18,16 +18,39 @@ not by you. Running your own builder profile instead is one environment
 variable (`ODDSRAIL_BUILDER_CODE`), and `server_info` always tells you which
 code is in use. No fee tiers, no paywalled tools, no account required.
 
-## Why this and not Parsec
+## How oddsrail compares
 
-The closest competitor (parsecapi.com) is a closed-source hosted service:
-it stores your exchange keys (or holds a managed wallet that signs for you),
-and its Builder Program keeps **55–85% of the fees builders collect**.
-oddsrail is the opposite on every axis: **self-hosted, non-custodial (keys
-never leave your machine), open source, and you keep 100% of your Polymarket
-builder fees** because attribution uses Polymarket's native mechanism, not a
-middleman escrow. Parsec also ships zero signal/analytics tools and nothing
-on resolution risk — that's our paid layer.
+Verified against each alternative directly (their repos, live endpoints, and
+registry entries — August 2026), not from their marketing:
+
+| | oddsrail | raw Polymarket API | raw Kalshi API | Crosswire | Parsec |
+|---|---|---|---|---|---|
+| Both venues, one vocabulary | ✅ `find_markets` | single-venue | single-venue | pairs from a frozen 43-pair graph | ✅ 5 venues |
+| Book-walked cost + slippage | ✅ `quote_cost` | book only, math is yours | book only | top-of-book, covered pairs only | preview on their infra |
+| Order lifecycle (status/fills/kill switch) | ✅ | endpoints exist, with footguns¹ | endpoints exist | ❌ read-only | ✅ |
+| Resolution criteria surfaced | ✅ both venues | buried in fields | buried in fields | ✅ deep — on **1 active pair** | ❌ zero UMA/rules tools |
+| Trading signals | ✅ overshoot + dispute-risk | ❌ | ❌ | ❌ | ❌ |
+| Open source / auditable | ✅ MIT, full source | n/a | n/a | ❌ 4-file listing shell, service proprietary | ❌ closed |
+| Self-hosted / non-custodial | ✅ keys never leave your machine | ✅ | ✅ | hosted only | stores keys or holds a managed wallet |
+| Cost to the trader | **0 bps, free tools** | free | free | $0.02/call after 3/day | SaaS $0–250/mo; builder program keeps 55–85% of fees |
+| Safety defaults | dry-run default, destructive-tool annotations, venue quirks pre-encoded² | you discover them by rejection | same | n/a | unknown (closed) |
+
+¹ The raw Polymarket API *has* the endpoints — and models rejections as
+`ok:false` return values, orders its books worst-first, ships a trades
+endpoint that returns the market's **public** tape, and enforces an
+undocumented $1 minimum notional. oddsrail exists because we hit every one of
+those and encoded the fix.
+
+² Kalshi prices are dollar strings (integer cents were removed 2026-03), its
+orderbook is bids-only on both sides, and its current SDK requires
+Python ≥3.13. All normalised here.
+
+**Where the others are honestly ahead:** Parsec covers 5 venues to our 2 and
+has websocket streaming; Crosswire's settlement-audit output on its one
+covered pair is deeper than our `resolution_criteria`, and it takes x402
+micropayments natively; hosted services need zero install. Our bet is that a
+trading agent cares more about correctness, auditability, and keeping 100% of
+its economics than about any of those.
 
 ## Quickstart
 
