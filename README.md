@@ -94,6 +94,11 @@ If you skip this, orders carry the bundled oddsrail builder code
 and funding the project. If you set your own, yours wins; the default is a
 default, not a lock-in.
 
+The oddsrail builder profile is **Verified** in Polymarket's builder program
+(2026-09-02), and Polymarket's builder team confirmed builder-code attribution
+as the right pattern for a self-hosted, non-custodial tool: no keys ship with
+the product, and the code is attached and signed by the operator's own wallet.
+
 ## Environment variables
 
 | Variable | Default | Meaning |
