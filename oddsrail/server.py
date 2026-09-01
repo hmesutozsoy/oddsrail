@@ -16,12 +16,13 @@ from mcp.types import ToolAnnotations
 
 from . import audit as au
 from . import crossvenue as xv
+from . import geo
 from . import kalshi as kx
 from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 
 srv = MCPServer(
     name="oddsrail",
@@ -35,7 +36,11 @@ srv = MCPServer(
         "attribution. Kalshi tools are prefixed kalshi_ and need the "
         "operator's own API key for private endpoints; Kalshi prices are "
         "probabilities in (0,1) here, translated to its YES-book bid/ask "
-        "internally."
+        "internally. Both venues restrict trading by jurisdiction and read "
+        "tools work from restricted places, so a rejection can arrive at the "
+        "order rather than the connection. Call server_info before the first "
+        "order of a session to see the operator's Polymarket geoblock "
+        "verdict and venue reachability."
     ),
 )
 
@@ -57,23 +62,50 @@ TRADE = ToolAnnotations(read_only_hint=False, destructive_hint=True,
                         idempotent_hint=False, open_world_hint=True)
 
 
-def _err(e: Exception, hint: str = "") -> str:
+def _err_obj(e: Exception, hint: str = "", host: str = "") -> dict:
     """Turn an exception into something an agent can act on.
 
     The MCP layer otherwise surfaces only "Error executing tool <name>" — no
     status, no URL, no cause — which an agent cannot self-correct from, so it
-    retries blindly.
+    retries blindly. Two exception families carry their status differently:
+    httpx puts it on e.response.status_code, while the Polymarket SDK's
+    RequestRejectedError exposes e.status/e.code and has NEITHER .response
+    NOR .request — probing only the first silently drops the status.
     """
     out = {"error": str(e) or type(e).__name__, "error_type": type(e).__name__}
+    status = None
     resp = getattr(e, "response", None)
-    if resp is not None:
-        out["http_status"] = getattr(resp, "status_code", None)
+    if resp is not None:                                  # httpx-shaped
+        status = getattr(resp, "status_code", None)
+    elif getattr(e, "status", None) is not None:          # Polymarket SDK-shaped
+        status = e.status
+        if getattr(e, "code", None):
+            out["venue_code"] = e.code
+    if status is not None:
+        out["http_status"] = status
+    try:
+        # httpx's .request PROPERTY raises when unset — getattr's default
+        # only covers AttributeError, so guard explicitly.
         req = getattr(e, "request", None)
-        if req is not None:
-            out["url"] = str(getattr(req, "url", ""))
-    if hint:
+    except Exception:
+        req = None
+    if req is not None:
+        out["url"] = str(getattr(req, "url", ""))
+    elif getattr(e, "url", None):                         # InterceptedResponseError
+        out["url"] = str(e.url)
+    h = host.lower()
+    venue = "kalshi" if "kalshi" in h else "polymarket" if "polymarket" in h else None
+    cls = geo.classify(e, status, venue)
+    if cls:
+        out["failure_class"] = cls
+        out["hint"] = geo.HINTS[cls].format(host=host or "the venue")
+    elif hint:
         out["hint"] = hint
-    return _j(out)
+    return out
+
+
+def _err(e: Exception, hint: str = "", host: str = "") -> str:
+    return _j(_err_obj(e, hint, host))
 
 
 # ------------------------------ market data -------------------------------- #
@@ -86,7 +118,8 @@ async def search_markets(query: str = "", limit: int = 10) -> str:
     try:
         return _j(await pm.search_markets(query=query, limit=limit))
     except Exception as e:
-        return _err(e, "check the query; an empty query lists open markets")
+        return _err(e, "check the query; an empty query lists open markets",
+                    host="the Polymarket API")
 
 
 @srv.tool(description="Get one market's details by slug (or id).",
@@ -96,7 +129,7 @@ async def get_market(id_or_slug: str) -> str:
         return _j(await pm.get_market(id_or_slug))
     except Exception as e:
         return _err(e, "no market with that slug or id — run search_markets first "
-                      "and use the `slug` field")
+                      "and use the `slug` field", host="the Polymarket API")
 
 
 @srv.tool(description="Get the live orderbook (bids/asks) for a CLOB token id.",
@@ -106,7 +139,8 @@ async def get_orderbook(token_id: str) -> str:
         return _j(await pm.get_orderbook(token_id))
     except Exception as e:
         return _err(e, "token_id is the long numeric CLOB id from a market's "
-                      "outcomes.yes.token_id — not the slug or condition_id")
+                      "outcomes.yes.token_id — not the slug or condition_id",
+                    host="the Polymarket CLOB")
 
 
 @srv.tool(description="Recent price history for a CLOB token id: hours back, "
@@ -117,7 +151,8 @@ async def price_history(token_id: str, hours: float = 6.0,
     try:
         times, prices = await pm.price_history(token_id, hours, fidelity_minutes)
     except Exception as e:
-        return _err(e, "token_id is the numeric CLOB id from outcomes.yes.token_id")
+        return _err(e, "token_id is the numeric CLOB id from outcomes.yes.token_id",
+                    host="the Polymarket CLOB")
     return _j({"points": len(times),
                "series": [[t, p] for t, p in zip(times, prices)]})
 
@@ -125,7 +160,11 @@ async def price_history(token_id: str, hours: float = 6.0,
 @srv.tool(description="Current positions for a wallet address.",
            annotations=READ, structured_output=False)
 async def get_positions(address: str, limit: int = 25) -> str:
-    return _j(await pm.get_positions(address, limit))
+    try:
+        return _j(await pm.get_positions(address, limit))
+    except Exception as e:
+        return _err(e, "address is the 0x wallet address whose positions you want",
+                    host="the Polymarket data API")
 
 
 # ------------------------------ signals (premium) --------------------------- #
@@ -138,7 +177,12 @@ async def get_positions(address: str, limit: int = 25) -> str:
 async def overshoot_signal(token_id: str, hours: float = 6.0,
                            threshold: float = 0.05,
                            lookback_s: float = 60.0) -> str:
-    times, prices = await pm.price_history(token_id, hours, fidelity_minutes=1)
+    try:
+        times, prices = await pm.price_history(token_id, hours,
+                                               fidelity_minutes=1)
+    except Exception as e:
+        return _err(e, "token_id is the numeric CLOB id from outcomes.yes.token_id",
+                    host="the Polymarket CLOB")
     return _j(signals.overshoot_report(times, prices,
                                        lookback=lookback_s,
                                        threshold=threshold))
@@ -149,7 +193,11 @@ async def overshoot_signal(token_id: str, hours: float = 6.0,
                       "dispute risk) with transparent reasons.",
            annotations=READ, structured_output=False)
 async def dispute_risk(id_or_slug: str) -> str:
-    market = await pm.get_market(id_or_slug, full=True)
+    try:
+        market = await pm.get_market(id_or_slug, full=True)
+    except Exception as e:
+        return _err(e, "no market with that slug or id — run search_markets first",
+                    host="the Polymarket API")
     flat = dict(market)
     # V2 model nests resolution info; surface it for the heuristic
     res = market.get("resolution") or {}
@@ -175,19 +223,34 @@ async def dispute_risk(id_or_slug: str) -> str:
            annotations=TRADE, structured_output=False)
 async def place_order(token_id: str, side: str, price: float, size: float,
                       post_only: bool = False) -> str:
-    return _j(await trading.place_order(token_id, side, price, size, post_only))
+    try:
+        return _j(await trading.place_order(token_id, side, price, size,
+                                            post_only))
+    except Exception as e:
+        # trading.place_order structures its own network failures; what can
+        # reach here is input validation, config, or response processing.
+        return _err(e, "order NOT confirmed either way — call open_orders to "
+                       "see whether anything rests before retrying",
+                    host="the Polymarket CLOB")
 
 
 @srv.tool(description="Cancel an open order by id (respects dry-run).",
            annotations=TRADE, structured_output=False)
 async def cancel_order(order_id: str) -> str:
-    return _j(await trading.cancel_order(order_id))
+    try:
+        return _j(await trading.cancel_order(order_id))
+    except Exception as e:
+        return _err(e, "cancellation not confirmed — call open_orders to see "
+                       "whether it still rests", host="the Polymarket CLOB")
 
 
 @srv.tool(description="List the operator wallet's open orders.",
            annotations=READ, structured_output=False)
 async def open_orders() -> str:
-    return _j(await trading.open_orders())
+    try:
+        return _j(await trading.open_orders())
+    except Exception as e:
+        return _err(e, host="the Polymarket CLOB")
 
 
 # ------------------------------ builder ------------------------------------ #
@@ -197,7 +260,10 @@ async def open_orders() -> str:
                       "matched trades attributed to this operator's code.",
            annotations=READ, structured_output=False)
 async def builder_stats(time_period: str = "WEEK") -> str:
-    out = {"leaderboard": await pm.builder_leaderboard(time_period)}
+    try:
+        out = {"leaderboard": await pm.builder_leaderboard(time_period)}
+    except Exception as e:
+        return _err(e, host="the Polymarket API")
     code = trading.builder_code()
     own = bool(os.environ.get("ODDSRAIL_BUILDER_CODE"))
     if code:
@@ -224,14 +290,21 @@ async def builder_stats(time_period: str = "WEEK") -> str:
            annotations=READ, structured_output=False)
 async def kalshi_search_markets(query: str = "", limit: int = 10,
                                 min_volume: float = 0.0) -> str:
-    return _j(await kx.search_markets(query=query, limit=limit,
-                                      min_volume=min_volume))
+    try:
+        return _j(await kx.search_markets(query=query, limit=limit,
+                                          min_volume=min_volume))
+    except Exception as e:
+        return _err(e, host="the Kalshi API")
 
 
 @srv.tool(description="Get one Kalshi market by ticker.",
            annotations=READ, structured_output=False)
 async def kalshi_get_market(ticker: str) -> str:
-    return _j(await kx.get_market(ticker))
+    try:
+        return _j(await kx.get_market(ticker))
+    except Exception as e:
+        return _err(e, "ticker comes from kalshi_search_markets or "
+                       "find_markets", host="the Kalshi API")
 
 
 @srv.tool(description="Kalshi orderbook for a ticker, normalised to a YES-book "
@@ -239,31 +312,51 @@ async def kalshi_get_market(ticker: str) -> str:
                       "are derived as 1 - NO bid). Raw ladders included.",
            annotations=READ, structured_output=False)
 async def kalshi_get_orderbook(ticker: str, depth: int = 10) -> str:
-    return _j(await kx.get_orderbook(ticker, depth))
+    try:
+        return _j(await kx.get_orderbook(ticker, depth))
+    except Exception as e:
+        return _err(e, "ticker comes from kalshi_search_markets or "
+                       "find_markets", host="the Kalshi API")
 
 
 @srv.tool(description="Recent public trades for a Kalshi ticker.",
            annotations=READ, structured_output=False)
 async def kalshi_get_trades(ticker: str, limit: int = 50) -> str:
-    return _j(await kx.get_trades(ticker, limit))
+    try:
+        return _j(await kx.get_trades(ticker, limit))
+    except Exception as e:
+        return _err(e, "ticker comes from kalshi_search_markets or "
+                       "find_markets", host="the Kalshi API")
 
 
 @srv.tool(description="Kalshi account balance (needs the operator's API key).",
            annotations=READ, structured_output=False)
 async def kalshi_balance() -> str:
-    return _j(await kx.get_balance())
+    try:
+        return _j(await kx.get_balance())
+    except Exception as e:
+        return _err(e, "needs KALSHI_KEY_ID and KALSHI_PRIVATE_KEY_PATH",
+                    host="the Kalshi API")
 
 
 @srv.tool(description="Kalshi positions (needs the operator's API key).",
            annotations=READ, structured_output=False)
 async def kalshi_positions(limit: int = 50) -> str:
-    return _j(await kx.get_positions(limit))
+    try:
+        return _j(await kx.get_positions(limit))
+    except Exception as e:
+        return _err(e, "needs KALSHI_KEY_ID and KALSHI_PRIVATE_KEY_PATH",
+                    host="the Kalshi API")
 
 
 @srv.tool(description="Kalshi resting orders (needs the operator's API key).",
            annotations=READ, structured_output=False)
 async def kalshi_open_orders(limit: int = 50) -> str:
-    return _j(await kx.open_orders(limit))
+    try:
+        return _j(await kx.open_orders(limit))
+    except Exception as e:
+        return _err(e, "needs KALSHI_KEY_ID and KALSHI_PRIVATE_KEY_PATH",
+                    host="the Kalshi API")
 
 
 @srv.tool(description="Place a Kalshi limit order. State it naturally: "
@@ -274,14 +367,23 @@ async def kalshi_open_orders(limit: int = 50) -> str:
 async def kalshi_place_order(ticker: str, outcome: str, action: str,
                              price: float, count: float,
                              time_in_force: str = "good_till_cancelled") -> str:
-    return _j(await kx.place_order(ticker, outcome, action, price, count,
-                                   time_in_force))
+    try:
+        return _j(await kx.place_order(ticker, outcome, action, price, count,
+                                       time_in_force))
+    except Exception as e:
+        return _err(e, "order not confirmed — call kalshi_open_orders to see "
+                       "whether anything rests before retrying",
+                    host="the Kalshi API")
 
 
 @srv.tool(description="Cancel a Kalshi order by id (respects dry-run).",
            annotations=TRADE, structured_output=False)
 async def kalshi_cancel_order(order_id: str) -> str:
-    return _j(await kx.cancel_order(order_id))
+    try:
+        return _j(await kx.cancel_order(order_id))
+    except Exception as e:
+        return _err(e, "cancellation not confirmed — call kalshi_open_orders "
+                       "to see whether it still rests", host="the Kalshi API")
 
 
 # ------------------------------ cross-venue --------------------------------- #
@@ -305,7 +407,8 @@ async def find_markets(query: str, limit: int = 10,
             for m in await pm.search_markets(query=query, limit=limit):
                 out.append(xv.unify_polymarket(m))
         except Exception as e:
-            out.append({"venue": "polymarket", "error": str(e)})
+            out.append({"venue": "polymarket",
+                        **_err_obj(e, host="the Polymarket API")})
     kalshi_scan = None
     if want in ("both", "kalshi"):
         try:
@@ -315,17 +418,34 @@ async def find_markets(query: str, limit: int = 10,
             kalshi_scan = {k: det[k] for k in
                            ("scanned_markets", "pages_read", "truncated")}
         except Exception as e:
-            out.append({"venue": "kalshi", "error": str(e)})
+            out.append({"venue": "kalshi",
+                        **_err_obj(e, host="the Kalshi API")})
     live = [m for m in out if "error" not in m]
     live.sort(key=lambda m: -(m.get("volume_24h") or 0))
     errs = [m for m in out if "error" in m]
+    note = ("prices are implied probabilities in (0,1) on both "
+            "venues; pass market_id to the tool named in "
+            "trade_with. If kalshi_scan.truncated is true, the "
+            "Kalshi side is incomplete — it has no text search, "
+            "so absence there is not evidence of absence.")
+    # An outage must never read as "no such market exists" — this is the tool
+    # the server tells agents to prefer, so say it loudly, first. "Every venue
+    # errored" is only claimable when it is true: one venue erroring while the
+    # other legitimately returns nothing is a PARTIAL result, not an outage.
+    venues_queried = (want == "both") + 1
+    if len(errs) == venues_queried:
+        note = ("NO MARKETS RETURNED BECAUSE EVERY QUERIED VENUE ERRORED — "
+                "this is a failed search, not an empty result. See "
+                "venue_errors, and call server_info for reachability. Do not "
+                "report to the operator that no such market exists. " + note)
+    elif errs:
+        missing = ", ".join(sorted({str(m.get("venue")) for m in errs}))
+        note = (f"PARTIAL RESULT: the {missing} side errored and its markets "
+                "are missing — absence from this list is not evidence of "
+                "absence. " + note)
     return _j({"markets": live[: limit * 2], "venue_errors": errs or None,
                "kalshi_scan": kalshi_scan,
-               "note": ("prices are implied probabilities in (0,1) on both "
-                        "venues; pass market_id to the tool named in "
-                        "trade_with. If kalshi_scan.truncated is true, the "
-                        "Kalshi side is incomplete — it has no text search, "
-                        "so absence there is not evidence of absence.")})
+               "note": note})
 
 
 @srv.tool(description="Find markets that may be the SAME event on both "
@@ -344,7 +464,8 @@ async def compare_venues(query: str, limit: int = 10,
         for m in await pm.search_markets(query=query, limit=limit):
             unified.append(xv.unify_polymarket(m))
     except Exception as e:
-        return _j({"error": f"polymarket search failed: {e}"})
+        return _j({"stage": "polymarket search failed",
+                   **_err_obj(e, host="the Polymarket API")})
     kalshi_scan = None
     try:
         det = await kx.search_markets_detailed(query=query, limit=limit)
@@ -353,7 +474,8 @@ async def compare_venues(query: str, limit: int = 10,
         kalshi_scan = {k: det[k] for k in
                        ("scanned_markets", "pages_read", "truncated")}
     except Exception as e:
-        return _j({"error": f"kalshi search failed: {e}"})
+        return _j({"stage": "kalshi search failed",
+                   **_err_obj(e, host="the Kalshi API")})
     pairs = xv.pair_across_venues(unified, min_similarity=min_similarity,
                                   max_close_days_apart=max_close_days_apart)
     return _j({"candidates": pairs[:limit], "candidates_found": len(pairs),
@@ -385,7 +507,11 @@ async def quote_cost(venue: str, market_id: str, side: str,
         return _j({"error": "size must be positive (number of shares)"})
 
     if v == "polymarket":
-        ob = await pm.get_orderbook(market_id)
+        try:
+            ob = await pm.get_orderbook(market_id)
+        except Exception as e:
+            return _err(e, "market_id is the numeric CLOB token id",
+                        host="the Polymarket CLOB")
         levels = ob["asks"] if sd == "BUY" else ob["bids"]
         walk = xv.walk_book(levels, size)
         fees = {"note": "could not resolve this token to a market"}
@@ -405,7 +531,11 @@ async def quote_cost(venue: str, market_id: str, side: str,
                            "on marketable orders."})
 
     if v == "kalshi":
-        ob = await kx.get_orderbook(market_id, depth=50)
+        try:
+            ob = await kx.get_orderbook(market_id, depth=50)
+        except Exception as e:
+            return _err(e, "market_id is the Kalshi ticker",
+                        host="the Kalshi API")
         levels = ob["yes_asks"] if sd == "BUY" else ob["yes_bids"]
         walk = xv.walk_book(levels, size)
         return _j({"venue": "kalshi", "market_id": market_id, "side": sd,
@@ -425,14 +555,20 @@ async def quote_cost(venue: str, market_id: str, side: str,
                       "needs after place_order.",
            annotations=READ, structured_output=False)
 async def order_status(order_id: str) -> str:
-    return _j(await trading.order_status(order_id))
+    try:
+        return _j(await trading.order_status(order_id))
+    except Exception as e:
+        return _err(e, host="the Polymarket CLOB")
 
 
 @srv.tool(description="Recent executions (fills) for the operator wallet — "
                       "confirms what actually traded, with tx hashes.",
            annotations=READ, structured_output=False)
 async def my_fills(limit: int = 25) -> str:
-    return _j(await trading.my_fills(limit))
+    try:
+        return _j(await trading.my_fills(limit))
+    except Exception as e:
+        return _err(e, host="the Polymarket data API")
 
 
 @srv.tool(description="The operator's current Polymarket positions (uses the "
@@ -442,7 +578,10 @@ async def my_positions(limit: int = 50) -> str:
     w = trading.operator_wallet()
     if not w:
         return _j({"note": "set POLYMARKET_WALLET_ADDRESS to see positions"})
-    return _j({"wallet": w, "positions": await pm.get_positions(w, limit)})
+    try:
+        return _j({"wallet": w, "positions": await pm.get_positions(w, limit)})
+    except Exception as e:
+        return _err(e, host="the Polymarket data API")
 
 
 @srv.tool(description="KILL SWITCH — cancel every resting Polymarket order on "
@@ -450,7 +589,11 @@ async def my_positions(limit: int = 50) -> str:
                       "go to zero fast. Respects dry-run.",
            annotations=TRADE, structured_output=False)
 async def cancel_all_orders() -> str:
-    return _j(await trading.cancel_all_orders())
+    try:
+        return _j(await trading.cancel_all_orders())
+    except Exception as e:
+        return _err(e, "cancellations not confirmed — call open_orders to "
+                       "see what still rests", host="the Polymarket CLOB")
 
 
 @srv.tool(description="READ BEFORE TRUSTING A PRICE: the full resolution "
@@ -461,9 +604,16 @@ async def cancel_all_orders() -> str:
 async def resolution_criteria(venue: str, market_id: str) -> str:
     v = str(venue or "").lower()
     if v == "polymarket":
-        return _j(await pm.resolution_criteria(market_id))
+        try:
+            return _j(await pm.resolution_criteria(market_id))
+        except Exception as e:
+            return _err(e, "pass the market's slug or id",
+                        host="the Polymarket API")
     if v == "kalshi":
-        return _j(await kx.resolution_criteria(market_id))
+        try:
+            return _j(await kx.resolution_criteria(market_id))
+        except Exception as e:
+            return _err(e, "pass the Kalshi ticker", host="the Kalshi API")
     return _j({"error": "venue must be 'polymarket' or 'kalshi'"})
 
 
@@ -481,12 +631,12 @@ async def closing_soon(hours: float = 24.0, limit: int = 10,
         try:
             out["polymarket"] = await pm.closing_soon(hours, limit)
         except Exception as e:
-            out["polymarket_error"] = str(e)[:200]
+            out["polymarket_error"] = _err_obj(e, host="the Polymarket API")
     if want in ("both", "kalshi"):
         try:
             out["kalshi"] = await kx.closing_soon(hours, limit)
         except Exception as e:
-            out["kalshi_error"] = str(e)[:200]
+            out["kalshi_error"] = _err_obj(e, host="the Kalshi API")
     return _j(out)
 
 
@@ -505,11 +655,13 @@ async def settlement_audit(polymarket_id: str, kalshi_ticker: str,
     try:
         pm_rc = await pm.resolution_criteria(polymarket_id)
     except Exception as e:
-        return _j({"error": f"could not load Polymarket leg: {e}"})
+        return _j({"stage": "could not load the Polymarket leg",
+                   **_err_obj(e, host="the Polymarket API")})
     try:
         kx_rc = await kx.resolution_criteria(kalshi_ticker)
     except Exception as e:
-        return _j({"error": f"could not load Kalshi leg: {e}"})
+        return _j({"stage": "could not load the Kalshi leg",
+                   **_err_obj(e, host="the Kalshi API")})
     return _j(au.audit_pair(pm_rc, kx_rc, notional_usd or None))
 
 
@@ -595,24 +747,34 @@ open UMA dispute (dispute_risk), and anything resolving within 24h."""
 
 
 @srv.tool(description="Server status: dry-run state, attribution config, "
-                      "and which capabilities are enabled.",
+                      "enabled capabilities, venue reachability from this "
+                      "machine, and Polymarket's geoblock verdict for this "
+                      "machine's IP (advisory — not a compliance check). "
+                      "Call this before the first order of a session.",
            annotations=READ, structured_output=False)
-def server_info() -> str:
+async def server_info() -> str:
+    has_key = bool(os.environ.get("POLYMARKET_PRIVATE_KEY"))
     return _j({
         "name": "oddsrail",
         "version": VERSION,
         "dry_run": trading.dry_run(),
-        "trading_key_configured": bool(os.environ.get("POLYMARKET_PRIVATE_KEY")),
+        "trading_key_configured": has_key,
         "builder_code_configured": bool(trading.builder_code()),
         "builder_code_source": trading.builder_code_source(),
         "attribution": "on-chain (CLOB V2 builder field)",
         "custody": "none — self-hosted, keys stay local",
         "venues": {
             "polymarket": {"attribution": "on-chain builder code",
-                           "trading_key": bool(os.environ.get("POLYMARKET_PRIVATE_KEY"))},
+                           "trading_key": has_key},
             "kalshi": {"attribution": "none available on REST",
                        "credentials": kx.has_credentials(),
                        "environment": "demo" if os.environ.get("KALSHI_DEMO") else "production"},
+        },
+        "geography": {
+            "polymarket": await geo.preflight(),
+            "kalshi": geo.KALSHI_GEO_NOTE,
+            "reachability": await geo.reachability(include_trading_hosts=has_key),
+            "disclaimer": geo.DISCLAIMER,
         },
         "premium_tools": ["overshoot_signal", "dispute_risk"],
     })

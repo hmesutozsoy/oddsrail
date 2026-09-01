@@ -62,5 +62,17 @@ claude mcp add --transport stdio oddsrail -- /abs/path/oddsrail/.venv/bin/python
 - Prices are implied probabilities in (0,1), not cents.
 - `place_order` returns `{"dry_run": true, ...}` unless the operator has set
   ODDSRAIL_DRY_RUN=0 — check this before assuming an order was placed.
-- Polymarket API domains are blocked on some networks (e.g. Turkey); run the
-  server where they resolve.
+- Geography affects trading, not reading. Polymarket restricts order
+  placement by jurisdiction (full list:
+  https://docs.polymarket.com/api-reference/geoblock — among them the US,
+  UK, France, Germany, Italy, Poland, Singapore, Australia, Brazil and four
+  Canadian provinces are close-only, meaning positions can be closed but not
+  opened; the OFAC tier, including Iran, Syria, Cuba and North Korea, is
+  blocked entirely). Reads work from
+  restricted places, so the first failure is usually a rejected order, not a
+  connection error. Kalshi's Member Agreement §VI restricts a heavily
+  overlapping set of countries from trading Event Contracts while expressly
+  permitting non-trading access. Separately, some national filters block the
+  Polymarket domains at the network level (Turkey does). Call server_info for
+  this machine's Polymarket geoblock verdict; it is advisory, not a
+  compliance check. As of 2026-08-31.

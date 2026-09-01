@@ -97,13 +97,38 @@ def _signed_headers(method: str, path: str) -> dict:
     }
 
 
+class InterceptedResponseError(RuntimeError):
+    """HTTP success carrying a non-JSON body.
+
+    Without this, an ISP interstitial or captive-portal page served with a
+    200 surfaces to the agent as `Expecting value: line 1 column 1 (char 0)`
+    — which reads as "the API changed shape" when nothing ever reached
+    Kalshi at all.
+    """
+
+    def __init__(self, url: str, status: int, content_type: str):
+        super().__init__(
+            f"non-JSON response from {url} (HTTP {status}, content-type "
+            f"{content_type!r}) — the request was likely intercepted by a "
+            f"proxy or block page and never reached Kalshi")
+        self.url = url
+
+
+def _json_or_raise(r: httpx.Response, url: str):
+    try:
+        return r.json()
+    except ValueError as e:
+        raise InterceptedResponseError(
+            url, r.status_code, r.headers.get("content-type", "")) from e
+
+
 async def _get(path: str, params: dict | None = None, signed: bool = False):
     url = base_url() + PREFIX + path
     headers = _signed_headers("GET", PREFIX + path) if signed else {}
     async with httpx.AsyncClient(timeout=20.0) as c:
         r = await c.get(url, params=params or {}, headers=headers)
         r.raise_for_status()
-        return r.json()
+        return _json_or_raise(r, url)
 
 
 async def _post(path: str, body: dict):
@@ -112,7 +137,7 @@ async def _post(path: str, body: dict):
     async with httpx.AsyncClient(timeout=20.0) as c:
         r = await c.post(url, json=body, headers=headers)
         r.raise_for_status()
-        return r.json()
+        return _json_or_raise(r, url)
 
 
 def matches(query: str, text: str) -> bool:
@@ -374,7 +399,7 @@ async def cancel_order(order_id: str):
     async with httpx.AsyncClient(timeout=20.0) as c:
         r = await c.delete(url, headers=headers)
         r.raise_for_status()
-        return r.json()
+        return _json_or_raise(r, url)
 
 
 async def resolution_criteria(ticker: str) -> dict:

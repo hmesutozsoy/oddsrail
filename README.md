@@ -105,10 +105,11 @@ default, not a lock-in.
 
 ## Status
 
-**Offline tests:** 47 tests covering the paths where a bug costs money — the
+**Offline tests:** 81 tests covering the paths where a bug costs money — the
 Kalshi yes/no→bid/ask translation, Kelly sizing, book walking, cross-venue
-pairing, signal edge cases, and the dry-run safety net. They need no keys and
-no network:
+pairing, signal edge cases, the dry-run safety net, and jurisdiction-failure
+handling (a geoblock must never read as an empty search result or a resting
+order). They need no keys and no network:
 
 ```bash
 pip install -e ".[dev]" && pytest
@@ -123,17 +124,93 @@ and confirmed on-chain.
 
 **Not yet exercised live:** the Kalshi *order placement* path. Its request
 shape is unit-tested and its endpoint verified, but no order has been sent to
-a real Kalshi account. Treat `kalshi_place_order` as unproven and start in
-dry-run.
+a real Kalshi account, because the author does not yet have a funded,
+verified one. This is untested, not untestable. Treat `kalshi_place_order` as
+unproven and start in dry-run.
 
-## Network note
+## Where this works
 
-Polymarket's API is blocked in some jurisdictions (it geoblocks the US, and
-some national filters block it outright — Turkey among them). If the read
-tools return TLS or connection errors, that is where to look first: run
-oddsrail somewhere the venue is reachable. Kalshi is US-regulated and applies
-its own geographic rules. The signal logic, the MCP layer and the whole test
-suite run fine offline regardless.
+Two different things can stop oddsrail from trading, and they have opposite
+remedies. One is a venue restriction, enforced at the order. The other is a
+network filter, which breaks the connection itself.
+
+**Polymarket restrictions.** Polymarket publishes its restricted-jurisdiction
+list as an API reference: <https://docs.polymarket.com/api-reference/geoblock>.
+There are three tiers. OFAC-sanctioned jurisdictions — Iran, Syria, Cuba,
+North Korea, and the Crimea, Donetsk and Luhansk regions of Ukraine — are
+blocked on both the frontend and the API, with no new orders *and* no closing
+of existing positions. A longer second tier is **close-only on both the
+frontend and the API**: existing positions can be closed, new ones cannot be
+opened. It includes the United States, the United Kingdom, France, Germany,
+Italy, Poland, Slovakia, Belgium, Singapore, Australia, New Zealand, Brazil,
+Russia, Taiwan, Thailand and the Canadian provinces of Ontario, Quebec,
+British Columbia and Alberta. A third group — Ireland, Japan, Malta (sports
+only) and the Netherlands — is close-only on Polymarket's frontend, with the
+API explicitly not restricted.
+
+Note the shape of that failure: it lands on the order, not the connection.
+Public reads answer normally, so oddsrail will look like it is working right
+up until an order is rejected. Verified against Polymarket's documentation on
+2026-08-31; Polymarket updates the list without notice, so read the URL
+rather than this paragraph.
+
+**Kalshi restrictions.** Kalshi is a single CFTC-designated contract market
+and it does admit members outside the United States — but its Member
+Agreement §VI names a long list of Restricted Jurisdictions whose members may
+not trade Event Contracts, among them Australia, Belgium, Canada, France,
+Ireland, Italy, New Zealand, Poland, Portugal, Singapore, Switzerland, the
+United Kingdom, Hungary, India, the United Arab Emirates and mainland China.
+The list is published in Kalshi's Exchange Notice of 22 June 2026
+(<https://kalshi-public-docs.s3.amazonaws.com/regulatory/notices/Kalshi%20Exchange%20Notice%20(Updated%20Member%20Agreement)%20(22%20June%202026).pdf>),
+and Kalshi reserves the right to change it. The same section is explicit that the
+restriction applies only to *trading Event Contracts* and does not by itself
+bar membership or non-trading access, so oddsrail's Kalshi read tools stay
+usable even where its order tools do not.
+
+**The two lists overlap heavily.** Kalshi is not a general fallback for a
+Polymarket-restricted operator, and the difference runs in both directions.
+Among the jurisdictions polymarket.com lists as close-only, Germany, Brazil,
+Slovakia and the United States are not on Kalshi's restricted list; Japan and
+the Netherlands are restricted by neither API (only by Polymarket's
+frontend). Check both lists for your own jurisdiction rather than assuming
+the other venue is open — and the US case has its own wrinkle.
+
+**The United States.** polymarket.com — the venue oddsrail talks to — is
+close-only for the US. Polymarket separately operates Polymarket US
+(polymarket.us), run by QCX LLC as a CFTC-regulated Designated Contract
+Market. **oddsrail does not support it.** It is a different API host, a
+different authentication model (API-key headers rather than EIP-712 wallet
+signatures), a different SDK and a different funding rail. A polymarket.us
+account and its keys will not work with this server. Kalshi does not list the
+US as restricted, so for a US operator Kalshi is the venue oddsrail can
+actually reach — with no builder-code attribution, since Kalshi's REST API
+has no such field.
+
+**Network filters.** Separately from any venue rule, a national filter can
+block the domains outright. Turkey does this: Polymarket does not restrict
+Turkey, and Turkey is not on Kalshi's list either, but Turkish ISPs block
+polymarket.com. That is a connectivity problem, not an eligibility one, and
+it looks different — DNS failures, TLS errors, resets, or an ISP interstitial
+page served where JSON was expected. oddsrail classifies both shapes and
+tells the calling agent which one it hit.
+
+**Eligibility is the operator's, not the tool's.** oddsrail is self-hosted
+and non-custodial, which is a real advantage and also means *you* hold the
+account and *you* make the venue's representations — there is no intermediary
+making them for you. Polymarket's trading flow requires an attestation that
+you are not a U.S. person, are not located in a restricted jurisdiction, and
+are not "using a VPN or other measures to circumvent or attempt to
+circumvent" restrictions, and states that Polymarket reserves the right to
+put a non-compliant wallet in close-only mode. Kalshi's §VI is a
+representation about where you are domiciled, organized and located, re-made
+each time you place an order. `server_info` reports Polymarket's geoblock
+verdict for this machine's IP, but a technical probe is not a compliance
+check: the terms bind on residence, citizenship and incorporation, not on
+egress IP. Read the terms; if any of this matters to you, get your own legal
+advice. Nothing here is legal advice.
+
+The signal logic, the MCP layer and the whole test suite run fine offline
+regardless.
 
 ## Kalshi (venue #2)
 

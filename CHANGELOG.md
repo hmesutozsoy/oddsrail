@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.8.1 — 2026-09-01
+
+Jurisdiction awareness. The geography story was wrong in shape: the docs
+framed geoblocking as a connectivity problem, when for most restricted
+jurisdictions Polymarket's restriction is enforced at ORDER PLACEMENT — reads
+answer normally and the failure arrives at the trade. Kalshi restricts a
+heavily overlapping country list, so it is not a general fallback either.
+
+**Docs**
+- README "Network note" replaced by "Where this works": Polymarket's three
+  restriction tiers and Kalshi's Member Agreement §VI, with as-of dates and
+  the authority URLs, plus the polymarket.us distinction (not supported) and
+  the network-filter case. Same story in llms.txt. Removed the advice to "run
+  oddsrail somewhere the venue is reachable".
+- The untested-Kalshi-order caveat now states its real reason (no funded
+  account) instead of letting readers infer a geographic one.
+
+**New**
+- `oddsrail/geo.py`: failure classifier (geo_blocked / geo_suspected /
+  unreachable / intercepted), agent-facing hints, an ADVISORY Polymarket
+  geoblock preflight (documented endpoint; never gates a trade), and per-host
+  reachability probes. Caches expire after 5 minutes and results carry
+  `checked_at`.
+- `server_info` now reports geography: the preflight verdict, per-host
+  reachability, and an explicit disclaimer that an IP verdict is not a
+  compliance check. Kalshi publishes no equivalent endpoint; server_info says
+  so rather than leaving anyone hunting.
+
+**Fixes**
+- `_err` recovers the HTTP status from Polymarket-SDK-shaped exceptions
+  (`.status`/`.code`), which it previously dropped; the URL is reported for
+  connection-level errors too, and error handling can no longer itself raise
+  on httpx exceptions with an unset `.request`.
+- ~20 tools that previously surfaced a bare "Error executing tool X" under
+  network failure now return structured errors with a failure class and hint.
+- `find_markets` no longer reports a total venue outage as an empty market
+  list; it distinguishes outage / partial / genuinely-empty.
+- `trading.py`: the client handshake moved inside the try on every
+  non-idempotent order tool (a block at auth previously produced a bare MCP
+  error on a tool where blind retry can double a position); an order response
+  the SDK version does not recognise now reads as NOT-confirmed rather than
+  accepted; timeout wording is honest ("the order MAY still have posted").
+- Kalshi request paths (including cancel) raise a named error when an ISP
+  interstitial answers 200-with-HTML instead of surfacing
+  "Expecting value: line 1 column 1".
+- Geo classes are venue-scoped: a Kalshi 403 keeps its credentials hint
+  instead of inheriting Polymarket's jurisdiction verdict, and the SDK's
+  TransportError is classified by its CAUSE so a slow venue (ReadTimeout) is
+  never labelled "unreachable" — nor does any hint claim "nothing was sent"
+  on a possibly-post-send failure.
+- 34 new offline tests (81 total) covering the classifier, the verdict tiers,
+  `_err` status recovery, order-response interpretation, and the
+  find_markets outage/partial notes.
+
 ## 0.8.0 — 2026-08-31
 
 Launch-readiness pass. A fresh-eyes audit found the code was in better shape

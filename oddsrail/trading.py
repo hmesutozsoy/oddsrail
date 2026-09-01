@@ -26,6 +26,8 @@ Safety model:
 
 import os
 
+from . import geo
+
 _secure = None
 
 
@@ -107,24 +109,61 @@ async def place_order(token_id: str, side: str, price: float, size: float,
         return {"dry_run": True, "would_post": intent,
                 "note": "set ODDSRAIL_DRY_RUN=0 to post real orders"}
 
-    client = await _client()
     from .polymarket import dump
     try:
+        # _client() belongs INSIDE the try: its first outbound call is the
+        # CLOB auth handshake, so a network block lands here — and this tool
+        # is not idempotent, so the agent must get a structured answer, not a
+        # bare MCP error it might retry into a doubled position.
+        client = await _client()
         resp = await client.place_limit_order(
             token_id=token_id, price=str(price), size=str(size), side=side,
             post_only=post_only, builder_code=builder_code())
     except Exception as e:
+        out = {"dry_run": False, "accepted": False,
+               "error_type": type(e).__name__, "error": str(e),
+               "submitted": intent,
+               "note": ("no confirmation was received. If this was a timeout "
+                        "the order MAY still have posted — call open_orders "
+                        "before retrying. Any other failure happened before "
+                        "the exchange accepted anything.")}
+        cls = geo.classify(e, getattr(e, "status", None), venue="polymarket")
+        if cls:
+            out["failure_class"] = cls
+            out["hint"] = geo.HINTS[cls].format(host="the Polymarket CLOB")
+        return out
+    try:
+        d = dump(resp)
+    except Exception as e:
+        # The exchange ANSWERED — a failure here is ours, not a rejection,
+        # and the order may well rest. Never report this as "not posted".
         return {"dry_run": False, "accepted": False,
+                "response_shape": "unparseable",
                 "error_type": type(e).__name__, "error": str(e),
                 "submitted": intent,
-                "note": "the exchange rejected the request; nothing was signed onto the book"}
-    d = dump(resp)
-    # The SDK models rejection as a RETURN VALUE (ok=False), not an exception.
-    # Reporting that under a key called "posted" — next to an attribution
-    # string claiming the order was signed on-chain — reads to an agent as
-    # success. Branch on it.
-    ok = bool(d.get("ok", True)) if isinstance(d, dict) else True
-    if not ok:
+                "note": ("the exchange answered but the response could not "
+                         "be parsed — the order MAY rest. Call open_orders "
+                         "before retrying.")}
+    return _interpret_order_response(d, intent)
+
+
+def _interpret_order_response(d, intent):
+    """The SDK models rejection as a RETURN VALUE (ok=False), not an
+    exception. Reporting that under a key that reads as success — next to an
+    attribution string claiming the order was signed on-chain — would make an
+    agent believe a rejected order rests. Branch on it, and treat a shape
+    this version does not recognise as NOT CONFIRMED rather than as either
+    success or rejection."""
+    if not isinstance(d, dict) or "ok" not in d:
+        return {"dry_run": False, "accepted": False,
+                "response_shape": "unrecognised — no 'ok' field",
+                "order": d, "submitted": intent,
+                "note": ("the SDK returned a shape this version does not "
+                         "recognise; NOT confirmed as posted and NOT "
+                         "confirmed as rejected. Call open_orders or "
+                         "order_status to see whether the order rests "
+                         "before retrying.")}
+    if not d.get("ok"):
         return {"dry_run": False, "accepted": False,
                 "rejected_code": d.get("code"),
                 "rejected_reason": d.get("message"),
@@ -136,9 +175,9 @@ async def place_order(token_id: str, side: str, price: float, size: float,
 async def cancel_order(order_id: str):
     if dry_run():
         return {"dry_run": True, "would_cancel": order_id}
-    client = await _client()
     from .polymarket import dump
     try:
+        client = await _client()
         # SDK signature is cancel_order(*, order_id=...) — keyword-only.
         return {"ok": True, "order_id": order_id,
                 "response": dump(await client.cancel_order(order_id=order_id))}
@@ -168,9 +207,9 @@ async def order_status(order_id: str):
     """
     if not os.environ.get("POLYMARKET_PRIVATE_KEY"):
         return {"note": "no trading key configured"}
-    client = await _client()
     from .polymarket import dump
     try:
+        client = await _client()
         d = dump(await client.get_order(order_id=order_id))
         matched = float(d.get("size_matched") or 0)
         size = float(d.get("original_size") or d.get("size") or 0)
@@ -191,9 +230,9 @@ async def cancel_all_orders():
     if dry_run():
         return {"dry_run": True,
                 "would_cancel": "ALL resting orders on the operator account"}
-    client = await _client()
     from .polymarket import dump
     try:
+        client = await _client()
         return {"ok": True, "response": dump(await client.cancel_all())}
     except Exception as e:
         return {"ok": False, "error_type": type(e).__name__, "error": str(e),
