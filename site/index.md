@@ -67,6 +67,8 @@ https://oddsrail.app/attribution lists every wallet carrying the oddsrail builde
 
 ## Built from the things the raw API gets wrong
 
+Reproduce all six live, no keys: `pip install oddsrail && python examples/footguns.py` (https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py).
+
 1. The book arrives worst-first. Polymarket's raw orderbook lists bids ascending and asks descending, so `bids[0]` is the worst level. oddsrail normalises both venues to best-first and walks the book to quote what a size actually costs.
 2. Rejections don't raise. The exchange models a rejected order as a return value. oddsrail branches on it: `accepted: false`, nothing attributed, and an unrecognised response shape is never reported as posted.
 3. Geoblocks look healthy until the order. Restricted jurisdictions are enforced at order placement; public reads answer normally. oddsrail classifies every failure shape and gives the agent an actionable hint instead of a retry loop.

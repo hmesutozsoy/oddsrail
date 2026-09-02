@@ -112,7 +112,7 @@
 
 <section id="lessons" aria-labelledby="h-lessons">
   <h2 id="h-lessons">Built from the things the raw API gets wrong</h2>
-  <p class="sub">Each of these was found by driving the venues live, then encoded so an agent never has to rediscover it.</p>
+  <p class="sub">Each of these was found by driving the venues live, then encoded so an agent never has to rediscover it. Reproduce all six yourself, no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
   <ol class="lessons">
     <li><h3>The book arrives worst-first</h3><p>Polymarket's raw orderbook lists bids ascending and asks descending, so <code>bids[0]</code> is the worst level. Every model's prior says index 0 is best. oddsrail normalises both venues to best-first and walks the book to quote what a size actually costs.</p></li>
     <li><h3>Rejections don't raise</h3><p>The exchange models a rejected order as a return value, not an exception. Reported carelessly, a rejection reads to an agent as a resting order. oddsrail branches on it: <code>accepted: false</code>, nothing attributed, and an unrecognised response shape is never reported as posted.</p></li>

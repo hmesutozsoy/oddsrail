@@ -77,6 +77,19 @@ claude mcp add --transport stdio oddsrail -- /abs/path/to/oddsrail/.venv/bin/pyt
 Then ask the agent: *"search markets about the World Cup final and run the
 overshoot signal on the favorite"*.
 
+## See the footguns yourself, no keys
+
+```bash
+pip install oddsrail && python examples/footguns.py
+```
+
+Six things the venue APIs get wrong, shown live against the public
+endpoints: the worst-first order book, Kalshi's bids-only dollar-string
+ladders, geoblocks that look healthy until the order, the advisory geoblock
+verdict, the deprecated Gamma endpoint, and naive cross-venue matching. Each
+section prints the raw trap, then the oddsrail call that returns the right
+answer. About ten seconds, read-only.
+
 ## How attribution works (CLOB V2, verified Aug 2026)
 
 1. Get your **builder code** (a bytes32) at polymarket.com → **Settings →
