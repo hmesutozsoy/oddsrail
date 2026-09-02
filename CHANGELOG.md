@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.10.0 — 2026-09-02
+## 0.10.0 (2026-09-02)
 
 The operator-safety and rehearsal release: the things anyone handing keys to
 an agent asks for before anything else.
@@ -26,10 +26,10 @@ an agent asks for before anything else.
 - 39 tools (30 read-only / 9 destructive), 4 prompts, 111 offline tests.
 - Kalshi dry-run orders are not papered yet.
 
-## 0.9.0 — 2026-09-02
+## 0.9.0 (2026-09-02)
 
 Gasless position management. Three new trading tools go through Polymarket's
-relayer with the operator's own Relayer API key — the self-hosted pattern
+relayer with the operator's own Relayer API key, the self-hosted pattern
 Polymarket's builder team recommended when the oddsrail profile was verified.
 
 **New**
@@ -38,7 +38,7 @@ Polymarket's builder team recommended when the oddsrail profile was verified.
   default; return the relayer transaction id/hash and the terminal outcome.
 - `POLYMARKET_RELAYER_API_KEY` + `POLYMARKET_RELAYER_API_KEY_ADDRESS`. Both
   halves required. Without them the tools return a structured "not
-  configured" answer and send nothing — there is deliberately no fallback to a
+  configured" answer and send nothing, there is deliberately no fallback to a
   gas-paying EOA broadcast.
 - `server_info` reports `relayer_key_configured` and lists the gasless tools.
 
@@ -51,11 +51,11 @@ Polymarket's builder team recommended when the oddsrail profile was verified.
 - Builder profile Verified in Polymarket's program (2026-09-02); attribution
   pattern for self-hosted tools confirmed by their builder team.
 
-## 0.8.1 — 2026-09-01
+## 0.8.1 (2026-09-01)
 
 Jurisdiction awareness. The geography story was wrong in shape: the docs
 framed geoblocking as a connectivity problem, when for most restricted
-jurisdictions Polymarket's restriction is enforced at ORDER PLACEMENT — reads
+jurisdictions Polymarket's restriction is enforced at ORDER PLACEMENT, reads
 answer normally and the failure arrives at the trade. Kalshi restricts a
 heavily overlapping country list, so it is not a general fallback either.
 
@@ -99,13 +99,13 @@ heavily overlapping country list, so it is not a general fallback either.
 - Geo classes are venue-scoped: a Kalshi 403 keeps its credentials hint
   instead of inheriting Polymarket's jurisdiction verdict, and the SDK's
   TransportError is classified by its CAUSE so a slow venue (ReadTimeout) is
-  never labelled "unreachable" — nor does any hint claim "nothing was sent"
+  never labelled "unreachable", nor does any hint claim "nothing was sent"
   on a possibly-post-send failure.
 - 34 new offline tests (81 total) covering the classifier, the verdict tiers,
   `_err` status recovery, order-response interpretation, and the
   find_markets outage/partial notes.
 
-## 0.8.0 — 2026-08-31
+## 0.8.0 (2026-08-31)
 
 Launch-readiness pass. A fresh-eyes audit found the code was in better shape
 than the packaging around it; this release fixes the packaging.
@@ -113,7 +113,7 @@ than the packaging around it; this release fixes the packaging.
 **Honesty**
 - Added 47 offline tests (`tests/test_money_paths.py`) + CI on Python
   3.11/3.12/3.13. The README previously claimed the Kalshi order translation
-  was unit-tested when no tests existed — the claim is now true.
+  was unit-tested when no tests existed, the claim is now true.
 - Replaced the builder-leaderboard figures, which were 2–7x stale against the
   server's own `builder_stats` output, and stamped them with a pull date.
 - Rewrote the "Status" section, which described a 10-tool project three

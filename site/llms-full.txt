@@ -6,14 +6,14 @@
 
 An MCP server that gives any agent (Claude Code, Claude Desktop, or anything
 MCP-compatible) prediction-market access across **Polymarket and Kalshi**:
-market search, orderbooks, price history, positions, and order routing — with
-**on-chain builder-code attribution** on Polymarket — plus two premium signal
+market search, orderbooks, price history, positions, and order routing, with
+**on-chain builder-code attribution** on Polymarket, plus two premium signal
 tools (in-play overshoot/fade detection, resolution dispute-risk).
 
 **Free to use, and free of fees.** oddsrail ships with a project builder code
 registered at **0 bps**, so orders routed through it are attributed without
 adding a single basis point to anyone's trade. The project's income is a share
-of Polymarket's weekly builder reward pool — paid by Polymarket's own program,
+of Polymarket's weekly builder reward pool, paid by Polymarket's own program,
 not by you. Running your own builder profile instead is one environment
 variable (`ODDSRAIL_BUILDER_CODE`), and `server_info` always tells you which
 code is in use. No fee tiers, no paywalled tools, no account required.
@@ -21,21 +21,21 @@ code is in use. No fee tiers, no paywalled tools, no account required.
 ## How oddsrail compares
 
 Verified against each alternative directly (their repos, live endpoints, and
-registry entries — August 2026), not from their marketing:
+registry entries, August 2026), not from their marketing:
 
 | | oddsrail | raw Polymarket API | raw Kalshi API | Crosswire | Parsec |
 |---|---|---|---|---|---|
 | Both venues, one vocabulary | ✅ `find_markets` | single-venue | single-venue | pairs from a frozen 43-pair graph | ✅ 5 venues |
 | Book-walked cost + slippage | ✅ `quote_cost` | book only, math is yours | book only | top-of-book, covered pairs only | preview on their infra |
 | Order lifecycle (status/fills/kill switch) | ✅ | endpoints exist, with footguns¹ | endpoints exist | ❌ read-only | ✅ |
-| Resolution criteria surfaced | ✅ both venues | buried in fields | buried in fields | ✅ deep — on **1 active pair** | ❌ zero UMA/rules tools |
+| Resolution criteria surfaced | ✅ both venues | buried in fields | buried in fields | ✅ deep, on **1 active pair** | ❌ zero UMA/rules tools |
 | Trading signals | ✅ overshoot + dispute-risk | ❌ | ❌ | ❌ | ❌ |
 | Open source / auditable | ✅ MIT, full source | n/a | n/a | ❌ 4-file listing shell, service proprietary | ❌ closed |
 | Self-hosted / non-custodial | ✅ keys never leave your machine | ✅ | ✅ | hosted only | stores keys or holds a managed wallet |
 | Cost to the trader | **0 bps, free tools** | free | free | $0.02/call after 3/day | SaaS $0–250/mo; builder program keeps 55–85% of fees |
 | Safety defaults | dry-run default, destructive-tool annotations, venue quirks pre-encoded² | you discover them by rejection | same | n/a | unknown (closed) |
 
-¹ The raw Polymarket API *has* the endpoints — and models rejections as
+¹ The raw Polymarket API *has* the endpoints. It also models rejections as
 `ok:false` return values, orders its books worst-first, ships a trades
 endpoint that returns the market's **public** tape, and enforces an
 undocumented $1 minimum notional. oddsrail exists because we hit every one of
@@ -81,16 +81,16 @@ overshoot signal on the favorite"*.
 
 1. Get your **builder code** (a bytes32) at polymarket.com → **Settings →
    Builders**. Set your fee rates there: taker up to 100 bps, maker up to
-   50 bps — additive on top of platform fees, settled to your builder wallet.
+   50 bps, additive on top of platform fees, settled to your builder wallet.
 2. `export ODDSRAIL_BUILDER_CODE=0x...` where the server runs.
 3. Every order any agent routes through `place_order` has the code placed in
-   the V2 order struct's `builder` field **before signing** — attribution is
+   the V2 order struct's `builder` field **before signing**, so attribution is
    on-chain, visible in every `OrderFilled` event on CTF Exchange V2.
 4. Verify with the `builder_stats` tool (public builder-trades endpoint +
    leaderboard).
 
 If you skip this, orders carry the bundled oddsrail builder code
-(`0xa576c5ce…`, registered at 0 bps maker / 0 bps taker) — costing you nothing
+(`0xa576c5ce…`, registered at 0 bps maker / 0 bps taker), costing you nothing
 and funding the project. If you set your own, yours wins; the default is a
 default, not a lock-in.
 
@@ -119,7 +119,7 @@ the product, and the code is attached and signed by the operator's own wallet.
 
 ## Status
 
-**Offline tests:** 111 tests covering the paths where a bug costs money — the
+**Offline tests:** 111 tests covering the paths where a bug costs money: the
 Kalshi yes/no→bid/ask translation, Kelly sizing, book walking, cross-venue
 pairing, signal edge cases, the dry-run safety net, and jurisdiction-failure
 handling (a geoblock must never read as an empty search result or a resting
@@ -150,16 +150,16 @@ network filter, which breaks the connection itself.
 
 **Polymarket restrictions.** Polymarket publishes its restricted-jurisdiction
 list as an API reference: <https://docs.polymarket.com/api-reference/geoblock>.
-There are three tiers. OFAC-sanctioned jurisdictions — Iran, Syria, Cuba,
-North Korea, and the Crimea, Donetsk and Luhansk regions of Ukraine — are
+There are three tiers. OFAC-sanctioned jurisdictions (Iran, Syria, Cuba,
+North Korea, and the Crimea, Donetsk and Luhansk regions of Ukraine) are
 blocked on both the frontend and the API, with no new orders *and* no closing
 of existing positions. A longer second tier is **close-only on both the
 frontend and the API**: existing positions can be closed, new ones cannot be
 opened. It includes the United States, the United Kingdom, France, Germany,
 Italy, Poland, Slovakia, Belgium, Singapore, Australia, New Zealand, Brazil,
 Russia, Taiwan, Thailand and the Canadian provinces of Ontario, Quebec,
-British Columbia and Alberta. A third group — Ireland, Japan, Malta (sports
-only) and the Netherlands — is close-only on Polymarket's frontend, with the
+British Columbia and Alberta. A third group, Ireland, Japan, Malta (sports
+only) and the Netherlands, is close-only on Polymarket's frontend, with the
 API explicitly not restricted.
 
 Note the shape of that failure: it lands on the order, not the connection.
@@ -169,7 +169,7 @@ up until an order is rejected. Verified against Polymarket's documentation on
 rather than this paragraph.
 
 **Kalshi restrictions.** Kalshi is a single CFTC-designated contract market
-and it does admit members outside the United States — but its Member
+and it does admit members outside the United States, but its Member
 Agreement §VI names a long list of Restricted Jurisdictions whose members may
 not trade Event Contracts, among them Australia, Belgium, Canada, France,
 Ireland, Italy, New Zealand, Poland, Portugal, Singapore, Switzerland, the
@@ -187,9 +187,9 @@ Among the jurisdictions polymarket.com lists as close-only, Germany, Brazil,
 Slovakia and the United States are not on Kalshi's restricted list; Japan and
 the Netherlands are restricted by neither API (only by Polymarket's
 frontend). Check both lists for your own jurisdiction rather than assuming
-the other venue is open — and the US case has its own wrinkle.
+the other venue is open. The US case has its own wrinkle.
 
-**The United States.** polymarket.com — the venue oddsrail talks to — is
+**The United States.** polymarket.com, the venue oddsrail talks to, is
 close-only for the US. Polymarket separately operates Polymarket US
 (polymarket.us), run by QCX LLC as a CFTC-regulated Designated Contract
 Market. **oddsrail does not support it.** It is a different API host, a
@@ -197,20 +197,20 @@ different authentication model (API-key headers rather than EIP-712 wallet
 signatures), a different SDK and a different funding rail. A polymarket.us
 account and its keys will not work with this server. Kalshi does not list the
 US as restricted, so for a US operator Kalshi is the venue oddsrail can
-actually reach — with no builder-code attribution, since Kalshi's REST API
+actually reach, with no builder-code attribution, since Kalshi's REST API
 has no such field.
 
 **Network filters.** Separately from any venue rule, a national filter can
 block the domains outright. Turkey does this: Polymarket does not restrict
 Turkey, and Turkey is not on Kalshi's list either, but Turkish ISPs block
 polymarket.com. That is a connectivity problem, not an eligibility one, and
-it looks different — DNS failures, TLS errors, resets, or an ISP interstitial
+it looks different: DNS failures, TLS errors, resets, or an ISP interstitial
 page served where JSON was expected. oddsrail classifies both shapes and
 tells the calling agent which one it hit.
 
 **Eligibility is the operator's, not the tool's.** oddsrail is self-hosted
 and non-custodial, which is a real advantage and also means *you* hold the
-account and *you* make the venue's representations — there is no intermediary
+account and *you* make the venue's representations; there is no intermediary
 making them for you. Polymarket's trading flow requires an attestation that
 you are not a U.S. person, are not located in a restricted jurisdiction, and
 are not "using a VPN or other measures to circumvent or attempt to
@@ -282,7 +282,7 @@ Relayer API keys and exported as `POLYMARKET_RELAYER_API_KEY` +
 `POLYMARKET_RELAYER_API_KEY_ADDRESS`. That is the pattern Polymarket's builder
 team recommends for a self-hosted tool: no builder secret ships with oddsrail,
 and each operator authenticates the relayer as themselves. Relayer limits are
-per builder tier — 100 requests/day unverified, 10,000 verified. Without the
+per builder tier: 100 requests/day unverified, 10,000 verified. Without the
 key the tools return a structured "not configured" answer and send nothing;
 they never fall back to a gas-paying broadcast from the signer.
 
@@ -296,13 +296,13 @@ right now, and the `settle_resolved` prompt chains the two.
 
 Kalshi is **bring-your-own-key and single-tenant by design**: the operator
 supplies their own API key, trades their own account, and this server caches
-nothing. That is deliberate — Kalshi's Developer Agreement limits API use to a
+nothing. That is deliberate: Kalshi's Developer Agreement limits API use to a
 member's own trading (§3), bars facilitating other members' trading (§3.2) and
 sublicensing the API (§3.7), and restricts storing/sharing API data (§3.1). A
 hosted multi-tenant Kalshi service would not be compliant; a self-hosted one is.
 
 **Attribution does not exist here.** Kalshi Builder Codes are a
-Solana/DFlow/Jupiter integration — there is no builder or affiliate field
+Solana/DFlow/Jupiter integration; there is no builder or affiliate field
 anywhere on the REST API, so Kalshi order flow cannot be attributed or
 monetised the way Polymarket's can. Kalshi is in oddsrail for coverage and
 signal reach, not for routing revenue.
@@ -313,12 +313,12 @@ Two shapes on this API are easy to get wrong, so oddsrail normalises both:
   strings (`"10.00"`); the legacy integer-cent fields were removed in March
   2026. All arithmetic uses `Decimal`.
 - **The orderbook is bids-only on both sides.** `yes_dollars` and `no_dollars`
-  are both bid ladders, ascending — so the best bid is the *last* element, and
+  are both bid ladders, ascending, so the best bid is the *last* element, and
   a NO bid at $0.99 *is* a YES ask at $0.01. `kalshi_get_orderbook` returns a
   conventional best-first bid/ask view of the YES book plus the raw ladders.
 
-Order placement speaks natural terms — `outcome` (yes/no), `action`
-(buy/sell), `price` = probability of that outcome — and translates to Kalshi's
+Order placement speaks natural terms, `outcome` (yes/no), `action`
+(buy/sell), `price` = probability of that outcome, and translates to Kalshi's
 YES-book `bid`/`ask` internally (buy NO @ 0.25 becomes ask @ 0.75). That translation is
 exhaustively unit-tested (`tests/test_money_paths.py`), since it is the
 obvious place to ship an inverted-position bug.
@@ -329,23 +329,23 @@ tools need no key at all.
 
 ## Cross-venue tools
 
-- **`find_markets(query)`** — searches Polymarket *and* Kalshi in one call and
+- **`find_markets(query)`**: searches Polymarket *and* Kalshi in one call and
   returns one normalised shape per market: `venue`, `market_id` (the id that
   venue's order tool takes), `title`, yes/no price as probabilities in (0,1),
   best bid/ask, spread, 24h volume, close time, and `trade_with` naming the
   tool to call. Use this when you do not already know the venue.
-- **`quote_cost(venue, market_id, side, size)`** — what a size would *actually*
+- **`quote_cost(venue, market_id, side, size)`**: what a size would *actually*
   cost, by walking the book rather than reading the top level. Returns average
   fill price, slippage vs best, notional, levels consumed, and whether the size
-  is fillable at all — plus Polymarket's per-market fee schedule where it
+  is fillable at all, plus Polymarket's per-market fee schedule where it
   publishes one. Kalshi does not publish fees in its market payload, so they
   are reported as unknown rather than estimated.
-- **`compare_venues(query)`** — candidate same-event listings across venues.
+- **`compare_venues(query)`**: candidate same-event listings across venues.
   **Not an arbitrage scanner.** Matching an event across venues is an
   unsolved entity-resolution problem: naive title overlap cheerfully pairs a
   Brazilian election with a Ukrainian one and reports a 70-point "gap" that is
   fiction. Two gates apply (title similarity ≥ 0.5 *and* close dates within a
-  week), so it usually returns nothing — which is the honest answer. A price
+  week), so it usually returns nothing, which is the honest answer. A price
   delta between candidates is reported as `yes_price_difference`, never as
   profit.
 
@@ -353,63 +353,63 @@ tools need no key at all.
 
 Kalshi has no text-search endpoint. oddsrail searches by **event** (the
 human-readable index, with `with_nested_markets`) rather than paging tens of
-thousands of machine-named markets, and matches on word boundaries — without
+thousands of machine-named markets, and matches on word boundaries, without
 that, "fed" matches "German Bundestag" and a Fed-rate query returns German
 election markets. Results carry `truncated`, because a bounded scan means an
 empty result is not proof a market does not exist.
 
 ## Order lifecycle & discovery
 
-- `order_status(order_id)` — resting / partially_filled / filled / gone, with
+- `order_status(order_id)`: resting / partially_filled / filled / gone, with
   size_matched. The answer an agent needs after place_order.
-- `my_fills()`, `my_positions()` — the operator's executions and holdings,
-  no address juggling. (Fills come from the Data API activity feed — the
+- `my_fills()`, `my_positions()`: the operator's executions and holdings,
+  no address juggling. (Fills come from the Data API activity feed; the
   SDK's list_account_trades returns the market's *public* tape and is not
   used.)
-- `cancel_all_orders()` — kill switch: flatten every resting order at once.
-- `resolution_criteria(venue, market_id)` — the full resolution contract:
+- `cancel_all_orders()`: kill switch, flattens every resting order at once.
+- `resolution_criteria(venue, market_id)` returns the full resolution contract:
   what resolves YES, who resolves it, from which sources. Read it before
   trusting a price.
-- `closing_soon(hours)` — markets closing within N hours on either venue,
+- `closing_soon(hours)`: markets closing within N hours on either venue,
   where activity concentrates.
 
 ## Workflow prompts
 
 MCP prompts show up in clients as ready-made workflows, and they encode the
-*order* of operations that keeps an agent out of trouble — the sequencing is
+*order* of operations that keeps an agent out of trouble; the sequencing is
 the expertise, which a flat tool list cannot convey.
 
-- `/find_fade_setup(query, bankroll)` — signal → book → cost → resolution →
+- `/find_fade_setup(query, bankroll)`: signal → book → cost → resolution →
   size → dry-run, with the rejection criteria at each step
-- `/check_cross_venue_edge(query)` — candidates → settlement audit → cost on
+- `/check_cross_venue_edge(query)`: candidates → settlement audit → cost on
   both legs, and says plainly when the answer is "no edge"
-- `/daily_review` — positions, resting orders, fills, closing-soon, attribution
+- `/daily_review`: positions, resting orders, fills, closing-soon, attribution
 
 ## Risk & settlement
 
-- **`settlement_audit(polymarket_id, kalshi_ticker)`** — the check that decides
+- **`settlement_audit(polymarket_id, kalshi_ticker)`**: the check that decides
   whether a cross-venue price difference is an edge or a mismatch. Compares
   close times, resolution sources, UMA dispute status and market structure on
   **live data with no pre-curated pair list**, returning `ok` / `caution` /
-  `block` with reasons — and listing the checks it did *not* perform.
-- **`position_size(bankroll_usd, price, fair_value)`** — fractional-Kelly sizing,
+  `block` with reasons, and listing the checks it did *not* perform.
+- **`position_size(bankroll_usd, price, fair_value)`**: fractional-Kelly sizing,
   capped, refusing negative-edge bets, returning its own assumptions.
 
 ## Tools (32)
 
 - `search_markets`, `get_market`, `get_orderbook`, `price_history`,
-  `get_positions` — read-only, no keys
-- `overshoot_signal` — premium: fresh panic-jump detection + this market's
+  `get_positions`: read-only, no keys
+- `overshoot_signal`, premium: fresh panic-jump detection + this market's
   historical reversion tendency (ported from the polymarket-wc analyzer)
-- `dispute_risk` — premium: transparent 0–100 heuristic for contested
+- `dispute_risk`, premium: transparent 0–100 heuristic for contested
   (UMA-dispute-prone) resolutions
-- `place_order`, `cancel_order`, `open_orders` — trading, dry-run by default.
+- `place_order`, `cancel_order`, `open_orders`: trading, dry-run by default.
   `price` is a probability in (0,1), `size` is in SHARES, and the exchange
   enforces a **$1 minimum notional** on marketable orders. Trading tools carry
   `destructiveHint` annotations so clients can gate them.
-- `builder_stats` — attribution verification + public builder leaderboard
-- `find_markets`, `compare_venues`, `quote_cost` — cross-venue (above)
-- `server_info` — config status, per-venue
+- `builder_stats`: attribution verification + public builder leaderboard
+- `find_markets`, `compare_venues`, `quote_cost`: cross-venue (above)
+- `server_info`: config status, per-venue
 
 Kalshi: `kalshi_search_markets`, `kalshi_get_market`, `kalshi_get_orderbook`,
 `kalshi_get_trades`, `kalshi_balance`, `kalshi_positions`,
@@ -420,7 +420,7 @@ Kalshi: `kalshi_search_markets`, `kalshi_get_market`, `kalshi_get_orderbook`,
 - Official unified SDK `polymarket-client` (0.6.x): `AsyncPublicClient` for
   data, `AsyncSecureClient.place_limit_order(..., builder_code=...)` for
   attributed orders. The legacy `py-clob-client` is archived and cannot
-  attach builder codes — do not use it.
+  attach builder codes. Do not use it.
 - MCP SDK 2.0: `MCPServer` from `mcp.server.mcpserver` (the old
   `mcp.server.fastmcp.FastMCP` import is gone in 2.x).
 - Kalshi is on plain `httpx` + `cryptography`, not the official SDK:
@@ -431,7 +431,7 @@ Kalshi: `kalshi_search_markets`, `kalshi_get_market`, `kalshi_get_orderbook`,
   `external-api.kalshi.com`.
 - x402 (planned): the official `x402` PyPI package (v2.20+) can wrap MCP
   tools directly (`x402.mcp`, payment rides in tool-call `_meta`), but its
-  MCP helpers currently target mcp 1.x — integrating means pinning
+  MCP helpers currently target mcp 1.x, so integrating means pinning
   `mcp>=1.28,<2` or waiting for the 2.x-compatible release. Mainnet
   settlement needs a facilitator (Coinbase CDP: 1,000 free settlements/mo,
   then $0.001). Keep free tiers of both signals so registries can index the
@@ -441,7 +441,7 @@ Kalshi: `kalshi_search_markets`, `kalshi_get_market`, `kalshi_get_orderbook`,
 
 Polymarket's public builder leaderboard shows what a single operator routing
 their own flow is worth. Pulled **2026-08-31** via this server's own
-`builder_stats` tool — re-run it, the numbers move:
+`builder_stats` tool. Re-run it, the numbers move:
 
 | | weekly volume |
 |---|---|
@@ -451,16 +451,16 @@ their own flow is worth. Pulled **2026-08-31** via this server's own
 
 The instructive rows are the small ones: **MagicMarkets routes $901K/week with
 a single active user**; Jupiter $515K with one; Sharkbetting $1.15M with two.
-Those are bot operators routing their own flow — which is exactly who this is
+Those are bot operators routing their own flow, which is exactly who this is
 built for.
 
 ## Roadmap
 
-1. ~~Live smoke test from an unblocked network~~ — done 2026-08-23, all tools pass
+1. ~~Live smoke test from an unblocked network~~: done 2026-08-23, all tools pass
 2. Register builder code (polymarket.com → Settings → Builders), set fees to
    0 bps at launch, export `ODDSRAIL_BUILDER_CODE`; first attributed order on
    a tiny size
-3. ~~Kalshi as venue #2~~ — done 2026-08-23, 9 tools, verified live
+3. ~~Kalshi as venue #2~~: done 2026-08-23, 9 tools, verified live
 4. x402 paid wrapping for the two signals once the mcp-2.x conflict clears
 5. Registry listings: official MCP registry (`mcp-publisher`, PyPI
    `mcp-name:` marker), Smithery (needs public streamable-HTTP + a free
@@ -471,10 +471,10 @@ built for.
 - **GitHub**: https://github.com/hmesutozsoy/oddsrail (public, MIT)
 - **Glama**: auto-crawls GitHub; `glama.json` in the repo root claims
   maintainership.
-- **PyPI**: https://pypi.org/project/oddsrail/ — `pip install oddsrail`
+- **PyPI**: https://pypi.org/project/oddsrail/ (`pip install oddsrail`)
 - **Official MCP registry**: listed as `app.oddsrail/polymarket-kalshi-arbitrage`
   (published 2026-08-30, status active). Re-publish after a version bump with
   `mcp-publisher publish`; keep `server.json`'s version in step with
   `pyproject.toml` or the registry rejects it.
-- **Smithery**: requires a public HTTPS streamable-HTTP endpoint — available
+- **Smithery**: requires a public HTTPS streamable-HTTP endpoint, available
   once oddsrail is hosted rather than run locally over stdio.
