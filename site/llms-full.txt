@@ -286,11 +286,14 @@ per builder tier: 100 requests/day unverified, 10,000 verified. Without the
 key the tools return a structured "not configured" answer and send nothing;
 they never fall back to a gas-paying broadcast from the signer.
 
-**Not yet exercised live:** the relayer path has been driven in dry-run and
-against input validation only; no real split, merge or redeem has been sent
-from this code yet. Start in dry-run and read back the intent.
-`redeemable_positions` lists what the configured wallet could redeem or merge
-right now, and the `settle_resolved` prompt chains the two.
+**Exercised live (2026-09-02):** a 1 USDC split and the matching merge went
+through the relayer from this code, gasless, on the maintainer's test account
+with its own Relayer API key. Relayer ids and Polygon transaction hashes are
+in [docs/live-proof.md](docs/live-proof.md). `redeem_positions` is still
+unproven live: it needs a resolved market with winning shares, which that
+account has not held yet. `redeemable_positions` lists what the configured
+wallet could redeem or merge right now, and the `settle_resolved` prompt
+chains the two.
 
 ## Kalshi (venue #2)
 

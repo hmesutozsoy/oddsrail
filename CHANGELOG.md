@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Live proof of the relayer path: a 1 USDC split and merge through the
+  relayer with the operator's own key, recorded with relayer ids and Polygon
+  hashes in `docs/live-proof.md`. Redeem remains unproven until the test
+  account holds a resolved position.
+- `dump()` now converts SDK dataclasses (the relayer `TransactionOutcome`)
+  to plain fields instead of a repr string.
+
 ## 0.10.1 (2026-09-02)
 
 Credibility release, ahead of the announcement.

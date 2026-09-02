@@ -27,9 +27,12 @@ async def public():
 
 
 def dump(obj):
-    """Pydantic model / tuple / list -> plain JSON-able structure."""
+    """Pydantic model / dataclass / tuple / list -> plain JSON-able structure."""
+    import dataclasses
     if hasattr(obj, "model_dump"):
         return obj.model_dump(mode="json")
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return {k: dump(v) for k, v in dataclasses.asdict(obj).items()}
     if isinstance(obj, (list, tuple)):
         return [dump(x) for x in obj]
     if isinstance(obj, dict):
