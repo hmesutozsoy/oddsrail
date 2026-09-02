@@ -36,7 +36,7 @@ Safety model:
 
 import os
 
-from . import geo
+from . import geo, guard, paper
 
 _secure = None
 
@@ -131,9 +131,21 @@ async def place_order(token_id: str, side: str, price: float, size: float,
         raise ValueError("size must be positive (number of shares)")
 
     intent = _intent(token_id, side, price, size, post_only)
-    if dry_run():
-        return {"dry_run": True, "would_post": intent,
-                "note": "set ODDSRAIL_DRY_RUN=0 to post real orders"}
+    notional = price * size
+    dry = dry_run()
+    block = guard.check_order("polymarket", token_id, notional, dry)
+    if block:
+        return {**block, "submitted": intent}
+    if dry:
+        out = {"dry_run": True, "would_post": intent,
+               "note": "set ODDSRAIL_DRY_RUN=0 to post real orders"}
+        if paper.enabled():
+            try:
+                out["paper"] = await paper.simulate_polymarket(token_id, side, price, size)
+            except Exception as e:
+                out["paper"] = {"error": f"{type(e).__name__}: {e}",
+                                "note": "paper simulation failed; the intent above is still what would post"}
+        return out
 
     from .polymarket import dump
     try:
@@ -142,6 +154,16 @@ async def place_order(token_id: str, side: str, price: float, size: float,
         # is not idempotent, so the agent must get a structured answer, not a
         # bare MCP error it might retry into a doubled position.
         client = await _client()
+        if guard._i("ODDSRAIL_MAX_OPEN_ORDERS") is not None:
+            try:
+                n_open = len(list((await client.list_open_orders().first_page()).items))
+            except Exception:
+                n_open = None
+            block = guard.check_order("polymarket", token_id, notional, dry,
+                                      open_orders_now=n_open)
+            if block:
+                return {**block, "submitted": intent}
+        guard.record_live_submission(notional)   # the intent is going out
         resp = await client.place_limit_order(
             token_id=token_id, price=str(price), size=str(size), side=side,
             post_only=post_only, builder_code=builder_code())
@@ -200,7 +222,10 @@ def _interpret_order_response(d, intent):
 
 async def cancel_order(order_id: str):
     if dry_run():
-        return {"dry_run": True, "would_cancel": order_id}
+        out = {"dry_run": True, "would_cancel": order_id}
+        if paper.enabled() and str(order_id).startswith("paper-"):
+            out.update(paper.cancel(order_id))
+        return out
     from .polymarket import dump
     try:
         client = await _client()
@@ -402,3 +427,35 @@ async def redeem_positions(condition_id: str = "", market_id: str = ""):
     else:
         run = lambda c: c.redeem_positions(market_id=market_id)
     return await _relayed("redeem", intent, run)
+
+
+async def redeemable_positions(limit: int = 200):
+    """What the operator can turn back into USDC right now, and how.
+
+    redeemable = the market resolved and these are winning shares
+                 (redeem_positions returns the collateral, gasless).
+    mergeable  = the operator holds both YES and NO of the same market
+                 (merge_positions returns the collateral without waiting
+                 for resolution).
+    """
+    wallet = operator_wallet()
+    if not wallet:
+        return {"note": "set POLYMARKET_WALLET_ADDRESS to see positions"}
+    from . import polymarket as pm
+    pos = await pm.get_positions(wallet, limit)
+
+    def row(p):
+        return {"title": p.get("title"), "condition_id": p.get("condition_id"),
+                "outcome": p.get("outcome"), "size": p.get("size"),
+                "cur_price": p.get("cur_price"), "current_value": p.get("current_value"),
+                "end_date": p.get("end_date")}
+    red = [row(p) for p in pos if p.get("redeemable")]
+    mer = [row(p) for p in pos if p.get("mergeable")]
+    return {"wallet": wallet, "scanned": len(pos),
+            "redeemable": red, "mergeable": mer,
+            "relayer_key_configured": relayer_configured(),
+            "note": ("for each redeemable entry call "
+                     "redeem_positions(condition_id=...); for each mergeable "
+                     "entry call merge_positions(condition_id=..., amount='max'). "
+                     "Both are gasless through the operator's relayer key and "
+                     "respect dry-run. Dry-run first and read back the intent.")}

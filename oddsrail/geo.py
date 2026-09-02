@@ -98,6 +98,15 @@ HINTS = {
         "shape. Treat this venue as unreachable and report to the operator; "
         "retrying returns the same page.",
 
+    "local_tls":
+        "TLS verification failed on THIS machine: Python could not find its "
+        "CA certificates (common with python.org macOS installs, whose "
+        "'Install Certificates.command' was never run). This is local "
+        "configuration, not the venue and not a network filter. Fix: run "
+        "Install Certificates.command from the Python folder in "
+        "/Applications, or set SSL_CERT_FILE to a CA bundle (the path printed "
+        "by `python -m certifi`). Nothing was sent.",
+
     "preflight_unavailable":
         "Eligibility preflight unavailable: could not reach "
         "https://polymarket.com/api/geoblock. This means unknown, not "
@@ -150,6 +159,8 @@ def classify(e: Exception, status=None, venue=None) -> str | None:
     if isinstance(e, _json.JSONDecodeError) or name == "InterceptedResponseError":
         return "intercepted"
     msg = str(e).lower()
+    if "certificate_verify_failed" in msg or "unable to get local issuer certificate" in msg:
+        return "local_tls"      # must precede the ssl/certificate substrings below
     if name == "UnexpectedResponseError" and any(s in msg for s in _INTERCEPTED_MSG):
         return "intercepted"
     if name in _UNREACHABLE_TYPES:

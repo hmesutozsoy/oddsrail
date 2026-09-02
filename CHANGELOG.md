@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.10.0 — 2026-09-02
+
+The operator-safety and rehearsal release: the things anyone handing keys to
+an agent asks for before anything else.
+
+**New**
+- **Guardrails** (`oddsrail/guard.py`): `ODDSRAIL_MAX_ORDER_NOTIONAL`,
+  `ODDSRAIL_MAX_SESSION_NOTIONAL`, `ODDSRAIL_MAX_OPEN_ORDERS`,
+  `ODDSRAIL_ALLOWED_MARKETS`. Enforced before any request on both venues, in
+  dry-run too; refusals are structured and name the rule, limit and request.
+  `server_info` reports them.
+- **Paper trading** (`oddsrail/paper.py`): dry-run Polymarket orders fill
+  against the live book within the limit, rest otherwise, and fill when
+  crossed. `paper_positions` (cash, marks, realized/unrealized P&L),
+  `paper_reset`. Honest caveat in the README: no queue, no impact, no fees.
+- **`watch_book`**: bounded realtime streaming of one token's market events
+  via the SDK websocket.
+- **`redeemable_positions`** and the **`settle_resolved`** prompt: what the
+  wallet can redeem or merge now, chained into the gasless tools.
+- Failure class `local_tls` with a fix-it hint: a missing CA bundle (python.org
+  macOS installs) used to be misreported as "unreachable".
+
+**Notes**
+- 39 tools (30 read-only / 9 destructive), 4 prompts, 111 offline tests.
+- Kalshi dry-run orders are not papered yet.
+
 ## 0.9.0 — 2026-09-02
 
 Gasless position management. Three new trading tools go through Polymarket's

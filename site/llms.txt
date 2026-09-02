@@ -1,0 +1,37 @@
+# oddsrail
+
+> Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps added to trades, MIT. Verified Polymarket builder.
+
+oddsrail speaks the Model Context Protocol over stdio, so any MCP client (Claude Code, Claude Desktop, Cursor and others) can call it. It is a Python package on PyPI and a listing in the official MCP registry (app.oddsrail/polymarket-kalshi-arbitrage).
+
+## Install
+
+- `pip install oddsrail`
+- `claude mcp add --transport stdio oddsrail -- oddsrail`
+- Read-only tools need no credentials. Trading needs the operator's own keys and `ODDSRAIL_DRY_RUN=0`.
+
+## What it does
+
+- 39 tools (30 read-only, 9 trading) and 4 workflow prompts.
+- Market data on both venues in one vocabulary: `find_markets`, `get_orderbook` (best-first), `watch_book` (bounded realtime), `price_history`, `closing_soon`, `kalshi_*`.
+- Cost before trading: `quote_cost` walks the book and reports average fill, slippage and the venue's fee schedule; `position_size` is fractional Kelly.
+- Cross-venue with honesty: `compare_venues` finds same-event candidates; `settlement_audit` returns ok / caution / block from resolution sources, UMA status and structure.
+- Trading, non-custodial: `place_order`, `cancel_order`, `cancel_all_orders`, `kalshi_place_order`; gasless `split_position`, `merge_positions`, `redeem_positions` through the operator's own relayer key.
+- Operator guardrails: `ODDSRAIL_MAX_ORDER_NOTIONAL`, `ODDSRAIL_MAX_SESSION_NOTIONAL`, `ODDSRAIL_MAX_OPEN_ORDERS`, `ODDSRAIL_ALLOWED_MARKETS`. Enforced before any request, in dry-run too. The agent cannot change them.
+- Paper trading: in dry-run, Polymarket orders fill against the live book; `paper_positions` shows cash, marks and P&L. Simulated: no queue, no impact, no fees.
+- Attribution: a public bytes32 builder code is placed in the CLOB V2 order struct and signed by the operator's own key; attribution is on-chain in every OrderFilled event. Registered at 0 bps. Override with `ODDSRAIL_BUILDER_CODE`.
+
+## Notes for agents
+
+- Prices are implied probabilities in (0,1) on both venues, not cents.
+- `place_order` returns `{"dry_run": true, ...}` unless the operator set `ODDSRAIL_DRY_RUN=0`; check this before assuming an order was placed.
+- Geography affects trading, not reading. Polymarket restricts order placement by jurisdiction (https://docs.polymarket.com/api-reference/geoblock); Kalshi's Member Agreement restricts a heavily overlapping set. Call `server_info` for this machine's geoblock verdict and venue reachability; it is advisory, not a compliance check.
+- Errors come back structured: `{error, error_type, http_status, url, failure_class, hint}`. Do not retry in a loop on `geo_blocked`, `unreachable`, `intercepted` or `local_tls`.
+
+## Links
+
+- Source and README: https://github.com/hmesutozsoy/oddsrail
+- PyPI: https://pypi.org/project/oddsrail/
+- Changelog: https://github.com/hmesutozsoy/oddsrail/blob/main/CHANGELOG.md
+- Full documentation as text: https://oddsrail.app/llms-full.txt
+- This page as Markdown: https://oddsrail.app/index.md

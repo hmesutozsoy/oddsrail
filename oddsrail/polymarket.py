@@ -257,3 +257,70 @@ async def closing_soon(hours: float = 24.0, limit: int = 15):
     ms = [m for m in ms if m.get("accepting_orders")]
     ms.sort(key=lambda m: -float(m.get("volume_24hr") or 0))
     return ms[:limit]
+
+
+def _event_summary(d: dict, t0: float) -> dict:
+    """Trim a websocket event to what an agent needs: type, timing, best
+    levels when a book is present, otherwise the payload's price fields."""
+    import time as _time
+    p = d.get("payload") if isinstance(d.get("payload"), dict) else d
+    out = {"t": round(_time.monotonic() - t0, 3), "type": d.get("type") or d.get("event_type")}
+    bids, asks = p.get("bids"), p.get("asks")
+    if isinstance(bids, list) or isinstance(asks, list):
+        def best(levels, hi):
+            ps = []
+            for lv in levels or []:
+                try:
+                    ps.append(float(lv["price"]))
+                except (KeyError, TypeError, ValueError):
+                    pass
+            return (max(ps) if hi else min(ps)) if ps else None
+        out["best_bid"] = best(bids, True)
+        out["best_ask"] = best(asks, False)
+        out["levels"] = {"bids": len(bids or []), "asks": len(asks or [])}
+    else:
+        out["data"] = {k: p.get(k) for k in ("price", "size", "side", "timestamp",
+                                             "last_trade_price", "best_bid",
+                                             "best_ask", "changes") if k in p}
+    return out
+
+
+async def watch_book(token_id: str, seconds: float = 10.0, max_events: int = 100):
+    """Stream one token's realtime market events for up to `seconds`.
+
+    Returns when the time is up or `max_events` arrived, whichever first.
+    The first event is normally a full book snapshot; later ones are
+    price/book changes and trades. Bounded so an agent cannot hang a session
+    on a quiet market.
+    """
+    import asyncio
+    import time as _time
+    seconds = min(max(float(seconds), 1.0), 60.0)
+    max_events = min(max(int(max_events), 1), 500)
+    from polymarket.streams import MarketSpec
+    c = await public()
+    handle = await c.subscribe(MarketSpec(token_ids=[token_id], custom_feature_enabled=True))
+    t0 = _time.monotonic()
+    events: list = []
+
+    async def drain():
+        async for ev in handle:
+            events.append(_event_summary(dump(ev), t0))
+            if len(events) >= max_events:
+                return
+
+    try:
+        await asyncio.wait_for(drain(), timeout=seconds)
+        stopped = "max_events"
+    except asyncio.TimeoutError:
+        stopped = "timeout"
+    finally:
+        try:
+            await handle.close()
+        except Exception:
+            pass
+    return {"token_id": token_id, "seconds": seconds, "stopped_by": stopped,
+            "count": len(events), "events": events,
+            "note": ("best_bid/best_ask are computed from the event's own "
+                     "levels; a quiet market may deliver only the initial "
+                     "snapshot. Prices are implied probabilities in (0,1).")}

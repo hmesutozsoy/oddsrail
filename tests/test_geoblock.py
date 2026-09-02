@@ -85,7 +85,7 @@ def test_connection_failures_read_as_unreachable():
     req = httpx.Request("GET", "https://clob.polymarket.com/")
     assert geo.classify(httpx.ConnectError("boom", request=req)) == "unreachable"
     assert geo.classify(Exception("[Errno 54] Connection reset by peer")) == "unreachable"
-    assert geo.classify(Exception("SSL: CERTIFICATE_VERIFY_FAILED")) == "unreachable"
+    assert geo.classify(Exception("SSL: handshake reset by peer")) == "unreachable"
 
 
 def test_html_where_json_expected_reads_as_intercepted():

@@ -3,400 +3,213 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>oddsrail — the rail AI agents use to trade prediction markets</title>
-<meta name="description" content="Open-source MCP server for Polymarket and Kalshi: live books, costed fills, settlement audits and non-custodial order routing with on-chain builder attribution. Free, 0 bps, MIT.">
+<title>oddsrail: an MCP server for trading Polymarket and Kalshi</title>
+<meta name="description" content="oddsrail is an open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps, MIT. Verified Polymarket builder.">
+<link rel="canonical" href="https://oddsrail.app/">
+<link rel="alternate" type="text/markdown" href="https://oddsrail.app/index.md" title="Markdown version">
+<link rel="alternate" type="text/plain" href="https://oddsrail.app/llms.txt" title="llms.txt">
 <meta property="og:title" content="oddsrail">
-<meta property="og:description" content="The rail AI agents use to trade prediction markets. Polymarket + Kalshi, one MCP server, 0 bps.">
+<meta property="og:description" content="An MCP server for trading Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://oddsrail.app/">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230e1116'/%3E%3Cg transform='rotate(-30 32 32)' stroke-linecap='round'%3E%3Cpath d='M14 26v12M24 26v12M34 26v12M44 26v12' stroke='%23564219' stroke-width='3'/%3E%3Cpath d='M8 27h48M8 37h48' stroke='%23f59e0b' stroke-width='5'/%3E%3C/g%3E%3Ccircle cx='52' cy='11' r='4' fill='%23f59e0b'/%3E%3C/svg%3E">
-<style>
-  :root{
-    --bg:#0e1116; --bg2:#141922; --card:#171d27; --line:#232b38;
-    --ink:#e8ebf0; --ink-soft:#b6bdc9; --muted:#7d8797;
-    --amber:#f59e0b; --amber-deep:#b8720a; --tie:#564219; --bar:#c97f0a;
-    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;
-  }
-  *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
-  a{color:var(--amber);text-decoration:none}
-  a:hover{text-decoration:underline}
-  code,pre,kbd{font-family:var(--mono)}
-  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
-
-  header{position:sticky;top:0;z-index:5;background:rgba(14,17,22,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-  nav{display:flex;align-items:center;justify-content:space-between;height:64px}
-  .brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:650;letter-spacing:.2px}
-  .brand svg{width:28px;height:28px}
-  nav .links{display:flex;gap:22px;font-size:14px}
-  nav .links a{color:var(--ink-soft)}
-  nav .links a:hover{color:var(--ink);text-decoration:none}
-
-  .hero{padding:88px 0 56px;border-bottom:1px solid var(--line);
-        background:radial-gradient(900px 400px at 70% -10%,rgba(245,158,11,.10),transparent 60%)}
-  .eyebrow{display:inline-flex;gap:8px;align-items:center;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber);margin-bottom:18px}
-  .eyebrow::before{content:"";width:22px;height:2px;background:var(--amber)}
-  h1{font-size:clamp(34px,5.4vw,58px);line-height:1.05;margin:0 0 18px;font-weight:700;letter-spacing:-.02em;max-width:820px}
-  h1 em{font-style:normal;color:var(--amber)}
-  .lede{font-size:clamp(17px,2vw,20px);color:var(--ink-soft);max-width:680px;margin:0 0 30px}
-  .install{display:grid;gap:10px;max-width:680px}
-  .cmd{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:14px/1.5 var(--mono);color:var(--ink)}
-  .cmd span::before{content:"$ ";color:var(--muted)}
-  .cmd button{flex:none;background:transparent;border:1px solid var(--line);color:var(--ink-soft);border-radius:6px;padding:4px 9px;font:12px var(--sans);cursor:pointer}
-  .cmd button:hover{border-color:var(--amber);color:var(--amber)}
-  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
-  .badge{font-size:12.5px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);color:var(--ink-soft);background:var(--bg2)}
-  .badge b{color:var(--ink);font-weight:600}
-  .badge.ok{border-color:rgba(245,158,11,.45);color:var(--amber)}
-
-  section{padding:64px 0;border-bottom:1px solid var(--line)}
-  h2{font-size:clamp(24px,3vw,32px);letter-spacing:-.01em;margin:0 0 10px}
-  .sub{color:var(--muted);margin:0 0 32px;max-width:680px}
-  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px}
-  .card h3{margin:0 0 8px;font-size:17px}
-  .card p{margin:0;color:var(--ink-soft);font-size:15px}
-  .card .fix{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);font-size:14px;color:var(--ink)}
-  .card .fix::before{content:"oddsrail: ";color:var(--amber);font-family:var(--mono);font-size:12.5px}
-  .num{font:600 12px var(--mono);color:var(--amber);letter-spacing:.06em;margin-bottom:10px}
-
-  .tools{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
-  .tools .card{padding:18px}
-  .tools h3{font-size:14px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
-  .tools ul{list-style:none;margin:0;padding:0;font:13.5px/1.9 var(--mono);color:var(--ink-soft)}
-
-  .split{display:grid;gap:28px;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);align-items:start}
-  .split>div{min-width:0}
-  .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 18px;font-size:14.5px}
-  .kv dt{color:var(--muted);font-family:var(--mono);font-size:13px;padding-top:2px}
-  .kv dd{margin:0;color:var(--ink-soft);min-width:0}
-  code{overflow-wrap:anywhere}
-  .kv dd b{color:var(--ink);font-weight:600}
-  pre{margin:0;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.55;overflow-x:auto;color:var(--ink-soft)}
-  pre b{color:var(--ink);font-weight:600}
-  .note{font-size:13.5px;color:var(--muted);border-left:2px solid var(--line);padding-left:14px;margin-top:18px}
-
-
-  /* --- comparison table --- */
-  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--card)}
-  table.cmp{border-collapse:collapse;width:100%;min-width:760px;font-size:14px}
-  table.cmp th,table.cmp td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
-  table.cmp th{font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg2)}
-  table.cmp tr:last-child td{border-bottom:0}
-  table.cmp td:first-child{color:var(--ink);font-weight:600;width:190px}
-  table.cmp td{color:var(--ink-soft)}
-  table.cmp .us{background:rgba(245,158,11,.06);color:var(--ink)}
-  table.cmp th.us{color:var(--amber)}
-  .y::before{content:"✓ ";color:var(--amber);font-weight:700}
-  .n::before{content:"✕ ";color:#e06c6c;font-weight:700}
-  .foot{font-size:13px;color:var(--muted);margin-top:14px;line-height:1.55}
-  .foot p{margin:6px 0}
-
-  /* --- order flow diagram --- */
-  .flow{display:grid;grid-template-columns:1fr auto 1.3fr auto 1fr auto 1fr;gap:10px;align-items:stretch}
-  .node{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;min-width:0}
-  .node.hot{border-color:rgba(245,158,11,.5);box-shadow:0 0 0 1px rgba(245,158,11,.12) inset}
-  .node .t{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-  .node .h{font-weight:650;margin-bottom:8px}
-  .node ul{margin:0;padding-left:16px;font-size:13.5px;color:var(--ink-soft);line-height:1.55}
-  .node li b{color:var(--ink);font-weight:600}
-  .arrow{display:flex;align-items:center;justify-content:center;color:var(--amber);font-size:22px;padding:0 2px}
-  .arrow small{display:none}
-
-  /* --- live leaderboard --- */
-  .live{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:start}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
-  .panel h3{margin:0 0 4px;font-size:15px}
-  .panel .meta{font-size:12.5px;color:var(--muted);margin-bottom:16px}
-  .lb{display:grid;gap:8px}
-  .row{display:grid;grid-template-columns:28px 130px minmax(0,1fr) 62px;gap:10px;align-items:center;padding:4px 6px;border-radius:8px;outline:none;cursor:default}
-  .row:hover,.row:focus{background:var(--bg2)}
-  .row .rk{font:12px var(--mono);color:var(--muted);text-align:right}
-  .row .nm{font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .row .bar{height:12px;background:linear-gradient(90deg,var(--line) 0,var(--line) 1px,transparent 1px) 0 0/25% 100% repeat-x;border-left:1px solid var(--line)}
-  .row .bar i{display:block;height:100%;background:var(--bar);border-radius:0 4px 4px 0;min-width:2px}
-  .row .v{font:12.5px var(--mono);color:var(--ink-soft);text-align:right}
-  .tile{display:grid;gap:6px}
-  .tile .big{font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1.05}
-  .tile .big small{font-size:14px;font-weight:500;color:var(--muted);margin-left:6px}
-  .tile .kvs{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13.5px;margin-top:8px}
-  .tile .kvs dt{color:var(--muted);font-family:var(--mono);font-size:12.5px}
-  .tile .kvs dd{margin:0;color:var(--ink-soft)}
-  .tip{position:fixed;z-index:20;pointer-events:none;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;max-width:260px}
-  .tip b{color:var(--ink)} .tip span{color:var(--muted)}
-  details.tbl{margin-top:14px;font-size:13px;color:var(--muted)}
-  details.tbl summary{cursor:pointer;color:var(--ink-soft)}
-  details.tbl table{border-collapse:collapse;width:100%;margin-top:8px}
-  details.tbl td,details.tbl th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;font-weight:500;color:var(--ink-soft)}
-  details.tbl th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
-  .empty{color:var(--muted);font-size:13.5px}
-
-  details.tbl{overflow-x:auto}
-  @media (max-width:860px){
-    nav{height:auto;flex-wrap:wrap;gap:6px 12px;padding:12px 0}
-    nav .links{flex-wrap:wrap;gap:8px 14px}
-    .flow{grid-template-columns:1fr}
-    .arrow{transform:rotate(90deg);padding:2px 0}
-    .live{grid-template-columns:minmax(0,1fr)}
-    .row{grid-template-columns:24px 96px minmax(0,1fr) 56px}
-  }
-
-  footer{padding:36px 0 48px;color:var(--muted);font-size:13.5px}
-  footer .row{display:flex;flex-wrap:wrap;gap:8px 22px;justify-content:space-between;align-items:center}
-  footer a{color:var(--ink-soft)}
-
-  @media (max-width:760px){
-    nav .links{gap:14px;font-size:13px}
-    .hero{padding:56px 0 40px}
-    .split{grid-template-columns:minmax(0,1fr)}
-    .kv{grid-template-columns:minmax(0,1fr);gap:2px 0}
-    .kv dd{margin-bottom:10px}
-    .cmd{font-size:12.5px}
-  }
-</style>
+<meta property="og:site_name" content="oddsrail">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.10.0","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
+</script>
 </head>
 <body>
 
-<header><div class="wrap"><nav>
-  <a class="brand" href="/">
-    <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="12" fill="#0e1116"/><g transform="rotate(-30 32 32)" stroke-linecap="round"><path d="M14 26v12M24 26v12M34 26v12M44 26v12" stroke="#564219" stroke-width="3"/><path d="M8 27h48M8 37h48" stroke="#f59e0b" stroke-width="5"/></g><circle cx="52" cy="11" r="4" fill="#f59e0b"/></svg>
-    oddsrail
-  </a>
-  <div class="links">
-    <a href="#why">Why</a>
-    <a href="#compare">Compare</a>
-    <a href="#tools">Tools</a>
-    <a href="#attribution">Attribution</a>
-    <a href="#live">Live</a>
-    <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
-    <a href="https://pypi.org/project/oddsrail/">PyPI</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24"> oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="#compare">Compare</a>
+      <a href="#lessons">Lessons</a>
+      <a href="#tools">Tools</a>
+      <a href="#attribution">Attribution</a>
+      <a href="#live">Live</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+      <a href="https://pypi.org/project/oddsrail/">PyPI</a>
+    </nav>
   </div>
-</nav></div></header>
+</header>
 
-<main>
-<div class="hero"><div class="wrap">
-  <div class="eyebrow">MCP server · Polymarket + Kalshi</div>
-  <h1>The rail AI agents use to <em>trade prediction markets.</em></h1>
-  <p class="lede">Live books, costed fills, settlement audits and non-custodial order routing — in one open-source MCP server your agent can call. Free to run, 0 bps on every trade, keys never leave your machine.</p>
+<main class="wrap">
+<article>
+
+<section class="hero" aria-labelledby="h-title">
+  <p class="kicker">MCP server for Polymarket and Kalshi</p>
+  <h1 id="h-title">The rail AI agents use to trade prediction markets.</h1>
+  <p class="lede">Live books, costed fills, settlement audits and non-custodial order routing in one open-source MCP server your agent can call. Free to run. 0 bps on every trade. Keys never leave your machine.</p>
+
   <div class="install">
-    <div class="cmd"><span>pip install oddsrail</span><button data-copy="pip install oddsrail">copy</button></div>
-    <div class="cmd"><span>claude mcp add --transport stdio oddsrail -- oddsrail</span><button data-copy="claude mcp add --transport stdio oddsrail -- oddsrail">copy</button></div>
+    <p class="cmd"><code>pip install oddsrail</code><button type="button" data-copy="pip install oddsrail">copy</button></p>
+    <p class="cmd"><code>claude mcp add --transport stdio oddsrail -- oddsrail</code><button type="button" data-copy="claude mcp add --transport stdio oddsrail -- oddsrail">copy</button></p>
   </div>
-  <div class="badges">
-    <span class="badge ok">Verified Polymarket builder</span>
-    <span class="badge"><b>35</b> tools · <b>3</b> workflow prompts</span>
-    <span class="badge"><b>0 bps</b> added to trades</span>
-    <span class="badge">Dry-run by default</span>
-    <span class="badge">MIT · self-hosted</span>
-  </div>
-</div></div>
 
-<section id="why"><div class="wrap">
-  <h2>Built from the things the raw API gets wrong</h2>
-  <p class="sub">Every one of these was found by driving the venues live, then encoded so an agent never has to rediscover it.</p>
-  <div class="grid">
-    <div class="card">
-      <div class="num">01 — ORDERBOOKS</div>
-      <h3>The book arrives worst-first</h3>
-      <p>Polymarket's raw orderbook lists bids ascending and asks descending, so <code>bids[0]</code> is the <em>worst</em> level. Every model's prior says index 0 is best.</p>
-      <div class="fix">normalises both venues to best-first and walks the book to quote what a size actually costs.</div>
-    </div>
-    <div class="card">
-      <div class="num">02 — REJECTIONS</div>
-      <h3>Rejections don't raise</h3>
-      <p>The exchange models a rejected order as a return value, not an exception. Reported carelessly, a rejection reads to an agent as a resting order.</p>
-      <div class="fix">branches on it — <code>accepted: false</code>, nothing attributed, and an unrecognised response shape is never reported as posted.</div>
-    </div>
-    <div class="card">
-      <div class="num">03 — GEOGRAPHY</div>
-      <h3>Geoblocks look healthy until the order</h3>
-      <p>Restricted jurisdictions are enforced at order placement. Public reads answer normally, so everything works right up to the trade.</p>
-      <div class="fix">classifies every failure shape — jurisdiction, network filter, ISP interstitial — and gives the agent an actionable hint instead of a retry loop.</div>
-    </div>
-    <div class="card">
-      <div class="num">04 — YOUR OWN FILLS</div>
-      <h3>"Account trades" returns everyone's</h3>
-      <p>The SDK call that sounds like your fills returns the market's public tape.</p>
-      <div class="fix">reads the operator's activity feed by wallet, with tx hashes.</div>
-    </div>
-    <div class="card">
-      <div class="num">05 — KALSHI</div>
-      <h3>Kalshi has no yes/no side</h3>
-      <p>Everything is quoted from the YES book as bid/ask; prices are dollar strings, not cents. Getting the translation backwards silently takes the opposite position.</p>
-      <div class="fix">lets the agent say <code>outcome=no, action=buy</code> and translates it — tested exhaustively, not by example.</div>
-    </div>
-    <div class="card">
-      <div class="num">06 — CROSS-VENUE</div>
-      <h3>A price gap is not an edge</h3>
-      <p>Identical wording on two venues does not mean identical settlement.</p>
-      <div class="fix">pairs candidates by similarity and close date, then audits resolution sources, UMA status and structure before anyone calls it arbitrage.</div>
-    </div>
-  </div>
-</div></section>
+  <dl class="facts">
+    <div><dt>status</dt><dd>Verified Polymarket builder</dd></div>
+    <div><dt>surface</dt><dd>39 tools, 4 workflow prompts</dd></div>
+    <div><dt>cost</dt><dd>0 bps added to trades</dd></div>
+    <div><dt>default</dt><dd>dry-run, with a paper ledger</dd></div>
+    <div><dt>license</dt><dd>MIT, self-hosted</dd></div>
+  </dl>
+</section>
 
-<section id="compare"><div class="wrap">
-  <h2>How it compares</h2>
+<section id="transcript" aria-labelledby="h-transcript">
+  <h2 id="h-transcript">What a session looks like</h2>
+  <p class="sub">A real exchange, captured on 2026-09-02. Tool results are abridged; the numbers are the venue's.</p>
+  <pre class="term"><span class="who">you</span>   find markets about bitcoin and quote 100 shares on the favourite
+
+<span class="who">agent</span> <span class="call">find_markets("bitcoin")</span>
+      {"markets": [{"venue": "polymarket",
+        "title": "Will the price of Bitcoin be above $72,000 on September 2?",
+        "yes_price": 0.991, "best_bid": 0.988, "best_ask": 0.994,
+        "spread": 0.006, "volume_24h": 196435, "market_id": "4430…2778"}, …]}
+
+<span class="who">agent</span> <span class="call">quote_cost("polymarket", "4430…2778", "BUY", 100)</span>
+      {"cost": {"fillable": true, "filled_size": 100, "avg_price": 0.994,
+        "notional": 99.4, "slippage_vs_best": 0.0,
+        "levels_consumed": [{"price": 0.994, "size": 100}]},
+       "fees": {"fees_enabled": true, "fee_type": "crypto_fees_v2", "taker_only": true}}
+
+<span class="who">agent</span> 100 YES on "Bitcoin above $72,000 on Sept 2" costs $99.40 at 0.994,
+      all at one level, no slippage. It pays $100 if it resolves YES: 0.6%
+      gross before the taker fee. place_order is in dry-run; say the word
+      and I will read back the intent before anything is signed.</pre>
+</section>
+
+<section id="compare" aria-labelledby="h-compare">
+  <h2 id="h-compare">How it compares</h2>
   <p class="sub">Against the raw venue APIs and the two closest products. Every cell is from the README, where each claim is sourced.</p>
-  <div class="tablewrap"><table class="cmp">
-    <thead><tr><th></th><th class="us">oddsrail</th><th>raw Polymarket API</th><th>raw Kalshi API</th><th>Crosswire</th><th>Parsec</th></tr></thead>
+  <div class="tablewrap">
+  <table class="cmp">
+    <thead><tr><th scope="col">Capability</th><th scope="col" class="us">oddsrail</th><th scope="col">raw Polymarket API</th><th scope="col">raw Kalshi API</th><th scope="col">Crosswire</th><th scope="col">Parsec</th></tr></thead>
     <tbody>
-      <tr><td>Both venues, one vocabulary</td><td class="us y"><code>find_markets</code></td><td>single-venue</td><td>single-venue</td><td>pairs from a frozen 43-pair graph</td><td class="y">5 venues</td></tr>
-      <tr><td>Book-walked cost + slippage</td><td class="us y"><code>quote_cost</code></td><td>book only, math is yours</td><td>book only</td><td>top-of-book, covered pairs only</td><td>preview on their infra</td></tr>
-      <tr><td>Order lifecycle (status / fills / kill switch)</td><td class="us y"></td><td>endpoints exist, with footguns¹</td><td>endpoints exist</td><td class="n">read-only</td><td class="y"></td></tr>
-      <tr><td>Gasless split / merge / redeem</td><td class="us y">your own relayer key</td><td>relayer exists, auth is yours</td><td>n/a</td><td class="n"></td><td>managed wallet</td></tr>
-      <tr><td>Resolution criteria surfaced</td><td class="us y">both venues</td><td>buried in fields</td><td>buried in fields</td><td class="y">deep — on <b>1 active pair</b></td><td class="n">zero UMA / rules tools</td></tr>
-      <tr><td>Trading signals</td><td class="us y">overshoot + dispute-risk</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td></tr>
-      <tr><td>Jurisdiction-aware failures</td><td class="us y">preflight + classified hints</td><td>a rejection at the order</td><td>enforced at signup</td><td>unknown</td><td>unknown</td></tr>
-      <tr><td>Open source / auditable</td><td class="us y">MIT, full source</td><td>n/a</td><td>n/a</td><td class="n">4-file listing shell, service proprietary</td><td class="n">closed</td></tr>
-      <tr><td>Self-hosted / non-custodial</td><td class="us y">keys never leave your machine</td><td class="y"></td><td class="y"></td><td>hosted only</td><td>stores keys or holds a managed wallet</td></tr>
-      <tr><td>Cost to the trader</td><td class="us"><b>0 bps, free tools</b></td><td>free</td><td>free</td><td>$0.02/call after 3/day</td><td>SaaS $0–250/mo; builder program keeps 55–85% of fees</td></tr>
-      <tr><td>Safety defaults</td><td class="us">dry-run default, destructive-tool annotations, venue quirks pre-encoded²</td><td>you discover them by rejection</td><td>same</td><td>n/a</td><td>unknown (closed)</td></tr>
+      <tr><th scope="row">Both venues, one vocabulary</th><td class="us y"><code>find_markets</code></td><td>single-venue</td><td>single-venue</td><td>pairs from a frozen 43-pair graph</td><td class="y">5 venues</td></tr>
+      <tr><th scope="row">Book-walked cost and slippage</th><td class="us y"><code>quote_cost</code></td><td>book only, math is yours</td><td>book only</td><td>top-of-book, covered pairs only</td><td>preview on their infra</td></tr>
+      <tr><th scope="row">Order lifecycle (status, fills, kill switch)</th><td class="us y">yes</td><td>endpoints exist, with footguns¹</td><td>endpoints exist</td><td class="n">read-only</td><td class="y">yes</td></tr>
+      <tr><th scope="row">Gasless split, merge, redeem</th><td class="us y">your own relayer key</td><td>relayer exists, auth is yours</td><td>n/a</td><td class="n">no</td><td>managed wallet</td></tr>
+      <tr><th scope="row">Operator guardrails</th><td class="us y">notional caps, allowed markets</td><td class="n">none</td><td class="n">none</td><td>n/a</td><td>unknown</td></tr>
+      <tr><th scope="row">Paper trading in dry-run</th><td class="us y">live-book fills, P&amp;L</td><td class="n">no</td><td class="n">no</td><td class="n">no</td><td>unknown</td></tr>
+      <tr><th scope="row">Resolution criteria surfaced</th><td class="us y">both venues</td><td>buried in fields</td><td>buried in fields</td><td class="y">deep, on <b>1 active pair</b></td><td class="n">zero UMA or rules tools</td></tr>
+      <tr><th scope="row">Trading signals</th><td class="us y">overshoot, dispute-risk</td><td class="n">no</td><td class="n">no</td><td class="n">no</td><td class="n">no</td></tr>
+      <tr><th scope="row">Realtime book streaming</th><td class="us y"><code>watch_book</code>, bounded</td><td>websocket, yours to wire</td><td>websocket, yours to wire</td><td class="n">no</td><td class="y">yes</td></tr>
+      <tr><th scope="row">Jurisdiction-aware failures</th><td class="us y">preflight, classified hints</td><td>a rejection at the order</td><td>enforced at signup</td><td>unknown</td><td>unknown</td></tr>
+      <tr><th scope="row">Open source, auditable</th><td class="us y">MIT, full source</td><td>n/a</td><td>n/a</td><td class="n">4-file listing shell, service proprietary</td><td class="n">closed</td></tr>
+      <tr><th scope="row">Self-hosted, non-custodial</th><td class="us y">keys never leave your machine</td><td class="y">yes</td><td class="y">yes</td><td>hosted only</td><td>stores keys or holds a managed wallet</td></tr>
+      <tr><th scope="row">Cost to the trader</th><td class="us"><b>0 bps, free tools</b></td><td>free</td><td>free</td><td>$0.02/call after 3/day</td><td>SaaS $0 to 250/mo; builder program keeps 55 to 85% of fees</td></tr>
+      <tr><th scope="row">Safety defaults</th><td class="us">dry-run default, destructive-tool annotations, venue quirks pre-encoded²</td><td>you discover them by rejection</td><td>same</td><td>n/a</td><td>unknown (closed)</td></tr>
     </tbody>
-  </table></div>
-  <div class="foot">
-    <p>¹ The raw Polymarket API <em>has</em> the endpoints — and models rejections as <code>ok:false</code> return values, orders its books worst-first, ships a trades endpoint that returns the market's <b>public</b> tape, and enforces an undocumented $1 minimum notional. oddsrail exists because we hit every one of those and encoded the fix.</p>
-    <p>² Kalshi prices are dollar strings (integer cents were removed 2026-03), its orderbook is bids-only on both sides, and its current SDK requires Python ≥3.13. All normalised here.</p>
-    <p><b>Where the others are honestly ahead:</b> Parsec covers 5 venues to our 2 and has websocket streaming; Crosswire's settlement-audit output on its one covered pair is deeper than our <code>resolution_criteria</code>.</p>
+  </table>
   </div>
-</div></section>
+  <footer class="foot">
+    <p>¹ The raw Polymarket API has the endpoints. It also models rejections as <code>ok:false</code> return values, orders its books worst-first, ships a trades endpoint that returns the market's public tape, and enforces an undocumented $1 minimum notional. oddsrail exists because we hit every one of those and encoded the fix.</p>
+    <p>² Kalshi prices are dollar strings (integer cents were removed 2026-03), its orderbook is bids-only on both sides, and its current SDK requires Python 3.13 or newer. All normalised here.</p>
+    <p><b>Where the others are honestly ahead:</b> Parsec covers 5 venues to our 2. Crosswire's settlement-audit output on its one covered pair is deeper than our <code>resolution_criteria</code>, and it takes x402 micropayments natively. Hosted services need zero install.</p>
+  </footer>
+</section>
 
-<section id="tools"><div class="wrap">
-  <h2>What's inside</h2>
-  <p class="sub">27 read-only tools that need no keys, 8 trading tools that respect dry-run — including gasless split, merge and redeem through your own relayer key — and three prompts that encode the order of operations that keeps an agent out of trouble.</p>
-  <div class="tools">
-    <div class="card"><h3>Market data</h3><ul><li>search_markets</li><li>get_market</li><li>get_orderbook</li><li>price_history</li><li>closing_soon</li><li>kalshi_*</li></ul></div>
-    <div class="card"><h3>Cross-venue</h3><ul><li>find_markets</li><li>compare_venues</li><li>settlement_audit</li><li>resolution_criteria</li></ul></div>
-    <div class="card"><h3>Cost &amp; sizing</h3><ul><li>quote_cost</li><li>position_size</li><li>overshoot_signal</li><li>dispute_risk</li></ul></div>
-    <div class="card"><h3>Trading</h3><ul><li>place_order</li><li>cancel_order</li><li>cancel_all_orders</li><li>kalshi_place_order</li><li>split_position</li><li>merge_positions</li><li>redeem_positions</li></ul></div>
-    <div class="card"><h3>Lifecycle</h3><ul><li>order_status</li><li>open_orders</li><li>my_fills</li><li>my_positions</li><li>server_info</li></ul></div>
-    <div class="card"><h3>Prompts</h3><ul><li>find_fade_setup</li><li>check_cross_venue_edge</li><li>daily_review</li></ul></div>
+<section id="lessons" aria-labelledby="h-lessons">
+  <h2 id="h-lessons">Built from the things the raw API gets wrong</h2>
+  <p class="sub">Each of these was found by driving the venues live, then encoded so an agent never has to rediscover it.</p>
+  <ol class="lessons">
+    <li><h3>The book arrives worst-first</h3><p>Polymarket's raw orderbook lists bids ascending and asks descending, so <code>bids[0]</code> is the worst level. Every model's prior says index 0 is best. oddsrail normalises both venues to best-first and walks the book to quote what a size actually costs.</p></li>
+    <li><h3>Rejections don't raise</h3><p>The exchange models a rejected order as a return value, not an exception. Reported carelessly, a rejection reads to an agent as a resting order. oddsrail branches on it: <code>accepted: false</code>, nothing attributed, and an unrecognised response shape is never reported as posted.</p></li>
+    <li><h3>Geoblocks look healthy until the order</h3><p>Restricted jurisdictions are enforced at order placement. Public reads answer normally, so everything works right up to the trade. oddsrail classifies every failure shape (jurisdiction, network filter, ISP interstitial, a missing local CA bundle) and gives the agent an actionable hint instead of a retry loop.</p></li>
+    <li><h3>"Account trades" returns everyone's</h3><p>The SDK call that sounds like your fills returns the market's public tape. oddsrail reads the operator's activity feed by wallet, with transaction hashes.</p></li>
+    <li><h3>Kalshi has no yes/no side</h3><p>Everything is quoted from the YES book as bid and ask; prices are dollar strings, not cents. Getting the translation backwards silently takes the opposite position. oddsrail lets the agent say <code>outcome=no, action=buy</code> and translates it, tested exhaustively rather than by example.</p></li>
+    <li><h3>A price gap is not an edge</h3><p>Identical wording on two venues does not mean identical settlement. oddsrail pairs candidates by similarity and close date, then audits resolution sources, UMA status and structure before anyone calls it arbitrage.</p></li>
+  </ol>
+</section>
+
+<section id="tools" aria-labelledby="h-tools">
+  <h2 id="h-tools">What's inside</h2>
+  <p class="sub">30 read-only tools that need no keys, 9 trading tools that respect dry-run and the operator's guardrails, and four prompts that encode the order of operations that keeps an agent out of trouble.</p>
+  <div class="cols">
+    <div><h3>Market data</h3><ul><li>search_markets</li><li>get_market</li><li>get_orderbook</li><li>watch_book</li><li>price_history</li><li>closing_soon</li><li>kalshi_*</li></ul></div>
+    <div><h3>Cross-venue</h3><ul><li>find_markets</li><li>compare_venues</li><li>settlement_audit</li><li>resolution_criteria</li></ul></div>
+    <div><h3>Cost and sizing</h3><ul><li>quote_cost</li><li>position_size</li><li>overshoot_signal</li><li>dispute_risk</li></ul></div>
+    <div><h3>Trading</h3><ul><li>place_order</li><li>cancel_order</li><li>cancel_all_orders</li><li>kalshi_place_order</li><li>split_position</li><li>merge_positions</li><li>redeem_positions</li></ul></div>
+    <div><h3>Lifecycle</h3><ul><li>order_status</li><li>open_orders</li><li>my_fills</li><li>my_positions</li><li>redeemable_positions</li><li>paper_positions</li><li>server_info</li></ul></div>
+    <div><h3>Prompts</h3><ul><li>find_fade_setup</li><li>check_cross_venue_edge</li><li>settle_resolved</li><li>daily_review</li></ul></div>
   </div>
-</div></section>
+</section>
 
-<section id="flow"><div class="wrap">
-  <h2>Where the builder code goes</h2>
-  <p class="sub">Nothing is proxied and nothing is stored. The only thing oddsrail adds to your order is a public attribution tag — signed by your key, on your machine.</p>
-  <div class="flow">
-    <div class="node"><div class="t">1 · your agent</div><div class="h">Any MCP client</div><ul><li>Claude Code, Desktop, Cursor…</li><li>speaks plain intent: <b>"buy 100 YES at 0.62"</b></li></ul></div>
-    <div class="arrow">→</div>
-    <div class="node hot"><div class="t">2 · oddsrail · on your machine</div><div class="h">Checks, then signs</div><ul><li><b>dry-run gate</b> — simulate unless <code>ODDSRAIL_DRY_RUN=0</code></li><li>book-walked cost, jurisdiction preflight</li><li>builder code placed in the order struct, then <b>signed with your key</b></li></ul></div>
-    <div class="arrow">→</div>
-    <div class="node"><div class="t">3 · venue</div><div class="h">Polymarket CLOB · Kalshi</div><ul><li>your own credentials</li><li>rejections branched, never reported as resting</li><li>0 bps builder fee added</li></ul></div>
-    <div class="arrow">→</div>
-    <div class="node"><div class="t">4 · on-chain</div><div class="h">CTF Exchange V2</div><ul><li>every <code>OrderFilled</code> event carries the code</li><li>attribution is public and auditable</li><li>weekly pool share paid by Polymarket</li></ul></div>
-  </div>
-</div></section>
+<section id="flow" aria-labelledby="h-flow">
+  <h2 id="h-flow">Where the builder code goes</h2>
+  <p class="sub">Nothing is proxied and nothing is stored. The only thing oddsrail adds to your order is a public attribution tag, signed by your key, on your machine.</p>
+  <ol class="flow">
+    <li><span class="step">1. your agent</span><strong>Any MCP client</strong><ul><li>Claude Code, Desktop, Cursor and others</li><li>speaks plain intent: "buy 100 YES at 0.62"</li></ul></li>
+    <li class="hot"><span class="step">2. oddsrail, on your machine</span><strong>Checks, then signs</strong><ul><li>guardrails, then the dry-run gate: simulate unless <code>ODDSRAIL_DRY_RUN=0</code></li><li>book-walked cost, jurisdiction preflight</li><li>builder code placed in the order struct, then signed with your key</li></ul></li>
+    <li><span class="step">3. venue</span><strong>Polymarket CLOB, Kalshi</strong><ul><li>your own credentials</li><li>rejections branched, never reported as resting</li><li>0 bps builder fee added</li></ul></li>
+    <li><span class="step">4. on-chain</span><strong>CTF Exchange V2</strong><ul><li>every <code>OrderFilled</code> event carries the code</li><li>attribution is public and auditable</li><li>weekly pool share paid by Polymarket</li></ul></li>
+  </ol>
+</section>
 
-<section id="attribution"><div class="wrap">
-  <h2>How it pays for itself without charging you</h2>
+<section id="attribution" aria-labelledby="h-attr">
+  <h2 id="h-attr">How it pays for itself without charging you</h2>
   <div class="split">
+    <dl class="kv">
+      <dt>custody</dt><dd><b>None.</b> You run the server; your keys sign your orders on your machine. Nothing is proxied and nothing is stored.</dd>
+      <dt>fees</dt><dd><b>0 bps.</b> Orders carry a builder code registered at 0 bps maker and 0 bps taker. No fee is added to any trade.</dd>
+      <dt>attribution</dt><dd>The code is placed in the CLOB V2 order struct before signing, so attribution is on-chain in every <code>OrderFilled</code> event. The project earns only a share of Polymarket's weekly builder pool, which Polymarket pays out of its own program.</dd>
+      <dt>override</dt><dd>Set <code>ODDSRAIL_BUILDER_CODE</code> to your own code and the share accrues to you instead. The default is a default, not a lock-in.</dd>
+      <dt>status</dt><dd><b>Verified</b> in Polymarket's builder program, with the attribution pattern for self-hosted, non-custodial tools confirmed by their builder team.</dd>
+      <dt>guardrails</dt><dd><code>ODDSRAIL_MAX_ORDER_NOTIONAL</code>, <code>ODDSRAIL_MAX_SESSION_NOTIONAL</code>, <code>ODDSRAIL_MAX_OPEN_ORDERS</code>, <code>ODDSRAIL_ALLOWED_MARKETS</code>. Set by you, enforced before any request, in dry-run too. The agent cannot change them.</dd>
+    </dl>
     <div>
-      <dl class="kv">
-        <dt>custody</dt><dd><b>None.</b> You run the server; your keys sign your orders on your machine. Nothing is proxied and nothing is stored.</dd>
-        <dt>fees</dt><dd><b>0 bps.</b> Orders carry a builder code registered at 0 bps maker / 0 bps taker — no fee is added to any trade.</dd>
-        <dt>attribution</dt><dd>The code is placed in the CLOB V2 order struct <b>before signing</b>, so attribution is on-chain in every <code>OrderFilled</code> event. The project earns only a share of Polymarket's weekly builder pool, which Polymarket pays out of its own program.</dd>
-        <dt>override</dt><dd>Set <code>ODDSRAIL_BUILDER_CODE</code> to your own code and the share accrues to you instead. The default is a default, not a lock-in.</dd>
-        <dt>status</dt><dd><b>Verified</b> in Polymarket's builder program, with the attribution pattern for self-hosted, non-custodial tools confirmed by their builder team.</dd>
-      </dl>
-      <p class="note">Kalshi's REST API has no attribution field, so Kalshi flow is never attributed or monetised. It is in oddsrail for coverage, not routing revenue.</p>
-    </div>
-    <div>
-<pre><b># the whole configuration</b>
-export ODDSRAIL_DRY_RUN=1          <b># default: simulate</b>
-export ODDSRAIL_BUILDER_CODE=0x…   <b># optional: yours</b>
-export POLYMARKET_PRIVATE_KEY=…    <b># only to trade</b>
-export KALSHI_KEY_ID=…             <b># only for Kalshi private</b>
+<pre class="conf"># the whole configuration
+export ODDSRAIL_DRY_RUN=1          # default: simulate, papered
+export ODDSRAIL_BUILDER_CODE=0x…   # optional: yours
+export ODDSRAIL_MAX_ORDER_NOTIONAL=25
+export POLYMARKET_PRIVATE_KEY=…    # only to trade
+export POLYMARKET_RELAYER_API_KEY=… # only for gasless ops
+export KALSHI_KEY_ID=…             # only for Kalshi private
 
-<b># then, in any MCP client</b>
+# then, in any MCP client
 "find markets about the world cup and
  quote the cost of 100 shares on the favourite"</pre>
-      <p class="note">Both venues restrict trading by jurisdiction; reads work from restricted places. <code>server_info</code> reports this machine's geoblock verdict and venue reachability before your first order. <a href="https://github.com/hmesutozsoy/oddsrail#where-this-works">Where this works →</a></p>
+      <p class="note">Both venues restrict trading by jurisdiction; reads work from restricted places. <code>server_info</code> reports this machine's geoblock verdict and venue reachability before your first order. <a href="https://github.com/hmesutozsoy/oddsrail#where-this-works">Where this works</a>. Kalshi's REST API has no attribution field, so Kalshi flow is never attributed or monetised.</p>
     </div>
   </div>
-</div></section>
-<section id="live"><div class="wrap">
-  <h2>Live from the builder program</h2>
-  <p class="sub">Fetched in your browser from Polymarket's public data API — nothing here is a screenshot. Reward epochs run Sunday 00:00 → Saturday 23:59 UTC.</p>
+</section>
+
+<section id="live" aria-labelledby="h-live">
+  <h2 id="h-live">Live from the builder program</h2>
+  <p class="sub">Fetched in your browser from Polymarket's public data API. Nothing here is a screenshot. Reward epochs run Sunday 00:00 to Saturday 23:59 UTC.</p>
   <div class="live">
     <div class="panel">
       <h3>Top 10 builders by attributed volume, this week</h3>
-      <div class="meta" id="lb-meta">loading…</div>
+      <p class="meta" id="lb-meta">loading…</p>
       <div class="lb" id="lb" aria-live="polite"></div>
-      <details class="tbl" id="lb-tbl-wrap"><summary>View as table</summary><table id="lb-tbl"><thead><tr><th>#</th><th>Builder</th><th>Volume</th><th>Active users</th><th>Verified</th></tr></thead><tbody></tbody></table></details>
+      <details class="tbl"><summary>View as table</summary><table id="lb-tbl"><thead><tr><th scope="col">#</th><th scope="col">Builder</th><th scope="col">Volume</th><th scope="col">Active users</th><th scope="col">Verified</th></tr></thead><tbody></tbody></table></details>
     </div>
-    <div class="panel tile" id="me">
+    <div class="panel tile">
       <h3>oddsrail, this week</h3>
-      <div class="meta" id="me-meta">loading…</div>
-      <div class="big" id="me-big">—</div>
+      <p class="meta" id="me-meta">loading…</p>
+      <p class="big" id="me-big">…</p>
       <dl class="kvs" id="me-kvs"></dl>
-      <p class="note" style="margin-top:14px">Attributed volume is the sum of matched orders carrying the oddsrail code. Verified builders share a weekly USDC pool pro-rata to volume — there is no top-N cutoff, only a ranking.</p>
+      <p class="note">Attributed volume is the sum of matched orders carrying the oddsrail code. Verified builders share a weekly USDC pool pro-rata to volume. There is no top-N cutoff, only a ranking.</p>
     </div>
   </div>
+  <noscript><p class="note">This board needs JavaScript to fetch live data. The same leaderboard is at <a href="https://builders.polymarket.com/">builders.polymarket.com</a>.</p></noscript>
   <div class="tip" id="tip" role="tooltip"></div>
-</div></section>
+</section>
+
+</article>
 </main>
 
-<footer><div class="wrap"><div class="row">
-  <div>oddsrail · MIT · <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a> · <a href="https://pypi.org/project/oddsrail/">PyPI</a> · <a href="https://registry.modelcontextprotocol.io/?search=oddsrail">MCP registry</a> · <a href="https://github.com/hmesutozsoy/oddsrail/blob/main/CHANGELOG.md">Changelog</a></div>
-  <div>Not financial or legal advice. Trading prediction markets involves risk; eligibility depends on where you are and who you are.</div>
-</div></div></footer>
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail, MIT. <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a> · <a href="https://pypi.org/project/oddsrail/">PyPI</a> · <a href="https://registry.modelcontextprotocol.io/?search=oddsrail">MCP registry</a> · <a href="https://github.com/hmesutozsoy/oddsrail/blob/main/CHANGELOG.md">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="/index.md">Markdown</a></p>
+    <p>Not financial or legal advice. Trading prediction markets involves risk; eligibility depends on where you are and who you are.</p>
+  </div>
+</footer>
 
-<script>
-  document.querySelectorAll('[data-copy]').forEach(function(b){
-    b.addEventListener('click',function(){
-      navigator.clipboard.writeText(b.dataset.copy).then(function(){
-        b.textContent='copied'; setTimeout(function(){b.textContent='copy'},1400);
-      });
-    });
-  });
-
-  (function(){
-    var API='https://data-api.polymarket.com/v1/builders/leaderboard?timePeriod=WEEK&limit=50&offset=';
-    var CODE='0xa576c5ce9fabba322d8fa3a8d16738221d1b6b2b0c57b544f757fa9e45a09a90';
-    var lb=document.getElementById('lb'), meta=document.getElementById('lb-meta'), tb=document.querySelector('#lb-tbl tbody');
-    var tip=document.getElementById('tip');
-    function fmt(v){v=+v;return v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(v<1e4?1:0)+'k':'$'+Math.round(v);}
-    function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-    function showTip(e,r){tip.innerHTML='<b>'+esc(r.builder)+'</b><br><span>volume</span> '+fmt(r.volume)+'<br><span>active users</span> '+esc(r.activeUsers)+(r.verified?'<br><span>verified builder</span>':'');
-      tip.style.display='block';var x=Math.min(e.clientX+14,window.innerWidth-280),y=e.clientY+14;tip.style.left=x+'px';tip.style.top=y+'px';}
-    function hideTip(){tip.style.display='none';}
-    function get(off){return fetch(API+off,{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});}
-    function stamp(){var d=new Date();return d.toISOString().slice(11,16)+' UTC';}
-    get(0).then(function(page){
-      var top=page.slice(0,10), max=Math.max.apply(null,top.map(function(r){return +r.volume;}));
-      lb.innerHTML='';tb.innerHTML='';
-      top.forEach(function(r){
-        var row=document.createElement('div');row.className='row';row.tabIndex=0;
-        var w=Math.max(1,100*(+r.volume)/max);
-        row.innerHTML='<div class="rk">'+esc(r.rank)+'</div><div class="nm">'+esc(r.builder)+'</div><div class="bar"><i style="width:'+w.toFixed(1)+'%"></i></div><div class="v">'+fmt(r.volume)+'</div>';
-        row.addEventListener('mousemove',function(e){showTip(e,r);});row.addEventListener('mouseleave',hideTip);
-        row.addEventListener('focus',function(){var b=row.getBoundingClientRect();showTip({clientX:b.left+40,clientY:b.top},r);});row.addEventListener('blur',hideTip);
-        lb.appendChild(row);
-        var tr=document.createElement('tr');tr.innerHTML='<td>'+esc(r.rank)+'</td><td>'+esc(r.builder)+'</td><td>'+fmt(r.volume)+'</td><td>'+esc(r.activeUsers)+'</td><td>'+(r.verified?'yes':'no')+'</td>';tb.appendChild(tr);
-      });
-      meta.textContent='data-api.polymarket.com · fetched '+stamp();
-      return page;
-    }).then(function(first){
-      var mb=document.getElementById('me-big'), mm=document.getElementById('me-meta'), kv=document.getElementById('me-kvs');
-      function find(rows){for(var i=0;i<rows.length;i++){if((rows[i].builderCode||'').toLowerCase()===CODE)return rows[i];}return null;}
-      function render(r,scanned){
-        if(!r){mb.innerHTML='outside top '+scanned+'<small>this week</small>';mm.textContent='fetched '+stamp();kv.innerHTML='<dt>status</dt><dd>verified builder · code live on-chain</dd>';return;}
-        mb.innerHTML=fmt(r.volume)+'<small>attributed</small>';mm.textContent='fetched '+stamp();
-        kv.innerHTML='<dt>rank</dt><dd>#'+esc(r.rank)+' of all builders this week</dd><dt>active users</dt><dd>'+esc(r.activeUsers)+'</dd><dt>status</dt><dd>'+(r.verified?'verified builder':'unverified')+'</dd>';
-      }
-      var hit=find(first);if(hit)return render(hit,50);
-      var off=50;
-      (function step(){
-        if(off>=500)return render(null,off);
-        get(off).then(function(p){var h=find(p);if(h||!p.length)return render(h,off+p.length);off+=50;step();}).catch(function(){render(null,off);});
-      })();
-    }).catch(function(e){
-      meta.textContent='';lb.innerHTML='<div class="empty">Could not reach data-api.polymarket.com from your browser ('+esc(e.message)+'). The live board is at builders.polymarket.com.</div>';
-      document.getElementById('me-meta').textContent='';document.getElementById('me-big').textContent='—';
-    });
-  })();
-</script>
+<script src="/app.js" defer></script>
 </body>
 </html>

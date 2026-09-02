@@ -363,6 +363,10 @@ async def place_order(ticker: str, outcome: str, action: str, price: float,
         raise ValueError("count must be positive")
 
     side, yes_price = _to_yes_book(outcome, action, p)
+    from . import guard
+    block = guard.check_order("kalshi", ticker, float(p) * float(count), dry_run())
+    if block:
+        return {**block, "venue": "kalshi", "ticker": ticker}
     body = {
         "ticker": ticker,
         "side": side,
@@ -387,6 +391,7 @@ async def place_order(ticker: str, outcome: str, action: str, price: float,
                 "note": "set ODDSRAIL_DRY_RUN=0 to post real orders"}
     if not has_credentials():
         raise RuntimeError("Kalshi credentials required to place real orders")
+    guard.record_live_submission(float(p) * float(count))
     resp = await _post("/portfolio/events/orders", body)
     return {"dry_run": False, "posted": intent, "response": resp}
 

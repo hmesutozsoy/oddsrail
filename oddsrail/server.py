@@ -17,12 +17,14 @@ from mcp.types import ToolAnnotations
 from . import audit as au
 from . import crossvenue as xv
 from . import geo
+from . import guard
+from . import paper
 from . import kalshi as kx
 from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 
 srv = MCPServer(
     name="oddsrail",
@@ -43,7 +45,11 @@ srv = MCPServer(
         "verdict and venue reachability. split_position / merge_positions / "
         "redeem_positions are gasless via Polymarket's relayer and need the "
         "operator's own POLYMARKET_RELAYER_API_KEY (+_ADDRESS); they respect "
-        "dry-run and never fall back to a gas-paying broadcast."
+        "dry-run and never fall back to a gas-paying broadcast. In dry-run, "
+        "Polymarket orders are papered against the live book and "
+        "paper_positions shows the simulated P&L. Operator guardrails "
+        "(per-order and per-session notional caps, allowed markets) are "
+        "enforced before any request and cannot be changed by the agent."
     ),
 )
 
@@ -648,6 +654,63 @@ async def redeem_positions(condition_id: str = "", market_id: str = "") -> str:
                     host="the Polymarket relayer")
 
 
+# ------------------------------ paper trading ------------------------------ #
+
+@srv.tool(description="Paper-trading portfolio for dry-run: cash, positions "
+                      "at current marks, realized and unrealized P&L, resting "
+                      "paper orders (filled here if the market has crossed "
+                      "them). Dry-run Polymarket orders are papered against "
+                      "the live book automatically. Simulated: no queue, no "
+                      "impact, no fees, so results are an upper bound.",
+           annotations=READ, structured_output=False)
+async def paper_positions() -> str:
+    if not paper.enabled():
+        return _j({"enabled": False, "note": "ODDSRAIL_PAPER=0 disables the paper ledger"})
+    try:
+        return _j(await paper.positions())
+    except Exception as e:
+        return _err(e, host="the Polymarket CLOB")
+
+
+@srv.tool(description="Reset the paper-trading ledger to its starting "
+                      "bankroll (ODDSRAIL_PAPER_BANKROLL, default 1000 USDC). "
+                      "Deletes simulated fills and positions; touches nothing "
+                      "real.",
+           annotations=TRADE, structured_output=False)
+def paper_reset() -> str:
+    return _j(paper.reset())
+
+
+# ------------------------------ realtime ----------------------------------- #
+
+@srv.tool(description="Stream one Polymarket token's realtime market events "
+                      "(book snapshot, price changes, trades) for up to "
+                      "`seconds` (1-60) or `max_events`, then return them. "
+                      "Use after get_orderbook when you need to see the book "
+                      "MOVE before acting; a quiet market may deliver only "
+                      "the initial snapshot.",
+           annotations=READ, structured_output=False)
+async def watch_book(token_id: str, seconds: float = 10.0,
+                     max_events: int = 100) -> str:
+    try:
+        return _j(await pm.watch_book(token_id, seconds, max_events))
+    except Exception as e:
+        return _err(e, "token_id is the numeric CLOB id from outcomes.yes.token_id",
+                    host="the Polymarket websocket")
+
+
+@srv.tool(description="What the operator can turn back into USDC now: "
+                      "redeemable (resolved, winning) positions and mergeable "
+                      "(hold both YES and NO) positions, with the ids the "
+                      "gasless tools take. Uses the configured wallet.",
+           annotations=READ, structured_output=False)
+async def redeemable_positions(limit: int = 200) -> str:
+    try:
+        return _j(await trading.redeemable_positions(limit))
+    except Exception as e:
+        return _err(e, host="the Polymarket data API")
+
+
 @srv.tool(description="READ BEFORE TRUSTING A PRICE: the full resolution "
                       "contract for a market — what exactly resolves YES, who "
                       "resolves it, from which sources. venue is 'polymarket' "
@@ -780,6 +843,24 @@ State plainly if the conclusion is 'no edge here' — that is the usual and
 correct outcome."""
 
 
+@srv.prompt(description="Turn resolved and hedged positions back into USDC, "
+                        "gasless, with a dry-run read-back first.")
+def settle_resolved() -> str:
+    return """Settle whatever can be settled on the operator's Polymarket account.
+
+1. server_info() — confirm relayer_key_configured is true and note dry_run.
+2. redeemable_positions() — two lists: redeemable (resolved winners) and
+   mergeable (both sides held).
+3. For each redeemable entry: redeem_positions(condition_id=...). For each
+   mergeable entry: merge_positions(condition_id=..., amount="max").
+   In dry-run these return the intent; read each back before the operator
+   sets ODDSRAIL_DRY_RUN=0.
+4. After live submissions: report transaction ids and outcomes, then
+   my_positions() to confirm the balances moved.
+
+Do not resubmit anything whose outcome is "unknown"; report it instead."""
+
+
 @srv.prompt(description="Daily review of open exposure: positions, resting "
                         "orders, recent fills, attribution.")
 def daily_review() -> str:
@@ -816,6 +897,10 @@ async def server_info() -> str:
         "attribution": "on-chain (CLOB V2 builder field)",
         "custody": "none — self-hosted, keys stay local",
         "relayer_key_configured": trading.relayer_configured(),
+        "guardrails": guard.status(),
+        "paper_trading": {"enabled": paper.enabled(),
+                          "ledger": str(paper.ledger_path()),
+                          "bankroll_usd": paper.bankroll()},
         "venues": {
             "polymarket": {"attribution": "on-chain builder code",
                            "trading_key": has_key,
@@ -858,6 +943,13 @@ Environment:
   POLYMARKET_RELAYER_API_KEY / _ADDRESS
                             your own Relayer API key (Settings -> Relayer API
                             keys) for gasless split/merge/redeem.
+  ODDSRAIL_MAX_ORDER_NOTIONAL / ODDSRAIL_MAX_SESSION_NOTIONAL /
+  ODDSRAIL_MAX_OPEN_ORDERS / ODDSRAIL_ALLOWED_MARKETS
+                            operator guardrails; unset = unlimited. Enforced
+                            before any request, in dry-run too.
+  ODDSRAIL_PAPER=1          paper-trade dry-run orders against the live book
+                            (ledger: ~/.oddsrail/paper.json; bankroll via
+                            ODDSRAIL_PAPER_BANKROLL).
   KALSHI_KEY_ID             Kalshi API key id (private endpoints only).
   KALSHI_PRIVATE_KEY_PATH   PKCS#8 PEM for Kalshi request signing.
   KALSHI_DEMO=1             use Kalshi's demo environment.
