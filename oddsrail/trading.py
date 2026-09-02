@@ -16,6 +16,16 @@ Set ODDSRAIL_BUILDER_CODE to your own code to claim that share instead; the
 project code is a default, never a lock-in. server_info reports which is
 in use.
 
+Gasless position management (relayer):
+split / merge / redeem go through Polymarket's relayer, which needs a
+per-operator Relayer API key (polymarket.com -> Settings -> Relayer API keys)
+in POLYMARKET_RELAYER_API_KEY + POLYMARKET_RELAYER_API_KEY_ADDRESS. That is
+the pattern Polymarket's builder team recommends for self-hosted tools: no
+builder secret ships with the product, each operator authenticates the
+relayer as themselves. Without the key these tools return a structured
+"not configured" answer and send nothing — they never fall back to a
+gas-paying EOA broadcast, because a surprise gas spend is not a feature.
+
 Safety model:
 - ODDSRAIL_DRY_RUN=1 (default): place_order returns the exact order it WOULD
   post, never touches the exchange. Set ODDSRAIL_DRY_RUN=0 to trade.
@@ -60,6 +70,16 @@ def builder_code_source() -> str:
     return "none configured"
 
 
+def relayer_key() -> tuple[str, str] | None:
+    k = os.environ.get("POLYMARKET_RELAYER_API_KEY")
+    a = os.environ.get("POLYMARKET_RELAYER_API_KEY_ADDRESS")
+    return (k, a) if k and a else None
+
+
+def relayer_configured() -> bool:
+    return relayer_key() is not None
+
+
 async def _client():
     global _secure
     if _secure is None:
@@ -69,9 +89,15 @@ async def _client():
             raise RuntimeError(
                 "POLYMARKET_PRIVATE_KEY not set — trading tools are disabled. "
                 "Read-only tools work without it.")
+        api_key = None
+        rk = relayer_key()
+        if rk:
+            from polymarket.auth import RelayerApiKey
+            api_key = RelayerApiKey(key=rk[0], address=rk[1])
         _secure = await AsyncSecureClient.create(
             private_key=key,
             wallet=os.environ.get("POLYMARKET_WALLET_ADDRESS"),
+            api_key=api_key,
         )
     return _secure
 
@@ -262,3 +288,117 @@ async def my_fills(limit: int = 25):
          "size": a.get("size"), "price": a.get("price"),
          "market": str(a.get("title"))[:80], "tx": a.get("transactionHash")}
         for a in (acts if isinstance(acts, list) else [])]}
+
+
+# ------------------------- gasless position management ------------------- #
+
+_USDC_BASE = 1_000_000  # USDC has 6 decimals; the SDK takes base units
+
+_RELAYER_NOT_CONFIGURED = (
+    "POLYMARKET_RELAYER_API_KEY and POLYMARKET_RELAYER_API_KEY_ADDRESS are not "
+    "set. Gasless split/merge/redeem go through Polymarket's relayer, which "
+    "needs YOUR OWN Relayer API key: polymarket.com -> Settings -> Relayer API "
+    "keys. Nothing was sent. (Unverified builders get 100 relayer requests a "
+    "day; verified builders 10,000.)")
+
+
+def usdc_to_base(amount_usdc) -> int:
+    """USDC -> integer base units, refusing anything that is not a positive
+    amount. Rounds to the nearest micro-USDC rather than truncating."""
+    try:
+        v = float(amount_usdc)
+    except (TypeError, ValueError):
+        raise ValueError("amount_usdc must be a number")
+    if not v > 0:
+        raise ValueError("amount_usdc must be positive")
+    return int(round(v * _USDC_BASE))
+
+
+async def _relayed(action: str, intent: dict, run):
+    """Shared path for the three relayer operations.
+
+    `run(client)` returns the SDK transaction handle. The outcome is awaited
+    so the agent gets a terminal answer; if waiting itself fails, the handle
+    ids are still returned so the agent can report rather than resubmit.
+    """
+    if dry_run():
+        return {"dry_run": True, "would_submit": intent,
+                "note": "set ODDSRAIL_DRY_RUN=0 to submit real relayer transactions"}
+    if not relayer_configured():
+        return {"dry_run": False, "accepted": False, "submitted": intent,
+                "error": _RELAYER_NOT_CONFIGURED}
+    from .polymarket import dump
+    try:
+        client = await _client()
+        handle = await run(client)
+    except Exception as e:
+        out = {"dry_run": False, "accepted": False,
+               "error_type": type(e).__name__, "error": str(e),
+               "submitted": intent,
+               "note": (f"{action} was not confirmed. If this was a timeout it "
+                        "MAY have been relayed — check positions before "
+                        "resubmitting; any other failure happened before the "
+                        "relayer accepted it.")}
+        cls = geo.classify(e, getattr(e, "status", None), venue="polymarket")
+        if cls:
+            out["failure_class"] = cls
+            out["hint"] = geo.HINTS[cls].format(host="the Polymarket relayer")
+        return out
+    result = {"dry_run": False, "accepted": True, "submitted": intent,
+              "transaction_id": getattr(handle, "transaction_id", None),
+              "transaction_hash": getattr(handle, "transaction_hash", None)}
+    try:
+        result["outcome"] = dump(await handle.wait())
+    except Exception as e:
+        result["outcome"] = "unknown"
+        result["error_type"] = type(e).__name__
+        result["error"] = str(e)
+        result["note"] = ("the relayer ACCEPTED the transaction but waiting for "
+                          "its terminal state failed — do not resubmit; check "
+                          "my_positions and the transaction hash instead")
+    return result
+
+
+async def split_position(condition_id: str, amount_usdc: float):
+    """USDC collateral -> a full YES+NO set for one market (gasless)."""
+    if not condition_id:
+        raise ValueError("condition_id is required")
+    base = usdc_to_base(amount_usdc)
+    intent = {"action": "split", "condition_id": condition_id,
+              "amount_usdc": float(amount_usdc), "amount_base_units": base,
+              "via": "relayer (gasless)"}
+    return await _relayed("split", intent,
+                          lambda c: c.split_position(condition_id=condition_id,
+                                                     amount=base))
+
+
+async def merge_positions(condition_id: str, amount="max"):
+    """Matching YES+NO shares -> USDC collateral (gasless). amount is in
+    shares, or "max" for the largest balanced amount held."""
+    if not condition_id:
+        raise ValueError("condition_id is required")
+    if isinstance(amount, str) and amount.strip().lower() == "max":
+        amt = "max"
+    else:
+        amt = usdc_to_base(amount)  # shares carry the same 6-decimal scale
+    intent = {"action": "merge", "condition_id": condition_id,
+              "amount": amt if amt == "max" else float(amount),
+              "amount_base_units": None if amt == "max" else amt,
+              "via": "relayer (gasless)"}
+    return await _relayed("merge", intent,
+                          lambda c: c.merge_positions(condition_id=condition_id,
+                                                      amount=amt))
+
+
+async def redeem_positions(condition_id: str = "", market_id: str = ""):
+    """Winning shares of a RESOLVED market -> USDC (gasless). Pass exactly one
+    of condition_id or market_id."""
+    if bool(condition_id) == bool(market_id):
+        raise ValueError("pass exactly one of condition_id or market_id")
+    intent = {"action": "redeem", "condition_id": condition_id or None,
+              "market_id": market_id or None, "via": "relayer (gasless)"}
+    if condition_id:
+        run = lambda c: c.redeem_positions(condition_id=condition_id)
+    else:
+        run = lambda c: c.redeem_positions(market_id=market_id)
+    return await _relayed("redeem", intent, run)

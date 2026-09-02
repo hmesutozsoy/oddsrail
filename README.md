@@ -107,6 +107,8 @@ the product, and the code is attached and signed by the operator's own wallet.
 | `ODDSRAIL_BUILDER_CODE` | project default | Your bytes32 builder code. Overrides the bundled project default so attribution (and any reward-pool share) accrues to you instead. |
 | `POLYMARKET_PRIVATE_KEY` | unset | Operator wallet key; required only for real trading. Never leaves this machine. |
 | `POLYMARKET_WALLET_ADDRESS` | unset | Proxy/deposit wallet address, if the account uses one. |
+| `POLYMARKET_RELAYER_API_KEY` | unset | Your own Relayer API key (polymarket.com → Settings → Relayer API keys), for gasless `split_position` / `merge_positions` / `redeem_positions`. |
+| `POLYMARKET_RELAYER_API_KEY_ADDRESS` | unset | The address the relayer key was issued for. Both halves are required; without them the gasless tools send nothing. |
 
 ## Status
 
@@ -216,6 +218,27 @@ advice. Nothing here is legal advice.
 
 The signal logic, the MCP layer and the whole test suite run fine offline
 regardless.
+
+## Gasless position management (relayer)
+
+Three tools move collateral without paying gas, through Polymarket's relayer:
+`split_position` (USDC → a full YES+NO set), `merge_positions` (matching
+YES+NO → USDC, or `max`), and `redeem_positions` (a resolved market's winning
+shares → USDC). All three respect dry-run and return the relayer transaction
+id and hash plus the terminal outcome.
+
+They use **your own** Relayer API key, created at polymarket.com → Settings →
+Relayer API keys and exported as `POLYMARKET_RELAYER_API_KEY` +
+`POLYMARKET_RELAYER_API_KEY_ADDRESS`. That is the pattern Polymarket's builder
+team recommends for a self-hosted tool: no builder secret ships with oddsrail,
+and each operator authenticates the relayer as themselves. Relayer limits are
+per builder tier — 100 requests/day unverified, 10,000 verified. Without the
+key the tools return a structured "not configured" answer and send nothing;
+they never fall back to a gas-paying broadcast from the signer.
+
+**Not yet exercised live:** the relayer path has been driven in dry-run and
+against input validation only; no real split, merge or redeem has been sent
+from this code yet. Start in dry-run and read back the intent.
 
 ## Kalshi (venue #2)
 

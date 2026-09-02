@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.9.0 — 2026-09-02
+
+Gasless position management. Three new trading tools go through Polymarket's
+relayer with the operator's own Relayer API key — the self-hosted pattern
+Polymarket's builder team recommended when the oddsrail profile was verified.
+
+**New**
+- `split_position` (USDC → full YES+NO set), `merge_positions` (YES+NO →
+  USDC, or `max`), `redeem_positions` (resolved winners → USDC). Dry-run by
+  default; return the relayer transaction id/hash and the terminal outcome.
+- `POLYMARKET_RELAYER_API_KEY` + `POLYMARKET_RELAYER_API_KEY_ADDRESS`. Both
+  halves required. Without them the tools return a structured "not
+  configured" answer and send nothing — there is deliberately no fallback to a
+  gas-paying EOA broadcast.
+- `server_info` reports `relayer_key_configured` and lists the gasless tools.
+
+**Notes**
+- 35 tools (27 read-only / 8 destructive). 17 new offline tests (98 total)
+  pin dry-run, the not-configured guard, USDC base-unit conversion, and input
+  validation.
+- The relayer path is dry-run and validation tested only; no live
+  split/merge/redeem has been sent from this code yet (README says so).
+- Builder profile Verified in Polymarket's program (2026-09-02); attribution
+  pattern for self-hosted tools confirmed by their builder team.
+
 ## 0.8.1 — 2026-09-01
 
 Jurisdiction awareness. The geography story was wrong in shape: the docs

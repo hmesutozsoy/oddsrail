@@ -22,7 +22,7 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.8.1"
+VERSION = "0.9.0"
 
 srv = MCPServer(
     name="oddsrail",
@@ -40,7 +40,10 @@ srv = MCPServer(
         "tools work from restricted places, so a rejection can arrive at the "
         "order rather than the connection. Call server_info before the first "
         "order of a session to see the operator's Polymarket geoblock "
-        "verdict and venue reachability."
+        "verdict and venue reachability. split_position / merge_positions / "
+        "redeem_positions are gasless via Polymarket's relayer and need the "
+        "operator's own POLYMARKET_RELAYER_API_KEY (+_ADDRESS); they respect "
+        "dry-run and never fall back to a gas-paying broadcast."
     ),
 )
 
@@ -596,6 +599,55 @@ async def cancel_all_orders() -> str:
                        "see what still rests", host="the Polymarket CLOB")
 
 
+# ------------------------- gasless position management ------------------- #
+# These go through Polymarket's relayer with the OPERATOR'S OWN relayer key —
+# the self-hosted pattern Polymarket's builder team recommends. No builder
+# secret ships with oddsrail.
+
+@srv.tool(description="Split USDC collateral into a full YES+NO share set for "
+                      "one market, GASLESS via Polymarket's relayer. "
+                      "amount_usdc is collateral in USDC (e.g. 25). Needs "
+                      "POLYMARKET_RELAYER_API_KEY and "
+                      "POLYMARKET_RELAYER_API_KEY_ADDRESS (polymarket.com -> "
+                      "Settings -> Relayer API keys). DRY-RUN by default. "
+                      "Never falls back to a gas-paying broadcast.",
+           annotations=TRADE, structured_output=False)
+async def split_position(condition_id: str, amount_usdc: float) -> str:
+    try:
+        return _j(await trading.split_position(condition_id, amount_usdc))
+    except Exception as e:
+        return _err(e, "condition_id is the market's 0x… condition id from "
+                       "get_market; amount_usdc must be positive",
+                    host="the Polymarket relayer")
+
+
+@srv.tool(description="Merge matching YES+NO shares back into USDC, GASLESS "
+                      "via the relayer. amount is in shares, or 'max' for the "
+                      "largest balanced amount held. Needs the operator's "
+                      "relayer key. DRY-RUN by default.",
+           annotations=TRADE, structured_output=False)
+async def merge_positions(condition_id: str, amount: str = "max") -> str:
+    try:
+        return _j(await trading.merge_positions(condition_id, amount))
+    except Exception as e:
+        return _err(e, "amount is a positive number of shares or 'max'",
+                    host="the Polymarket relayer")
+
+
+@srv.tool(description="Redeem the winning shares of a RESOLVED market for "
+                      "USDC, GASLESS via the relayer. Pass exactly one of "
+                      "condition_id or market_id. Needs the operator's "
+                      "relayer key. DRY-RUN by default.",
+           annotations=TRADE, structured_output=False)
+async def redeem_positions(condition_id: str = "", market_id: str = "") -> str:
+    try:
+        return _j(await trading.redeem_positions(condition_id, market_id))
+    except Exception as e:
+        return _err(e, "pass exactly one of condition_id or market_id, for a "
+                       "market that has already resolved",
+                    host="the Polymarket relayer")
+
+
 @srv.tool(description="READ BEFORE TRUSTING A PRICE: the full resolution "
                       "contract for a market — what exactly resolves YES, who "
                       "resolves it, from which sources. venue is 'polymarket' "
@@ -763,9 +815,13 @@ async def server_info() -> str:
         "builder_code_source": trading.builder_code_source(),
         "attribution": "on-chain (CLOB V2 builder field)",
         "custody": "none — self-hosted, keys stay local",
+        "relayer_key_configured": trading.relayer_configured(),
         "venues": {
             "polymarket": {"attribution": "on-chain builder code",
-                           "trading_key": has_key},
+                           "trading_key": has_key,
+                           "relayer_key": trading.relayer_configured(),
+                           "gasless_tools": ["split_position", "merge_positions",
+                                             "redeem_positions"]},
             "kalshi": {"attribution": "none available on REST",
                        "credentials": kx.has_credentials(),
                        "environment": "demo" if os.environ.get("KALSHI_DEMO") else "production"},
@@ -799,6 +855,9 @@ Environment:
   POLYMARKET_PRIVATE_KEY    required only for real trading. Never leaves this
                             machine.
   POLYMARKET_WALLET_ADDRESS proxy/deposit wallet, if your account uses one.
+  POLYMARKET_RELAYER_API_KEY / _ADDRESS
+                            your own Relayer API key (Settings -> Relayer API
+                            keys) for gasless split/merge/redeem.
   KALSHI_KEY_ID             Kalshi API key id (private endpoints only).
   KALSHI_PRIVATE_KEY_PATH   PKCS#8 PEM for Kalshi request signing.
   KALSHI_DEMO=1             use Kalshi's demo environment.
