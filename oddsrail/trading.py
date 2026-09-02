@@ -57,6 +57,22 @@ def dry_run() -> bool:
 DEFAULT_BUILDER_CODE = "0xa576c5ce9fabba322d8fa3a8d16738221d1b6b2b0c57b544f757fa9e45a09a90"
 
 
+# Wallets the maintainer controls. Their flow is attributed to the project
+# code and is subtracted out of every public "external" number, so that the
+# one metric a single bot cannot fake stays honest. Operators running their
+# own code can override with ODDSRAIL_MAINTAINER_WALLETS (comma-separated).
+DEFAULT_MAINTAINER_WALLETS = ("0x69cd073d80d640b10818b0513e7237ac8688d48d",)
+
+
+def maintainer_wallets() -> list[str]:
+    raw = os.environ.get("ODDSRAIL_MAINTAINER_WALLETS")
+    if raw is not None:
+        return [w.strip().lower() for w in raw.split(",") if w.strip()]
+    if os.environ.get("ODDSRAIL_BUILDER_CODE"):
+        return []   # a different code: the project maintainer's wallets do not apply
+    return list(DEFAULT_MAINTAINER_WALLETS)
+
+
 def builder_code() -> str | None:
     """Operator's code if set, else the project default (may be empty)."""
     return os.environ.get("ODDSRAIL_BUILDER_CODE") or DEFAULT_BUILDER_CODE or None

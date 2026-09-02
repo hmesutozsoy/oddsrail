@@ -324,3 +324,93 @@ async def watch_book(token_id: str, seconds: float = 10.0, max_events: int = 100
             "note": ("best_bid/best_ask are computed from the event's own "
                      "levels; a quiet market may deliver only the initial "
                      "snapshot. Prices are implied probabilities in (0,1).")}
+
+
+# ------------------------------ attribution ledger ------------------------- #
+# The one number on this project a single bot cannot fake: how many DISTINCT
+# wallets carry the code, with the maintainer's own wallets subtracted. The
+# site's /attribution page computes the same thing in the browser from the
+# same public feed, so a reviewer can cross-check either against the other.
+
+async def builder_trades_all(builder_code: str, max_pages: int = 50) -> list:
+    """Every trade carrying `builder_code`, following the CLOB's cursor."""
+    out, cursor = [], None
+    async with httpx.AsyncClient(timeout=20.0) as h:
+        for _ in range(max_pages):
+            params = {"builder_code": builder_code}
+            if cursor:
+                params["next_cursor"] = cursor
+            r = await h.get(f"{CLOB}/builder/trades", params=params)
+            r.raise_for_status()
+            d = r.json()
+            rows = d.get("data") if isinstance(d, dict) else d
+            out.extend(rows or [])
+            cursor = d.get("next_cursor") if isinstance(d, dict) else None
+            if not cursor or cursor == "LTE=" or not rows:
+                break
+    return out
+
+
+def _week_start_utc(ts: float) -> str:
+    """Sunday-start week (Polymarket's reward epochs run Sun 00:00 -> Sat)."""
+    import datetime as _dt
+    d = _dt.datetime.fromtimestamp(float(ts), _dt.timezone.utc).date()
+    return (d - _dt.timedelta(days=(d.weekday() + 1) % 7)).isoformat()
+
+
+def aggregate_ledger(rows: list, maintainer_wallets, builder_code: str = "") -> dict:
+    """Pure: trades -> per-week and per-wallet totals with the maintainer's
+    own wallets split out. Notional prefers the feed's sizeUsdc, else
+    size * price."""
+    maint = {str(w).lower() for w in (maintainer_wallets or [])}
+    weeks, wallets = {}, {}
+    for r in rows:
+        w = str(r.get("maker") or r.get("owner") or "").lower()
+        try:
+            usd = float(r.get("sizeUsdc") or 0) or float(r.get("size") or 0) * float(r.get("price") or 0)
+        except (TypeError, ValueError):
+            usd = 0.0
+        ts = r.get("matchTime") or r.get("createdAt") or 0
+        try:
+            ts = float(ts)
+        except (TypeError, ValueError):
+            ts = 0.0
+        wk = _week_start_utc(ts) if ts else "unknown"
+        is_m = w in maint
+        W = weeks.setdefault(wk, {"week_start": wk, "trades": 0, "volume_usd": 0.0,
+                                  "wallets": set(), "external_wallets": set(),
+                                  "external_volume_usd": 0.0, "maintainer_volume_usd": 0.0})
+        W["trades"] += 1; W["volume_usd"] += usd; W["wallets"].add(w)
+        if is_m:
+            W["maintainer_volume_usd"] += usd
+        else:
+            W["external_wallets"].add(w); W["external_volume_usd"] += usd
+        A = wallets.setdefault(w, {"wallet": w, "is_maintainer": is_m, "trades": 0,
+                                   "volume_usd": 0.0, "first": None, "last": None,
+                                   "sample_tx": r.get("transactionHash")})
+        A["trades"] += 1; A["volume_usd"] += usd
+        A["first"] = ts if A["first"] is None else min(A["first"], ts)
+        A["last"] = ts if A["last"] is None else max(A["last"], ts)
+
+    def fin(W):
+        return {**W, "wallets": len(W["wallets"]),
+                "external_wallets": len(W["external_wallets"]),
+                "volume_usd": round(W["volume_usd"], 2),
+                "external_volume_usd": round(W["external_volume_usd"], 2),
+                "maintainer_volume_usd": round(W["maintainer_volume_usd"], 2)}
+    wk_rows = sorted((fin(W) for W in weeks.values()), key=lambda x: x["week_start"], reverse=True)
+    w_rows = sorted(({**A, "volume_usd": round(A["volume_usd"], 2)} for A in wallets.values()),
+                    key=lambda x: -x["volume_usd"])
+    ext = [x for x in w_rows if not x["is_maintainer"]]
+    return {
+        "builder_code": builder_code,
+        "maintainer_wallets": sorted(maint),
+        "totals": {"trades": len(rows), "volume_usd": round(sum(x["volume_usd"] for x in w_rows), 2),
+                   "wallets": len(w_rows), "external_wallets": len(ext),
+                   "external_volume_usd": round(sum(x["volume_usd"] for x in ext), 2)},
+        "weeks": wk_rows, "wallets": w_rows,
+        "note": ("external = every wallet that is not on the maintainer list. "
+                 "Source: the public CLOB /builder/trades feed for this code, "
+                 "which anyone can re-pull. Weeks start Sunday 00:00 UTC, "
+                 "matching Polymarket's reward epochs."),
+    }

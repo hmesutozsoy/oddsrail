@@ -17,7 +17,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.10.0","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.10.1","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
 </script>
 </head>
 <body>
@@ -31,6 +31,7 @@
       <a href="#tools">Tools</a>
       <a href="#attribution">Attribution</a>
       <a href="#live">Live</a>
+      <a href="/attribution">Ledger</a>
       <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
       <a href="https://pypi.org/project/oddsrail/">PyPI</a>
     </nav>
@@ -84,32 +85,28 @@
 
 <section id="compare" aria-labelledby="h-compare">
   <h2 id="h-compare">How it compares</h2>
-  <p class="sub">Against the raw venue APIs and the two closest products. Every cell is from the README, where each claim is sourced.</p>
+  <p class="sub">Against the raw venue APIs and the three products that actually compete today. Every cell is verified from their own docs and dated in the README.</p>
   <div class="tablewrap">
   <table class="cmp">
-    <thead><tr><th scope="col">Capability</th><th scope="col" class="us">oddsrail</th><th scope="col">raw Polymarket API</th><th scope="col">raw Kalshi API</th><th scope="col">Crosswire</th><th scope="col">Parsec</th></tr></thead>
+    <thead><tr><th scope="col">Capability</th><th scope="col" class="us">oddsrail</th><th scope="col">raw venue APIs</th><th scope="col">pmxt</th><th scope="col">Simmer</th><th scope="col">Polymarket agent-skills</th></tr></thead>
     <tbody>
-      <tr><th scope="row">Both venues, one vocabulary</th><td class="us y"><code>find_markets</code></td><td>single-venue</td><td>single-venue</td><td>pairs from a frozen 43-pair graph</td><td class="y">5 venues</td></tr>
-      <tr><th scope="row">Book-walked cost and slippage</th><td class="us y"><code>quote_cost</code></td><td>book only, math is yours</td><td>book only</td><td>top-of-book, covered pairs only</td><td>preview on their infra</td></tr>
-      <tr><th scope="row">Order lifecycle (status, fills, kill switch)</th><td class="us y">yes</td><td>endpoints exist, with footguns¹</td><td>endpoints exist</td><td class="n">read-only</td><td class="y">yes</td></tr>
-      <tr><th scope="row">Gasless split, merge, redeem</th><td class="us y">your own relayer key</td><td>relayer exists, auth is yours</td><td>n/a</td><td class="n">no</td><td>managed wallet</td></tr>
-      <tr><th scope="row">Operator guardrails</th><td class="us y">notional caps, allowed markets</td><td class="n">none</td><td class="n">none</td><td>n/a</td><td>unknown</td></tr>
-      <tr><th scope="row">Paper trading in dry-run</th><td class="us y">live-book fills, P&amp;L</td><td class="n">no</td><td class="n">no</td><td class="n">no</td><td>unknown</td></tr>
-      <tr><th scope="row">Resolution criteria surfaced</th><td class="us y">both venues</td><td>buried in fields</td><td>buried in fields</td><td class="y">deep, on <b>1 active pair</b></td><td class="n">zero UMA or rules tools</td></tr>
-      <tr><th scope="row">Trading signals</th><td class="us y">overshoot, dispute-risk</td><td class="n">no</td><td class="n">no</td><td class="n">no</td><td class="n">no</td></tr>
-      <tr><th scope="row">Realtime book streaming</th><td class="us y"><code>watch_book</code>, bounded</td><td>websocket, yours to wire</td><td>websocket, yours to wire</td><td class="n">no</td><td class="y">yes</td></tr>
-      <tr><th scope="row">Jurisdiction-aware failures</th><td class="us y">preflight, classified hints</td><td>a rejection at the order</td><td>enforced at signup</td><td>unknown</td><td>unknown</td></tr>
-      <tr><th scope="row">Open source, auditable</th><td class="us y">MIT, full source</td><td>n/a</td><td>n/a</td><td class="n">4-file listing shell, service proprietary</td><td class="n">closed</td></tr>
-      <tr><th scope="row">Self-hosted, non-custodial</th><td class="us y">keys never leave your machine</td><td class="y">yes</td><td class="y">yes</td><td>hosted only</td><td>stores keys or holds a managed wallet</td></tr>
-      <tr><th scope="row">Cost to the trader</th><td class="us"><b>0 bps, free tools</b></td><td>free</td><td>free</td><td>$0.02/call after 3/day</td><td>SaaS $0 to 250/mo; builder program keeps 55 to 85% of fees</td></tr>
-      <tr><th scope="row">Safety defaults</th><td class="us">dry-run default, destructive-tool annotations, venue quirks pre-encoded²</td><td>you discover them by rejection</td><td>same</td><td>n/a</td><td>unknown (closed)</td></tr>
+      <tr><th scope="row">What it is</th><td class="us">self-hosted MCP server</td><td>the venues themselves</td><td>unified API + SDK + MCP, "CCXT for prediction markets"</td><td>agent trading platform + SDK + MCP</td><td>markdown skill docs for agents</td></tr>
+      <tr><th scope="row">Venues you can trade</th><td class="us y">Polymarket, Kalshi</td><td>one each</td><td class="y">Polymarket, Opinion, Limitless (hosted); a dozen more for data</td><td class="y">Polymarket, Kalshi, own $SIM sandbox</td><td>Polymarket only</td></tr>
+      <tr><th scope="row">Custody</th><td class="us y">non-custodial, keys never leave your machine</td><td class="y">yours</td><td>hosted: "PMXT handles custody, signing infrastructure"; self-hosted mode uses your keys</td><td class="y">self-custody, local signing</td><td class="y">yours (docs only)</td></tr>
+      <tr><th scope="row">Attribution you control</th><td class="us y"><code>ODDSRAIL_BUILDER_CODE</code> overrides the 0 bps default</td><td>n/a</td><td>not documented</td><td>not documented</td><td>documents builder headers for your own code</td></tr>
+      <tr><th scope="row">Cost to the trader</th><td class="us"><b>0 bps, free tools</b></td><td>free</td><td>hosted pricing not in the README</td><td>not documented</td><td>free</td></tr>
+      <tr><th scope="row">Open source</th><td class="us y">MIT, full source</td><td>n/a</td><td class="y">MIT, ~2.1k stars</td><td>not stated</td><td>docs; license not stated</td></tr>
+      <tr><th scope="row">Operator guardrails</th><td class="us y">notional caps, open-order cap, allowed markets; enforced in dry-run too</td><td class="n">none</td><td>not documented</td><td class="y">per-trade limits, daily caps, stop-loss/take-profit, kill switch</td><td class="n">none</td></tr>
+      <tr><th scope="row">Paper trading</th><td class="us y">dry-run fills against the live book, P&amp;L</td><td class="n">none</td><td>not documented</td><td class="y">virtual $SIM sandbox</td><td class="n">none</td></tr>
+      <tr><th scope="row">Book-walked cost, settlement audit, jurisdiction-classified failures, dated quirk notes</th><td class="us y">all four</td><td class="n">no</td><td>not documented</td><td>not documented</td><td>quirks partly documented</td></tr>
+      <tr><th scope="row">Realtime</th><td class="us y"><code>watch_book</code>, bounded</td><td>websocket, yours to wire</td><td>not documented in the README</td><td>not documented</td><td>websocket documented</td></tr>
     </tbody>
   </table>
   </div>
   <footer class="foot">
-    <p>¹ The raw Polymarket API has the endpoints. It also models rejections as <code>ok:false</code> return values, orders its books worst-first, ships a trades endpoint that returns the market's public tape, and enforces an undocumented $1 minimum notional. oddsrail exists because we hit every one of those and encoded the fix.</p>
-    <p>² Kalshi prices are dollar strings (integer cents were removed 2026-03), its orderbook is bids-only on both sides, and its current SDK requires Python 3.13 or newer. All normalised here.</p>
-    <p><b>Where the others are honestly ahead:</b> Parsec covers 5 venues to our 2. Crosswire's settlement-audit output on its one covered pair is deeper than our <code>resolution_criteria</code>, and it takes x402 micropayments natively. Hosted services need zero install.</p>
+    <p>Verified 2026-09-02 from each project's own README or docs. "Not documented" means exactly that, not "absent". These projects move; re-check before quoting.</p>
+    <p><b>The wedge:</b> pmxt is the reference for trading everywhere; Simmer is the reference for an agent economy with a sandbox and a reputation layer; oddsrail is the reference for trading correctly, non-custodially, with attribution you own.</p>
+    <p><b>Where the others are honestly ahead:</b> pmxt trades three venues to our two and covers a dozen more for data, with hosted convenience and a community many times ours. Simmer has a virtual-balance sandbox, stop-loss and take-profit rails we do not have, a public reasoning layer, and a strategy-skills marketplace. Polymarket's agent-skills is the venue's own documentation and covers bridging and deposits, which oddsrail does not.</p>
   </footer>
 </section>
 
@@ -193,7 +190,7 @@ export KALSHI_KEY_ID=…             # only for Kalshi private
       <p class="meta" id="me-meta">loading…</p>
       <p class="big" id="me-big">…</p>
       <dl class="kvs" id="me-kvs"></dl>
-      <p class="note">Attributed volume is the sum of matched orders carrying the oddsrail code. Verified builders share a weekly USDC pool pro-rata to volume. There is no top-N cutoff, only a ranking.</p>
+      <p class="note">Attributed volume is the sum of matched orders carrying the oddsrail code. Verified builders share a weekly USDC pool pro-rata to volume. There is no top-N cutoff, only a ranking. <a href="/attribution">The attribution ledger</a> shows which wallets that volume comes from, with the maintainer's own bot subtracted.</p>
     </div>
   </div>
   <noscript><p class="note">This board needs JavaScript to fetch live data. The same leaderboard is at <a href="https://builders.polymarket.com/">builders.polymarket.com</a>.</p></noscript>

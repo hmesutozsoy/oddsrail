@@ -42,24 +42,28 @@ agent  100 YES on "Bitcoin above $72,000 on Sept 2" costs $99.40 at 0.994, all a
 
 ## How it compares
 
-| Capability | oddsrail | raw Polymarket API | raw Kalshi API | Crosswire | Parsec |
+| Capability | oddsrail | raw venue APIs | pmxt | Simmer | Polymarket agent-skills |
 |---|---|---|---|---|---|
-| Both venues, one vocabulary | yes, `find_markets` | single-venue | single-venue | pairs from a frozen 43-pair graph | yes, 5 venues |
-| Book-walked cost and slippage | yes, `quote_cost` | book only, math is yours | book only | top-of-book, covered pairs only | preview on their infra |
-| Order lifecycle (status, fills, kill switch) | yes | endpoints exist, with footguns | endpoints exist | no, read-only | yes |
-| Gasless split, merge, redeem | yes, your own relayer key | relayer exists, auth is yours | n/a | no | managed wallet |
-| Operator guardrails | notional caps, allowed markets | none | none | n/a | unknown |
-| Paper trading in dry-run | live-book fills, P&L | no | no | no | unknown |
-| Resolution criteria surfaced | both venues | buried in fields | buried in fields | deep, on 1 active pair | none |
-| Trading signals | overshoot, dispute-risk | no | no | no | no |
-| Realtime book streaming | `watch_book`, bounded | websocket, yours to wire | websocket, yours to wire | no | yes |
-| Jurisdiction-aware failures | preflight, classified hints | a rejection at the order | enforced at signup | unknown | unknown |
-| Open source, auditable | MIT, full source | n/a | n/a | 4-file listing shell, service proprietary | closed |
-| Self-hosted, non-custodial | keys never leave your machine | yes | yes | hosted only | stores keys or holds a managed wallet |
-| Cost to the trader | 0 bps, free tools | free | free | $0.02/call after 3/day | SaaS $0 to 250/mo; builder program keeps 55 to 85% of fees |
-| Safety defaults | dry-run default, destructive-tool annotations, venue quirks pre-encoded | you discover them by rejection | same | n/a | unknown |
+| What it is | self-hosted MCP server | the venues themselves | unified API + SDK + MCP, "CCXT for prediction markets" | agent trading platform + SDK + MCP | markdown skill docs for agents |
+| Venues you can trade | Polymarket, Kalshi | one each | Polymarket, Opinion, Limitless (hosted); a dozen more for data | Polymarket, Kalshi, own $SIM sandbox | Polymarket only |
+| Custody | non-custodial, keys never leave your machine | yours | hosted mode: PMXT handles custody and signing; self-hosted mode uses your keys | self-custody, local signing | yours (docs only) |
+| Attribution you control | yes, `ODDSRAIL_BUILDER_CODE` overrides the 0 bps default | n/a | not documented | not documented | documents builder headers for your own code |
+| Cost to the trader | 0 bps, free tools | free | hosted pricing not in the README | not documented | free |
+| Open source | MIT, full source | n/a | MIT, ~2.1k stars | not stated | docs; license not stated |
+| Operator guardrails | notional caps, open-order cap, allowed markets; enforced in dry-run too | none | not documented | per-trade limits, daily caps, stop-loss/take-profit, kill switch | none |
+| Paper trading | dry-run fills against the live book, P&L | none | not documented | virtual $SIM sandbox | none |
+| Book-walked cost, settlement audit, jurisdiction-classified failures, dated quirk notes | all four | no | not documented | not documented | quirks partly documented |
+| Realtime | `watch_book`, bounded | websocket, yours to wire | not documented in the README | not documented | websocket documented |
 
-Where the others are honestly ahead: Parsec covers 5 venues to our 2. Crosswire's settlement-audit output on its one covered pair is deeper than our `resolution_criteria`, and it takes x402 micropayments natively. Hosted services need zero install.
+Verified 2026-09-02 from each project's own README or docs. "Not documented" means exactly that, not "absent".
+
+The wedge: pmxt is the reference for trading everywhere; Simmer is the reference for an agent economy with a sandbox and a reputation layer; oddsrail is the reference for trading correctly, non-custodially, with attribution you own.
+
+Where the others are honestly ahead: pmxt trades three venues to our two and covers a dozen more for data, with hosted convenience and a community many times ours. Simmer has a virtual-balance sandbox, stop-loss and take-profit rails we do not have, a public reasoning layer, and a strategy-skills marketplace. Polymarket's agent-skills is the venue's own documentation and covers bridging and deposits, which oddsrail does not.
+
+## Attribution ledger
+
+https://oddsrail.app/attribution lists every wallet carrying the oddsrail builder code, per week, with the maintainer's own bot subtracted. The `attribution_ledger` tool computes the same thing from the same public feed.
 
 ## Built from the things the raw API gets wrong
 

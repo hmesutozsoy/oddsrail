@@ -1,6 +1,6 @@
 # oddsrail
 
-<!-- mcp-name: app.oddsrail/polymarket-kalshi-arbitrage -->
+<!-- mcp-name: app.oddsrail/polymarket-kalshi-trading -->
 
 **The rail AI agents use to trade prediction markets.**
 
@@ -21,19 +21,26 @@ code is in use. No fee tiers, no paywalled tools, no account required.
 ## How oddsrail compares
 
 Verified against each alternative directly (their repos, live endpoints, and
-registry entries, August 2026), not from their marketing:
+registry entries, September 2026), not from their marketing:
 
-| | oddsrail | raw Polymarket API | raw Kalshi API | Crosswire | Parsec |
+| | oddsrail | raw venue APIs | pmxt | Simmer | Polymarket agent-skills |
 |---|---|---|---|---|---|
-| Both venues, one vocabulary | ✅ `find_markets` | single-venue | single-venue | pairs from a frozen 43-pair graph | ✅ 5 venues |
-| Book-walked cost + slippage | ✅ `quote_cost` | book only, math is yours | book only | top-of-book, covered pairs only | preview on their infra |
-| Order lifecycle (status/fills/kill switch) | ✅ | endpoints exist, with footguns¹ | endpoints exist | ❌ read-only | ✅ |
-| Resolution criteria surfaced | ✅ both venues | buried in fields | buried in fields | ✅ deep, on **1 active pair** | ❌ zero UMA/rules tools |
-| Trading signals | ✅ overshoot + dispute-risk | ❌ | ❌ | ❌ | ❌ |
-| Open source / auditable | ✅ MIT, full source | n/a | n/a | ❌ 4-file listing shell, service proprietary | ❌ closed |
-| Self-hosted / non-custodial | ✅ keys never leave your machine | ✅ | ✅ | hosted only | stores keys or holds a managed wallet |
-| Cost to the trader | **0 bps, free tools** | free | free | $0.02/call after 3/day | SaaS $0–250/mo; builder program keeps 55–85% of fees |
-| Safety defaults | dry-run default, destructive-tool annotations, venue quirks pre-encoded² | you discover them by rejection | same | n/a | unknown (closed) |
+| What it is | self-hosted MCP server | the venues themselves | unified API + SDK + MCP, "CCXT for prediction markets" | agent trading platform + SDK + MCP | markdown skill docs for agents |
+| Venues you can trade | Polymarket, Kalshi | one each | Polymarket, Opinion, Limitless (hosted writes); a dozen more for data | Polymarket, Kalshi, plus its own $SIM sandbox markets | Polymarket only |
+| Custody | non-custodial; keys never leave your machine | yours | hosted mode: "PMXT handles custody, signing infrastructure"; self-hosted mode: your keys | self-custody, local signing | yours (documentation only) |
+| Attribution you control | yes: `ODDSRAIL_BUILDER_CODE` overrides the 0 bps default | n/a | not documented | not documented | documents builder headers for your own code |
+| Cost to the trader | 0 bps, free tools | free | hosted pricing not in the README | not documented | free |
+| Open source | MIT, full source | n/a | MIT, ~2.1k stars | not stated | docs; license not stated |
+| Operator guardrails | notional caps, open-order cap, allowed markets; enforced pre-request, in dry-run too | none | not documented | per-trade limits, daily caps, stop-loss/take-profit, kill switch | none |
+| Paper trading | dry-run fills against the live book, P&L | none | not documented | virtual $SIM sandbox, then graduate to real money | none |
+| Book-walked cost, settlement audit, jurisdiction-classified failures, dated venue-quirk notes | yes, all four | no | not documented | not documented | quirks partly documented |
+| Realtime | `watch_book`, bounded | websocket, yours to wire | not documented in the README | not documented | websocket documented |
+
+Verified 2026-09-02 from each project's own README or docs (pmxt: github.com/pmxt-dev/pmxt; Simmer: docs.simmer.markets; agent-skills: github.com/Polymarket/agent-skills). "Not documented" means exactly that, not "absent". Re-check before quoting; these projects move.
+
+**The wedge, in one line:** pmxt is the reference for trading *everywhere*; Simmer is the reference for an agent economy with a sandbox and a reputation layer; oddsrail is the reference for trading *correctly, non-custodially, with attribution you own*.
+
+**Where the others are honestly ahead:** pmxt trades three venues to our two and covers a dozen more for data, with hosted convenience and a community many times ours. Simmer has a virtual-balance sandbox, stop-loss and take-profit rails we do not have, a public reasoning/reputation layer, and a strategy-skills marketplace. Polymarket's agent-skills is the venue's own documentation and covers bridging and deposits, which oddsrail does not.
 
 ¹ The raw Polymarket API *has* the endpoints. It also models rejections as
 `ok:false` return values, orders its books worst-first, ships a trades
@@ -44,13 +51,6 @@ those and encoded the fix.
 ² Kalshi prices are dollar strings (integer cents were removed 2026-03), its
 orderbook is bids-only on both sides, and its current SDK requires
 Python ≥3.13. All normalised here.
-
-**Where the others are honestly ahead:** Parsec covers 5 venues to our 2 and
-has websocket streaming; Crosswire's settlement-audit output on its one
-covered pair is deeper than our `resolution_criteria`, and it takes x402
-micropayments natively; hosted services need zero install. Our bet is that a
-trading agent cares more about correctness, auditability, and keeping 100% of
-its economics than about any of those.
 
 ## Quickstart
 
@@ -472,7 +472,7 @@ built for.
 - **Glama**: auto-crawls GitHub; `glama.json` in the repo root claims
   maintainership.
 - **PyPI**: https://pypi.org/project/oddsrail/ (`pip install oddsrail`)
-- **Official MCP registry**: listed as `app.oddsrail/polymarket-kalshi-arbitrage`
+- **Official MCP registry**: listed as `app.oddsrail/polymarket-kalshi-trading` (renamed from `…-arbitrage` in 0.10.1; the old name is deprecated)
   (published 2026-08-30, status active). Re-publish after a version bump with
   `mcp-publisher publish`; keep `server.json`'s version in step with
   `pyproject.toml` or the registry rejects it.

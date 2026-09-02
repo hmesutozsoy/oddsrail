@@ -24,7 +24,7 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.10.0"
+VERSION = "0.10.1"
 
 srv = MCPServer(
     name="oddsrail",
@@ -288,6 +288,23 @@ async def builder_stats(time_period: str = "WEEK") -> str:
                            "ODDSRAIL_BUILDER_CODE to your own code to track "
                            "yours.")
     return _j(out)
+
+
+@srv.tool(description="Attribution ledger for the builder code in use: every "
+                      "trade carrying it, aggregated per Sunday-start week and "
+                      "per wallet, with the maintainer's own wallets split out "
+                      "into an honest 'external' line. Same public feed as "
+                      "https://oddsrail.app/attribution.",
+           annotations=READ, structured_output=False)
+async def attribution_ledger() -> str:
+    code = trading.builder_code()
+    if not code:
+        return _j({"note": "no builder code configured"})
+    try:
+        rows = await pm.builder_trades_all(code)
+    except Exception as e:
+        return _err(e, host="the Polymarket CLOB")
+    return _j(pm.aggregate_ledger(rows, trading.maintainer_wallets(), code))
 
 
 # ------------------------------ kalshi (venue #2) --------------------------- #

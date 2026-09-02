@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>oddsrail attribution ledger</title>
+<meta name="description" content="Every wallet carrying the oddsrail builder code, per week, with the maintainer's own bot subtracted. Computed live in your browser from Polymarket's public builder-trades feed.">
+<link rel="canonical" href="https://oddsrail.app/attribution">
+<meta property="og:title" content="oddsrail attribution ledger">
+<meta property="og:description" content="Distinct wallets carrying the oddsrail builder code, per week, maintainer excluded. Live from Polymarket's public feed.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://oddsrail.app/attribution">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24"> oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/#compare">Compare</a>
+      <a href="/#tools">Tools</a>
+      <a href="/attribution">Attribution ledger</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+      <a href="https://pypi.org/project/oddsrail/">PyPI</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<article>
+
+<section class="hero" aria-labelledby="h-title">
+  <p class="kicker">Attribution ledger</p>
+  <h1 id="h-title">Who is actually routing through the oddsrail code.</h1>
+  <p class="lede">Every trade that carries the project's builder code is public. This page pulls that feed in your browser, groups it by week and by wallet, and subtracts the maintainer's own bot. The one number a single bot cannot fake is the count of <em>other</em> wallets, so that is the headline.</p>
+  <dl class="facts">
+    <div><dt>source</dt><dd><code>clob.polymarket.com/builder/trades</code></dd></div>
+    <div><dt>code</dt><dd><code>0xa576c5ce…a09a90</code></dd></div>
+    <div><dt>fetched</dt><dd id="fetched">loading…</dd></div>
+  </dl>
+</section>
+
+<section id="headline" aria-labelledby="h-headline">
+  <h2 id="h-headline">This week</h2>
+  <p class="sub">Week starting Sunday 00:00 UTC, matching Polymarket's reward epochs.</p>
+  <div class="live">
+    <div class="panel tile">
+      <h3>External wallets</h3>
+      <p class="meta">wallets that are not the maintainer's</p>
+      <p class="big" id="ext-wallets">…</p>
+      <dl class="kvs" id="ext-kvs"></dl>
+    </div>
+    <div class="panel tile">
+      <h3>Leaderboard row</h3>
+      <p class="meta" id="lb-meta">from data-api.polymarket.com</p>
+      <p class="big" id="lb-big">…</p>
+      <dl class="kvs" id="lb-kvs"></dl>
+    </div>
+  </div>
+  <p class="note" id="plain">…</p>
+</section>
+
+<section id="weeks" aria-labelledby="h-weeks">
+  <h2 id="h-weeks">By week</h2>
+  <div class="tablewrap">
+    <table class="cmp" id="weeks-tbl">
+      <thead><tr><th scope="col">Week (Sun)</th><th scope="col">Trades</th><th scope="col">Volume</th><th scope="col">Wallets</th><th scope="col" class="us">External wallets</th><th scope="col" class="us">External volume</th><th scope="col">Maintainer volume</th></tr></thead>
+      <tbody><tr><td colspan="7">loading…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="wallets" aria-labelledby="h-wallets">
+  <h2 id="h-wallets">By wallet</h2>
+  <p class="sub">Addresses link to Polygonscan; each row links one of its fills. Wallets marked maintainer are the project author's own market-making bot and are excluded from every external number.</p>
+  <div class="tablewrap">
+    <table class="cmp" id="wallets-tbl">
+      <thead><tr><th scope="col">Wallet</th><th scope="col">Role</th><th scope="col">Trades</th><th scope="col">Volume</th><th scope="col">First</th><th scope="col">Last</th><th scope="col">Sample fill</th></tr></thead>
+      <tbody><tr><td colspan="7">loading…</td></tr></tbody>
+    </table>
+  </div>
+  <p class="note">The same aggregation ships in the server as the <code>attribution_ledger</code> tool, with the maintainer list in <code>oddsrail/trading.py</code>. Anyone can re-pull the feed and check both against each other. Volume is the feed's <code>sizeUsdc</code> per trade, else size times price.</p>
+  <noscript><p class="note">This page needs JavaScript to fetch the feed. The raw data is at <a href="https://clob.polymarket.com/builder/trades?builder_code=0xa576c5ce9fabba322d8fa3a8d16738221d1b6b2b0c57b544f757fa9e45a09a90">clob.polymarket.com/builder/trades</a>.</p></noscript>
+</section>
+
+</article>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail, MIT. <a href="/">Home</a> · <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a> · <a href="https://builders.polymarket.com/">Polymarket builders</a></p>
+    <p>Not financial or legal advice.</p>
+  </div>
+</footer>
+
+<script src="/ledger.js" defer></script>
+</body>
+</html>

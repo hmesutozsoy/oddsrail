@@ -2,7 +2,7 @@
 
 > Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps added to trades, MIT. Verified Polymarket builder.
 
-oddsrail speaks the Model Context Protocol over stdio, so any MCP client (Claude Code, Claude Desktop, Cursor and others) can call it. It is a Python package on PyPI and a listing in the official MCP registry (app.oddsrail/polymarket-kalshi-arbitrage).
+oddsrail speaks the Model Context Protocol over stdio, so any MCP client (Claude Code, Claude Desktop, Cursor and others) can call it. It is a Python package on PyPI and a listing in the official MCP registry (app.oddsrail/polymarket-kalshi-trading).
 
 ## Install
 
@@ -27,6 +27,10 @@ oddsrail speaks the Model Context Protocol over stdio, so any MCP client (Claude
 - `place_order` returns `{"dry_run": true, ...}` unless the operator set `ODDSRAIL_DRY_RUN=0`; check this before assuming an order was placed.
 - Geography affects trading, not reading. Polymarket restricts order placement by jurisdiction (https://docs.polymarket.com/api-reference/geoblock); Kalshi's Member Agreement restricts a heavily overlapping set. Call `server_info` for this machine's geoblock verdict and venue reachability; it is advisory, not a compliance check.
 - Errors come back structured: `{error, error_type, http_status, url, failure_class, hint}`. Do not retry in a loop on `geo_blocked`, `unreachable`, `intercepted` or `local_tls`.
+
+## Attribution ledger
+
+- https://oddsrail.app/attribution: every wallet carrying the code, per week, maintainer subtracted. Same data as the `attribution_ledger` tool.
 
 ## Links
 

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://oddsrail.app/</loc><lastmod>2026-09-02</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://oddsrail.app/attribution</loc><lastmod>2026-09-02</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url><loc>https://oddsrail.app/index.md</loc><lastmod>2026-09-02</lastmod><changefreq>weekly</changefreq></url>
   <url><loc>https://oddsrail.app/llms.txt</loc><lastmod>2026-09-02</lastmod><changefreq>weekly</changefreq></url>
   <url><loc>https://oddsrail.app/llms-full.txt</loc><lastmod>2026-09-02</lastmod><changefreq>weekly</changefreq></url>

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.1 (2026-09-02)
+
+Credibility release, ahead of the announcement.
+
+- **Attribution ledger**: `attribution_ledger` tool and the public page at
+  oddsrail.app/attribution. Every trade carrying the code, per Sunday-start
+  week and per wallet, with the maintainer's own wallets subtracted into an
+  "external" line. The page and the tool compute the same thing from the same
+  public feed so either can be checked against the other.
+- **Competitor table rewritten** against the products that actually compete
+  today (pmxt, Simmer, Polymarket's agent-skills), verified from their own
+  docs and dated. Crosswire and Parsec are gone from the table.
+- **Registry rename**: `app.oddsrail/polymarket-kalshi-trading`. The README
+  says `compare_venues` is not an arbitrage scanner, so the name should not
+  say arbitrage either. The old name's versions are deprecated, not deleted.
+- `ODDSRAIL_MAINTAINER_WALLETS` for operators running the ledger against
+  their own code.
+
 ## 0.10.0 (2026-09-02)
 
 The operator-safety and rehearsal release: the things anyone handing keys to
