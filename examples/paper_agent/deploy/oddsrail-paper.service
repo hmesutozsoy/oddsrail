@@ -1,0 +1,13 @@
+[Unit]
+Description=oddsrail reference paper agent (one run; dry-run, paper ledger, no keys)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mm
+WorkingDirectory=/opt/oddsrail
+EnvironmentFile=-/etc/oddsrail-paper.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/oddsrail/.venv/bin/python /opt/oddsrail/examples/paper_agent/agent.py
+TimeoutStartSec=600
