@@ -1,6 +1,6 @@
 ---
 name: settle-resolved
-description: Turn resolved and hedged Polymarket positions back into USDC, gasless, through the operator's relayer key, with a dry-run read-back first.
+description: "Turn resolved and hedged Polymarket positions back into USDC, gasless, through the operator's relayer key, with a dry-run read-back first."
 ---
 
 # settle resolved

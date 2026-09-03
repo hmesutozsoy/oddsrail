@@ -1,6 +1,6 @@
 ---
 name: find-fade-setup
-description: Find and evaluate a fade (mean-reversion) setup on prediction markets with oddsrail: candidates, overshoot signal, book, walked cost, resolution criteria, Kelly size, dry-run order.
+description: "Find and evaluate a fade (mean-reversion) setup on prediction markets with oddsrail: candidates, overshoot signal, book, walked cost, resolution criteria, Kelly size, dry-run order."
 ---
 
 # find fade setup

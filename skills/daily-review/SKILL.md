@@ -1,6 +1,6 @@
 ---
 name: daily-review
-description: Daily review of open prediction-market exposure with oddsrail: positions, resting orders, fills, markets closing soon, builder attribution.
+description: "Daily review of open prediction-market exposure with oddsrail: positions, resting orders, fills, markets closing soon, builder attribution."
 ---
 
 # daily review

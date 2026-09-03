@@ -1,6 +1,6 @@
 ---
 name: check-cross-venue-edge
-description: Decide whether a Polymarket vs Kalshi price difference is a real edge or a settlement mismatch: compare_venues, settlement_audit, quote_cost on both legs, resolution criteria.
+description: "Decide whether a Polymarket vs Kalshi price difference is a real edge or a settlement mismatch: compare_venues, settlement_audit, quote_cost on both legs, resolution criteria."
 ---
 
 # check cross venue edge

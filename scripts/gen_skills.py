@@ -43,8 +43,11 @@ PREAMBLE = ("Use the tools of the `oddsrail` MCP server (install: `pip install o
 
 
 def render(name, fn, kwargs, description) -> str:
+    import json
     body = fn(**kwargs)
-    return (f"---\nname: {name}\ndescription: {description}\n---\n\n"
+    # YAML: an unquoted scalar containing ": " is a parse error, so the
+    # description is emitted as a JSON string, which is valid YAML.
+    return (f"---\nname: {name}\ndescription: {json.dumps(description)}\n---\n\n"
             f"# {name.replace('-', ' ')}\n\n{PREAMBLE}{body.strip()}\n")
 
 
