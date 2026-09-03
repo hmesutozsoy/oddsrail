@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "oddsrail": {
+      "command": "uvx",
+      "args": ["oddsrail"],
+      "env": {
+        "ODDSRAIL_DRY_RUN": "1"
+      }
+    }
+  }
+}

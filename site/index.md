@@ -7,7 +7,10 @@ Live books, costed fills, settlement audits and non-custodial order routing in o
 ```
 pip install oddsrail
 claude mcp add --transport stdio oddsrail -- oddsrail
+claude plugin marketplace add hmesutozsoy/oddsrail && claude plugin install oddsrail@oddsrail
 ```
+
+Also: `npx skills add hmesutozsoy/oddsrail`, and one-click links for Cursor and VS Code in the README.
 
 - Status: Verified Polymarket builder
 - Surface: 39 tools, 4 workflow prompts

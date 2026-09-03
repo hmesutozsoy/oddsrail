@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Claude Code plugin (`.claude-plugin/plugin.json`, marketplace manifest,
+  `.mcp.json`) and four skills generated from the MCP prompts
+  (`skills/*/SKILL.md`, `scripts/gen_skills.py`, drift test). One-click
+  install links for Cursor and VS Code; `npx skills add` support.
+- `examples/paper_agent`: reference quote-and-settle agent in paper mode
+  with a public journal; running hourly on the maintainer's VPS since
+  2026-09-03.
+- `examples/footguns.py`: six venue-API footguns reproduced live, no keys.
+
 - Live proof of the relayer path: a 1 USDC split and merge through the
   relayer with the operator's own key, recorded with relayer ids and Polygon
   hashes in `docs/live-proof.md`. Redeem remains unproven until the test

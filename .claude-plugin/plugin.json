@@ -1,0 +1,13 @@
+{
+  "name": "oddsrail",
+  "version": "0.10.1",
+  "description": "Trade Polymarket and Kalshi from Claude Code: live books, costed fills, settlement audits, guardrails, paper trading, and non-custodial order routing. Read tools need no keys.",
+  "author": {
+    "name": "Mesut Ozsoy",
+    "url": "https://oddsrail.app"
+  },
+  "homepage": "https://oddsrail.app",
+  "repository": "https://github.com/hmesutozsoy/oddsrail",
+  "license": "MIT",
+  "keywords": ["polymarket", "kalshi", "prediction-markets", "trading", "mcp", "agents"]
+}

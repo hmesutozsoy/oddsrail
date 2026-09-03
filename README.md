@@ -77,6 +77,26 @@ claude mcp add --transport stdio oddsrail -- /abs/path/to/oddsrail/.venv/bin/pyt
 Then ask the agent: *"search markets about the World Cup final and run the
 overshoot signal on the favorite"*.
 
+## Install in one step
+
+| Client | How |
+|---|---|
+| Claude Code (plugin, with the four workflow skills) | `claude plugin marketplace add hmesutozsoy/oddsrail` then `claude plugin install oddsrail@oddsrail` |
+| Claude Code (server only) | `claude mcp add --transport stdio oddsrail -- uvx oddsrail` |
+| Any agent that reads skills | `npx skills add hmesutozsoy/oddsrail` |
+| Cursor | [Install oddsrail in Cursor](https://cursor.com/en/install-mcp?name=oddsrail&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyJvZGRzcmFpbCJdfQ==) |
+| VS Code | [Install oddsrail in VS Code](vscode:mcp/install?%7B%22name%22%3A%22oddsrail%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22oddsrail%22%5D%7D) |
+| Anything else that speaks MCP over stdio | `{"command": "uvx", "args": ["oddsrail"]}` (or `pip install oddsrail` and run `oddsrail`) |
+
+The plugin and the one-click links launch the server with `uvx`, so they
+need [uv](https://docs.astral.sh/uv/) on the machine. Without uv, `pip
+install oddsrail` gives you an `oddsrail` command to point any client at.
+Everything starts in dry-run.
+
+The four skills (`skills/*/SKILL.md`) are generated from the server's own
+MCP prompts by `scripts/gen_skills.py`, and a test fails if they drift, so a
+skill and the prompt it mirrors can never disagree.
+
 ## See the footguns yourself, no keys
 
 ```bash

@@ -1,0 +1,25 @@
+{
+  "name": "oddsrail",
+  "owner": {
+    "name": "Mesut Ozsoy",
+    "url": "https://github.com/hmesutozsoy"
+  },
+  "metadata": {
+    "description": "oddsrail: an MCP server and four workflow skills for trading Polymarket and Kalshi.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "oddsrail",
+      "source": "./",
+      "description": "Trade Polymarket and Kalshi from Claude Code: 39 tools, 4 workflow skills, dry-run by default, operator guardrails, paper trading. Non-custodial: your keys stay on your machine.",
+      "version": "0.10.1",
+      "author": { "name": "Mesut Ozsoy" },
+      "homepage": "https://oddsrail.app",
+      "repository": "https://github.com/hmesutozsoy/oddsrail",
+      "license": "MIT",
+      "keywords": ["polymarket", "kalshi", "prediction-markets", "trading", "mcp"],
+      "category": "finance"
+    }
+  ]
+}
