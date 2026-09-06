@@ -2,6 +2,16 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
 
+  // The hosted server's address. The final hostname needs a DNS record the
+  // maintainer controls; until it resolves, the page shows the temporary one
+  // so the connector can be added today and the prompt names a live URL.
+  var HOSTS = ['https://mcp.oddsrail.app', 'https://151-241-155-39.sslip.io'];
+  var HOST = HOSTS[0];
+  function probe(i) {
+    if (i >= HOSTS.length) return Promise.resolve(null);
+    return fetch(HOSTS[i] + '/healthz', { cache: 'no-store' }).then(function (r) { return r.ok ? HOSTS[i] : probe(i + 1); }).catch(function () { return probe(i + 1); });
+  }
+
   // Every fragment: id, group, label, tag, blurb, params (k, label, def, unit,
   // text for a free-text field), and render(cfg, values) -> prompt lines.
   var FRAGMENTS = [
@@ -161,6 +171,11 @@
     L.push('- Bankroll for this agent: $' + c.bankroll + '. Never spend more than $' + c.perorder + ' on one order, never hold more than ' + c.maxpos + ' open positions.');
     L.push('- Prices are implied probabilities in (0,1); size is in shares; the exchange refuses marketable orders under $1.');
     L.push('');
+    L.push('IF THE ODDSRAIL TOOLS ARE NOT AVAILABLE');
+    L.push(paper
+      ? '- Do not search for a substitute and do not simulate. Say: "the oddsrail connector is not enabled in this chat" and tell me to add ' + HOST + '/mcp as a custom connector (Settings, Connectors) and switch it on in this chat\'s tools menu.'
+      : '- Do not search for a substitute and do not simulate. Say: "the oddsrail server is not connected" and tell me to add it: pip install oddsrail, then claude mcp add --transport stdio oddsrail -- oddsrail.');
+    L.push('');
     var strat = FRAGMENTS.filter(function (f) { return f.group === 'strategies' && c.on[f.id]; });
     if (!strat.length) L.push('STRATEGY\n- (no strategy switched on: do a read-only pass, list the qualifying markets with prices and liquidity, and place nothing)\n');
     strat.forEach(function (f) { L.push('STRATEGY'); L = L.concat(f.render(c, c.vals[f.id])); L.push(''); });
@@ -187,6 +202,7 @@
   function save(c) { try { localStorage.setItem('oddsrail-build', JSON.stringify(c)); } catch (e) {} }
   function load() { try { return JSON.parse(localStorage.getItem('oddsrail-build') || 'null'); } catch (e) { return null; } }
   function refreshUi(c) {
+    form.querySelectorAll('#connect .brows').forEach(function (b) { b.hidden = (b.dataset.mode !== c.mode); });
     FRAGMENTS.forEach(function (f) { var el = form.querySelector('.item[data-id="' + f.id + '"]'); if (el) el.classList.toggle('on', !!c.on[f.id]); });
     GROUPS.forEach(function (g) {
       var n = FRAGMENTS.filter(function (f) { return f.group === g && c.on[f.id]; }).length;
@@ -209,6 +225,16 @@
 
   apply(load());
   regen();
+  probe(0).then(function (live) {
+    var url = (live || HOSTS[0]) + '/mcp';
+    HOST = live || HOSTS[0];
+    var inp = document.querySelector('#connect input[value$="/mcp"]');
+    if (inp) { inp.value = url; inp.nextElementSibling.dataset.copy = url; }
+    var note = document.getElementById('host-note');
+    if (note) note.textContent = !live ? 'The hosted server did not answer from here; check oddsrail.app for status.'
+      : live !== HOSTS[0] ? 'Temporary address while mcp.oddsrail.app is being set up; connectors added with it keep working until then.' : '';
+    regen();
+  });
   form.addEventListener('change', regen);
   form.addEventListener('input', function (e) { if (e.target.type === 'text' || e.target.type === 'number' || e.target.tagName === 'TEXTAREA') regen(); });
   form.querySelectorAll('.tab').forEach(function (t) {
@@ -222,6 +248,10 @@
   });
   $('regen').addEventListener('click', regen);
   $('copy').addEventListener('click', function () { navigator.clipboard.writeText(out.value).then(function () { flash('copied'); }); });
+  $('copy2').addEventListener('click', function () { navigator.clipboard.writeText(out.value).then(function () { $('copy2').textContent = 'Copied'; setTimeout(function () { $('copy2').textContent = 'Copy prompt'; }, 1400); }); });
+  form.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () { navigator.clipboard.writeText(b.dataset.copy).then(function () { b.textContent = 'copied'; setTimeout(function () { b.textContent = 'copy'; }, 1400); }); });
+  });
   $('copycfg').addEventListener('click', function () { navigator.clipboard.writeText(JSON.stringify(read(), null, 1)).then(function () { flash('config copied'); }); });
   out.addEventListener('input', function () { setLink(); tags(); status.textContent = out.value.length + ' ch · edited'; });
 })();

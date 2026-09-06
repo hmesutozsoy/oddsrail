@@ -138,8 +138,9 @@ def build_app():
 
     @srv.custom_route("/healthz", methods=["GET"])
     async def healthz(request: Request):
-        return JSONResponse({"ok": True, "version": S.VERSION, "hosted": True,
-                             "mail": "resend" if mail.configured() else "console"})
+        # CORS so the site can probe which hostname is live.
+        return JSONResponse({"ok": True, "version": S.VERSION, "hosted": True, "mail": mail.mode()},
+                            headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"})
 
     @srv.custom_route("/arena/paper.json", methods=["GET"])
     async def arena_board(request: Request):

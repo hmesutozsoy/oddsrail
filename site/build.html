@@ -47,6 +47,20 @@
       </div>
     </div>
 
+    <div class="bpanel connect" id="connect">
+      <div class="ph"><b>Connect</b><span class="muted">one-time setup, before the first prompt</span></div>
+      <div class="brows" data-mode="paper">
+        <div class="brow"><span><b class="step">1</b> Claude, Settings, Connectors, <i>Add custom connector</i>, paste this URL <small id="host-note" class="muted"></small></span><label class="unit url"><input type="text" readonly value="https://mcp.oddsrail.app/mcp"><button type="button" data-copy="https://mcp.oddsrail.app/mcp">copy</button></label></div>
+        <div class="brow"><span><b class="step">2</b> Sign in with your email when Claude asks. The account holds a paper ledger and nothing else.</span><b class="pill">no keys</b></div>
+        <div class="brow"><span><b class="step">3</b> In the chat, open the tools menu and switch oddsrail on, then paste the prompt.</span><b class="pill">per chat</b></div>
+      </div>
+      <div class="brows" data-mode="live" hidden>
+        <div class="brow"><span><b class="step">1</b> Install on your machine</span><label class="unit url"><input type="text" readonly value="pip install oddsrail"><button type="button" data-copy="pip install oddsrail">copy</button></label></div>
+        <div class="brow"><span><b class="step">2</b> Add it to Claude Code, then set your key and guardrails in the environment</span><label class="unit url"><input type="text" readonly value="claude mcp add --transport stdio oddsrail -- oddsrail"><button type="button" data-copy="claude mcp add --transport stdio oddsrail -- oddsrail">copy</button></label></div>
+        <div class="brow"><span><b class="step">3</b> Everything starts in dry-run. <code>ODDSRAIL_DRY_RUN=0</code> is the only switch that makes an order real.</span><b class="pill">your keys</b></div>
+      </div>
+    </div>
+
     <div class="bpanel">
       <div class="ph"><b>Universe</b><span class="muted">what the agent may touch</span></div>
       <div class="brows">
@@ -95,8 +109,9 @@
     <textarea id="out" spellcheck="false" aria-label="Composed prompt"></textarea>
     <div class="pv-tags" id="tools" aria-label="Tools the prompt uses"></div>
     <div class="pv-f">
-      <a id="open" class="btn primary" href="#" target="_blank" rel="noopener">Open in Claude ↗</a>
-      <span class="muted">enable the oddsrail connector in that chat first</span>
+      <button type="button" id="copy2" class="btn primary">Copy prompt</button>
+      <a id="open" class="btn" href="#" target="_blank" rel="noopener">Open in Claude ↗</a>
+      <span class="muted">Claude shows a caution banner on any prompt opened from a link. It is Claude's standard notice, not about this prompt; copying and pasting avoids it.</span>
     </div>
   </aside>
 </section>
