@@ -7,7 +7,7 @@
 <meta name="description" content="Switch on the strategy pieces and risk rules you want, read the prompt they compose, edit it, and send it to Claude with the oddsrail connector. No code.">
 <link rel="canonical" href="https://oddsrail.app/build">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=0.13.2">
 </head>
 <body>
 <header class="top">
@@ -64,7 +64,8 @@
     <div class="bpanel">
       <div class="ph"><b>Universe</b><span class="muted">what the agent may touch</span></div>
       <div class="brows">
-        <div class="brow"><span>Markets about</span><input type="text" name="topic" value="bitcoin" placeholder="bitcoin, NFL, Fed"></div>
+        <div class="brow topic"><span>Markets about</span><input type="text" name="topic" value="" placeholder="all markets, or a topic"></div>
+        <div class="brow chips" aria-label="Topic shortcuts"><span class="muted">quick picks</span><span class="chipset"><button type="button" data-topic="">all markets</button><button type="button" data-topic="bitcoin">bitcoin</button><button type="button" data-topic="ethereum">ethereum</button><button type="button" data-topic="fed">fed</button><button type="button" data-topic="election">election</button><button type="button" data-topic="trump">trump</button><button type="button" data-topic="nfl">nfl</button><button type="button" data-topic="premier league">premier league</button><button type="button" data-topic="oil">oil</button></span></div>
         <div class="brow"><span>Min 24h volume</span><label class="unit"><em>$</em><input type="number" name="minvol" value="20000" min="0" step="1000"></label></div>
         <div class="brow"><span>Bankroll</span><label class="unit"><em>$</em><input type="number" name="bankroll" value="1000" min="10" step="10"></label></div>
         <div class="brow"><span>Max per order</span><label class="unit"><em>$</em><input type="number" name="perorder" value="25" min="1" step="1"></label></div>
@@ -161,6 +162,6 @@
     <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
   </div>
 </footer>
-<script src="/build.js" defer></script>
+<script src="/build.js?v=0.13.2" defer></script>
 </body>
 </html>

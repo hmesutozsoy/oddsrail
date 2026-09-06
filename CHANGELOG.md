@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.2 (2026-09-06)
+
+- Runner universe: an empty topic now means the whole venue, ordered by 24h
+  volume (`polymarket.top_markets`); a topic reads 40 search results
+  instead of 12 before the filters; up to 15 candidates per pass. Each
+  strategy logs what it checked and why nothing qualified, and the run
+  record carries a `universe` summary (scanned, candidates, dropped).
+- Builder: topic quick picks, a starter preset on first visit, and an
+  explanation of an empty pass in the panel instead of a bare zero.
+  Stylesheet and scripts are versioned in the page so a cached old
+  stylesheet cannot break the layout.
+
 ## 0.13.1 (2026-09-06)
 
 - Runner: `check_order` cautions about the resolution source or liquidity

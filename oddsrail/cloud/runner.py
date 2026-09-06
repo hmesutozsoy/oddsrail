@@ -29,8 +29,11 @@ from .. import polymarket as pm
 from .. import signals
 from .arena import FORCED_LEDGER
 
-MAX_CANDIDATES = 12
+MAX_CANDIDATES = 15
+SCAN_TOPIC = 40              # search results read for a topic before the filters
+SCAN_ALL = 60                # volume-ordered markets read for the whole venue
 MAX_NEW_ORDERS = 6
+ALL_TOPICS = ("", "all", "any", "all markets", "everything", "*")
 MIN_NOTIONAL = 1.05          # the exchange's $1 minimum on marketable orders, with slack
 
 # check_order cautions the runner may accept, and the switch that makes each
@@ -104,6 +107,7 @@ class Pass:
         self.t0 = time.time()
         self.steps: list[str] = []
         self.decisions: list[dict] = []
+        self.universe: dict = {}
         self.new_orders = 0
         self.halted: str | None = None
         self.positions: dict = {}        # token_id -> row from paper.positions()
@@ -149,15 +153,20 @@ def _ok_candidate(p: Pass, m: dict) -> str | None:
 
 async def _universe(p: Pass, query: str, closing_hours: float | None = None) -> list[dict]:
     """Unified, filtered candidates for a query (or the closing-soon list)."""
+    broad = query.strip().lower() in ALL_TOPICS
     try:
         if closing_hours:
             raw = await pm.closing_soon(hours=closing_hours, limit=20)
-            if query:
+            if query and not broad:
                 raw = [m for m in raw if xv.similarity(m.get("question") or "", query) > 0] or raw
+        elif broad:
+            raw = await pm.top_markets(SCAN_ALL)
         else:
-            raw = await pm.search_markets(query=query, limit=MAX_CANDIDATES)
+            raw = await pm.search_markets(query=query, limit=SCAN_TOPIC)
     except Exception as e:
         p.log(f"universe scan failed: {type(e).__name__}: {e}")
+        p.universe = {"query": query or "all markets", "scanned": 0, "candidates": 0,
+                      "error": f"{type(e).__name__}: {e}"}
         return []
     out, dropped = [], {}
     for m in raw:
@@ -167,8 +176,12 @@ async def _universe(p: Pass, query: str, closing_hours: float | None = None) -> 
             dropped[why] = dropped.get(why, 0) + 1
             continue
         out.append(u)
-    p.log(f"universe {'closing-soon' if closing_hours else repr(query)}: {len(raw)} scanned, "
-          f"{len(out)} candidates" + (f", dropped {dropped}" if dropped else ""))
+    label = "closing-soon" if closing_hours else ("all markets" if broad else repr(query))
+    p.log(f"universe {label}: {len(raw)} scanned, {len(out)} candidates"
+          + (f", dropped {dropped}" if dropped else ""))
+    if not closing_hours:
+        p.universe = {"query": "all markets" if broad else query, "scanned": len(raw),
+                      "candidates": min(len(out), MAX_CANDIDATES), "dropped": dropped}
     return out[:MAX_CANDIDATES]
 
 
@@ -322,6 +335,7 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
 
 async def _fade(p: Pass, cands: list[dict]) -> None:
     c = p.cfg["fade"]
+    checked = quiet = 0
     for m in cands:
         yes, no = _tokens(m)
         try:
@@ -330,7 +344,9 @@ async def _fade(p: Pass, cands: list[dict]) -> None:
         except Exception as e:
             p.log(f"fade: history failed for {m.get('title')!r}: {type(e).__name__}")
             continue
+        checked += 1
         if not rep.get("ok") or not rep.get("fade_setup_active"):
+            quiet += 1
             continue
         tend = rep.get("median_reversion_120s")
         if tend is not None and tend < 0.1:
@@ -357,10 +373,12 @@ async def _fade(p: Pass, cands: list[dict]) -> None:
             continue
         await _order(p, m, token, outcome, "BUY", book["ask"], stake, "fade",
                      f"fade the {e.get('direction')} overshoot of {e['jump_size']:.0%}, pre-jump price {pre_yes:.2f}")
+    p.log(f"fade: {checked} candidates checked, {quiet} without a fresh jump of {c['jump']:.0%} in the last 5 minutes")
 
 
 async def _settle(p: Pass, cands: list[dict]) -> None:
     c = p.cfg["settle"]
+    in_range = 0
     for m in cands:
         yes, no = _tokens(m)
         yp = float(m["yes_price"])
@@ -375,6 +393,7 @@ async def _settle(p: Pass, cands: list[dict]) -> None:
             continue
         if 1 - ask < 0.025:
             continue
+        in_range += 1
         slug = (m.get("venue_ref") or {}).get("slug")
         try:
             rc = await pm.resolution_criteria(slug)
@@ -394,10 +413,12 @@ async def _settle(p: Pass, cands: list[dict]) -> None:
             continue
         await _order(p, m, token, outcome, "BUY", ask, p.cfg["perorder"], "settle",
                      f"near-certain resolution at {ask:.2f}, source {rc.get('resolution_source')}, dispute risk {score}")
+    p.log(f"settle: {len(cands)} candidates, {in_range} priced between {c['lo']:.2f} and {c['hi']:.2f}")
 
 
 async def _momentum(p: Pass, cands: list[dict]) -> None:
     c = p.cfg["momentum"]
+    checked = moved = 0
     for m in cands:
         yes, no = _tokens(m)
         try:
@@ -406,9 +427,11 @@ async def _momentum(p: Pass, cands: list[dict]) -> None:
             continue
         if len(prices) < 5:
             continue
+        checked += 1
         move = prices[-1] - prices[0]
         if abs(move) < c["move"]:
             continue
+        moved += 1
         if (m.get("spread") or 0) > 0.03:
             p.decide(strategy="momentum", market=m.get("title"), result="skipped", detail="spread wider than 3 points")
             continue
@@ -420,6 +443,7 @@ async def _momentum(p: Pass, cands: list[dict]) -> None:
             continue
         await _order(p, m, token, outcome, "BUY", book["ask"], p.cfg["perorder"], "momentum",
                      f"moved {move:+.0%} over {c['hours']:g}h with volume")
+    p.log(f"momentum: {checked} candidates checked, {moved} moved {c['move']:.0%} or more over {c['hours']:g}h")
 
 
 async def _value(p: Pass) -> None:
@@ -462,9 +486,11 @@ async def _value(p: Pass) -> None:
 
 async def _mm(p: Pass, cands: list[dict]) -> None:
     c = p.cfg["mm"]
+    liquid = 0
     for m in cands:
         if (m.get("spread") or 1) > 0.02:
             continue
+        liquid += 1
         yes, no = _tokens(m)
         if not yes or not no:
             continue
@@ -480,6 +506,7 @@ async def _mm(p: Pass, cands: list[dict]) -> None:
                      f"rest a YES bid {c['edge']:.0%} below mid {mid:.2f}", resting=True)
         await _order(p, m, no, "no", "BUY", pn, c["shares"] * pn, "mm",
                      f"rest a NO bid {c['edge']:.0%} below the NO mid {1 - mid:.2f}", resting=True)
+    p.log(f"quotes: {liquid} of {len(cands)} candidates had a spread of 2 points or less")
 
 
 # ------------------------------- risk rules -------------------------------- #
@@ -569,7 +596,8 @@ async def run_pass(raw_cfg: dict, ledger: Path) -> dict:
             "ok": True, "mode": "paper", "engine": "rules",
             "started": dt.datetime.fromtimestamp(p.t0, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "seconds": round(time.time() - p.t0, 1),
-            "strategies": strategies, "candidates": [{"title": c.get("title"), "yes_price": c.get("yes_price"),
+            "strategies": strategies, "universe": p.universe,
+            "candidates": [{"title": c.get("title"), "yes_price": c.get("yes_price"),
                                                       "volume_24h": c.get("volume_24h"), "spread": c.get("spread")}
                                                      for c in cands],
             "decisions": p.decisions, "orders_placed": len(placed), "halted": p.halted,

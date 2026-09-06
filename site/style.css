@@ -288,3 +288,9 @@ table.cmp.mini tr.r-filled td:last-child{color:#6cc38a}table.cmp.mini tr.r-skipp
 #run-log{margin:6px 0 0;font:11px/1.5 var(--mono);color:var(--ink-soft);white-space:pre-wrap}
 .run-note{margin:0;font-size:12px}
 .btn:disabled{opacity:.6;cursor:wait}
+.brow.chips{min-height:0;padding:4px 0 8px;border-bottom:1px solid var(--line);align-items:flex-start;flex-wrap:wrap}
+.brow.chips > .muted{font:600 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding-top:5px}
+.chipset{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.chipset button{background:#0b0e13;border:1px solid var(--line);color:var(--ink-soft);border-radius:12px;padding:2px 9px;font-size:11.5px;cursor:pointer}
+.chipset button:hover{border-color:var(--amber);color:var(--ink)}
+@media (max-width:640px){.chipset{justify-content:flex-start}}

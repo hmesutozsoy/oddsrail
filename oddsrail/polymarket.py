@@ -108,6 +108,20 @@ async def search_markets(query: str = "", limit: int = 10):
     return [slim_market(m) for m in dump(list(page.items))]
 
 
+async def top_markets(limit: int = 60):
+    """Open markets ordered by 24h volume across every topic: the broad
+    universe. Falls back to the plain listing if the API refuses the order."""
+    c = await public()
+    try:
+        page = await c.list_markets(closed=False, order="volume24hr", ascending=False,
+                                    page_size=min(max(limit, 20), 100)).first_page()
+    except Exception:
+        page = await c.list_markets(closed=False, page_size=min(max(limit, 20), 100)).first_page()
+    ms = [slim_market(m) for m in dump(list(page.items))]
+    ms.sort(key=lambda m: -float(m.get("volume_24hr") or 0))
+    return ms[:limit]
+
+
 async def get_market(id_or_slug: str, full: bool = False):
     c = await public()
     try:

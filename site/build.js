@@ -95,10 +95,11 @@
   var GROUPS = ['strategies', 'risk', 'hygiene', 'extras'];
 
   var PRESETS = {
-    fade:   { topic: 'bitcoin', on: { fade: 1, stoploss: 1, daily: 1, dispute: 1, liquidity: 1, report: 1 } },
-    settle: { topic: 'everything closing this week', minvol: 5000, on: { settle: 1, noadd: 1, expo: 1, dispute: 1, liquidity: 1, report: 1 }, vals: { dispute: { score: 20 } } },
-    quote:  { topic: 'bitcoin', minvol: 50000, on: { mm: 1, expo: 1, daily: 1, liquidity: 1, watch: 1, report: 1 } },
-    view:   { topic: 'my markets', on: { value: 1, stoploss: 1, dispute: 1, liquidity: 1, report: 1 } },
+    starter: { topic: '', minvol: 20000, on: { settle: 1, momentum: 1, mm: 1, stoploss: 1, liquidity: 1, report: 1 } },
+    fade:   { topic: '', on: { fade: 1, stoploss: 1, daily: 1, dispute: 1, liquidity: 1, report: 1 } },
+    settle: { topic: '', minvol: 5000, on: { settle: 1, noadd: 1, expo: 1, dispute: 1, liquidity: 1, report: 1 }, vals: { dispute: { score: 20 } } },
+    quote:  { topic: '', minvol: 50000, on: { mm: 1, expo: 1, daily: 1, liquidity: 1, watch: 1, report: 1 } },
+    view:   { topic: '', on: { value: 1, stoploss: 1, dispute: 1, liquidity: 1, report: 1 } },
     clear:  { on: { report: 1 } }
   };
 
@@ -223,8 +224,12 @@
   }
   function flash(msg) { var keep = status.textContent; status.textContent = msg; setTimeout(function () { status.textContent = keep; }, 1400); }
 
-  apply(load());
+  var saved = load();
+  if (saved) apply(saved); else preset('starter');
   regen();
+  form.querySelectorAll('[data-topic]').forEach(function (b) {
+    b.addEventListener('click', function () { form.querySelector('input[name=topic]').value = b.dataset.topic; regen(); });
+  });
   probe(0).then(function (live) {
     var url = (live || HOSTS[0]) + '/mcp';
     HOST = live || HOSTS[0];
@@ -305,11 +310,17 @@
         }).join('') + '</tbody></table>';
       D.hidden = false;
     } else {
-      D.innerHTML = '<p class="muted">No decisions this pass: ' + ((r.candidates || []).length ? (r.candidates.length + ' candidates scanned, nothing qualified. That is the rules working, not a bug.') : 'no market passed the universe filters. Widen the topic or lower the volume floor.') + '</p>';
+      var u = r.universe || {}, why = '';
+      if (u.error) why = 'the market scan failed (' + u.error + '). Try again in a moment.';
+      else if (!(r.candidates || []).length) why = (u.scanned || 0) + ' markets scanned for ' + (u.query || 'all markets') + ', none passed the filters' + (u.dropped ? ' (' + Object.keys(u.dropped).map(function (k) { return u.dropped[k] + ' ' + k; }).join(', ') + ')' : '') + '. Try all markets, or lower the volume floor.';
+      else if (!(r.strategies || []).length) why = r.candidates.length + ' candidates found, no strategy switched on, so nothing was placed. Switch one on or pick a preset.';
+      else why = r.candidates.length + ' candidates, nothing qualified this pass. The steps below say what each piece checked. That is the rules working, not a bug.';
+      D.innerHTML = '<p class="muted">No decisions this pass: ' + esc(why) + '</p>';
       D.hidden = false;
     }
     $('run-log').textContent = (r.steps || []).join('\n');
     $('run-steps').hidden = !(r.steps || []).length;
+    $('run-steps').open = !ds.length;
     $('run-note').textContent = r.halted || '';
   }
   function runError(msg) { $('run-status').textContent = 'failed'; $('run-note').textContent = msg; }

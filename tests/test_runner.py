@@ -42,6 +42,9 @@ class Fake:
         async def closing_soon(hours=24.0, limit=15):
             return []
 
+        async def top_markets(limit=60):
+            self.calls.append(("top", limit)); return [self.market]
+
         async def get_orderbook(token_id):
             b = self.books[token_id]
             return {"best_bid": str(b[0]), "best_ask": str(b[1]),
@@ -62,7 +65,7 @@ class Fake:
             return {"description": "Resolves YES if the Binance BTC/USDT price is above 80,000.",
                     "resolution_source": "Binance"}
 
-        for name, fn in (("search_markets", search_markets), ("closing_soon", closing_soon),
+        for name, fn in (("search_markets", search_markets), ("closing_soon", closing_soon), ("top_markets", top_markets),
                          ("get_orderbook", get_orderbook), ("price_history", price_history),
                          ("get_market_by_token", get_market_by_token), ("get_market", get_market),
                          ("resolution_criteria", resolution_criteria)):
@@ -207,3 +210,15 @@ async def test_resolution_caution_is_advisory_unless_the_dispute_switch_is_on(le
     monkeypatch.setattr(pm, "get_market", unsourced_full)
     out = await runner.run_pass(cfg(["fade", "dispute"]), ledger)
     assert all(d["result"] == "skipped" for d in out["decisions"]) and "no resolution source" in out["decisions"][0]["detail"]
+
+
+async def test_empty_topic_scans_the_whole_venue_and_reports_the_universe(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    out = await runner.run_pass(cfg(["report"], topic=""), ledger)
+    assert ("top", 60) in fake.calls and not [c for c in fake.calls if c[0] == "search"]
+    assert out["universe"] == {"query": "all markets", "scanned": 1, "candidates": 1, "dropped": {}}
+    fake2 = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51), market=slim(vol=10))
+    fake2.install(monkeypatch)
+    out = await runner.run_pass(cfg(["report"], topic="all"), ledger)
+    assert out["universe"]["candidates"] == 0 and "24h volume below $1,000" in out["universe"]["dropped"]
