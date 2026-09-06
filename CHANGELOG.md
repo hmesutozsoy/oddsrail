@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.1 (2026-09-06)
+
+- Runner: `check_order` cautions about the resolution source or liquidity
+  are advisory unless the matching hygiene switch is on (dispute risk,
+  refuse bad fills), and fill checks do not apply to resting quotes. The
+  accepted cautions are recorded on the decision. Everything else that is
+  not ok still stops the order.
+
 ## 0.13.0 (2026-09-06)
 
 - **The runner** (`oddsrail.cloud.runner`): a deterministic paper pass for a

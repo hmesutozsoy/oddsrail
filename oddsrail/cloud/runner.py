@@ -32,6 +32,12 @@ from .arena import FORCED_LEDGER
 MAX_CANDIDATES = 12
 MAX_NEW_ORDERS = 6
 MIN_NOTIONAL = 1.05          # the exchange's $1 minimum on marketable orders, with slack
+
+# check_order cautions the runner may accept, and the switch that makes each
+# one binding. A caution tells an agent to read something before placing; the
+# runner cannot read, so it either enforces the rule the user switched on or
+# records the caution and proceeds. Everything else that is not "ok" stops it.
+ADVISORY = {"resolution": "dispute", "liquidity": "liquidity"}
 _locks: dict[str, asyncio.Lock] = {}
 
 
@@ -278,10 +284,21 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
         chk = await ck.check_order("polymarket", token, side, price, size, intent, outcome)
     except Exception as e:
         return p.decide(**base, result="skipped", detail=f"check_order failed: {type(e).__name__}: {e}")
-    failed = [f"{x['check']}: {x.get('detail', '')}" for x in chk.get("checks", []) if x.get("status") != "ok"]
     base["verdict"] = chk.get("verdict")
-    if chk.get("verdict") != "ok":
-        return p.decide(**base, result="skipped", detail="; ".join(failed) or chk.get("verdict"))
+    binding, accepted = [], []
+    for x in chk.get("checks", []):
+        st = x.get("status")
+        if st == "ok":
+            continue
+        name = x.get("check")
+        switch = ADVISORY.get(name)
+        advisory = (st == "caution" and switch is not None
+                    and (not c["on"].get(switch) or (name == "liquidity" and resting)))
+        (accepted if advisory else binding).append(f"{name}: {x.get('detail', '')}")
+    if binding:
+        return p.decide(**base, result="skipped", detail="; ".join(binding))
+    if accepted:
+        base["caution_accepted"] = accepted
 
     try:
         fill = await paper.simulate_polymarket(token, side, price, size)

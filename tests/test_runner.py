@@ -187,3 +187,23 @@ async def test_two_sided_quotes_rest_even_with_fill_checks_on(ledger, monkeypatc
     assert [d["result"] for d in rest] == ["resting", "resting"], rest
     assert {d["outcome"] for d in rest} == {"YES", "NO"} and all(d["price"] == 0.48 for d in rest)
     assert out["ledger"]["open_orders"] and len(out["ledger"]["open_orders"]) == 2 and out["orders_placed"] == 2
+
+
+async def test_resolution_caution_is_advisory_unless_the_dispute_switch_is_on(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=jump_series(),
+                market={**slim(), "resolution_source": None})
+    fake.install(monkeypatch)
+
+    async def no_source(id_or_slug):
+        return {"description": "Resolves per the FOMC statement.", "resolution_source": "(none named)"}
+    monkeypatch.setattr(pm, "resolution_criteria", no_source)
+
+    out = await runner.run_pass(cfg(["fade"]), ledger)
+    filled = [d for d in out["decisions"] if d["result"] == "filled"]
+    assert filled and filled[0]["verdict"] == "caution" and any("resolution" in a for a in filled[0]["caution_accepted"])
+
+    async def unsourced_full(id_or_slug, full=False):
+        return {**slim(), "resolution": {"source": None, "uma_resolution_status": None}, "description": "Resolves per the FOMC statement."}
+    monkeypatch.setattr(pm, "get_market", unsourced_full)
+    out = await runner.run_pass(cfg(["fade", "dispute"]), ledger)
+    assert all(d["result"] == "skipped" for d in out["decisions"]) and "no resolution source" in out["decisions"][0]["detail"]
