@@ -268,3 +268,6 @@ table.cmp td.strat{max-width:280px;font-size:13px}
 .unit.url button:hover{color:var(--amber)}
 @media (max-width:640px){.connect .brow{flex-wrap:wrap}.unit.url{max-width:100%;width:100%}}
 .connect #host-note{display:block;font-size:11.5px;margin-top:2px}
+.connect .brows[hidden]{display:none}
+.pv-f{flex-wrap:wrap}
+.pv-f .muted{flex-basis:100%;line-height:1.4}
