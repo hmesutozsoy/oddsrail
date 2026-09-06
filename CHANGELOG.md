@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.11.0 (2026-09-06)
+
+- **Hosted server** (`oddsrail.cloud`, `oddsrail/hosted.py`): the same
+  server as a remote MCP endpoint over streamable HTTP with OAuth 2.1
+  accounts (dynamic client registration, PKCE, magic-link sign-in by email,
+  rotating tokens). Runs at `https://mcp.oddsrail.app/mcp`; add it in Claude
+  as a custom connector or with `claude mcp add --transport http`. Each
+  account gets its own paper ledger.
+- The hosted profile (`ODDSRAIL_HOSTED=1`) holds no keys, forces dry-run,
+  papers every order against the live Polymarket book, hides the
+  account-scoped and relayer tools, and does not serve Kalshi (its API
+  Developer Agreement limits API use to a member's own trading). Twenty-one
+  tools remain. `server_info` reports `hosted` and the signed-in `account`.
+- `paper.ledger_resolver`: a hook a multi-tenant host installs to map the
+  current request to its account's ledger; local single-operator behaviour
+  is unchanged.
+- Deployment files in `deploy/cloud/` (systemd unit, Caddyfile, env
+  template). Privacy policy at oddsrail.app/privacy.
+- Tests: the hosted flow end to end against a real local process
+  (`tests/test_cloud.py`). 143 tests.
+- Docs: tool count corrected to 41 (32 read-only, 9 trading).
+
 ## 0.10.2 (2026-09-06)
 
 - **`check_order`**: deterministic pre-trade verification of a proposed order

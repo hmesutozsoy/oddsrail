@@ -6,12 +6,12 @@
     "url": "https://github.com/hmesutozsoy/oddsrail",
     "source": "github"
   },
-  "version": "0.10.2",
+  "version": "0.11.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "oddsrail",
-      "version": "0.10.2",
+      "version": "0.11.0",
       "transport": {
         "type": "stdio"
       },

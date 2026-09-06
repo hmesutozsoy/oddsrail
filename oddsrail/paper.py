@@ -31,7 +31,18 @@ def enabled() -> bool:
     return os.environ.get("ODDSRAIL_PAPER", "1").strip().lower() not in ("0", "false", "no")
 
 
+# A multi-tenant host (oddsrail.cloud) installs a callable here that returns
+# the ledger path for the account behind the current request, so one process
+# keeps one ledger per signed-in agent. None means the local single-operator
+# path below.
+ledger_resolver = None
+
+
 def ledger_path() -> Path:
+    if ledger_resolver is not None:
+        resolved = ledger_resolver()
+        if resolved:
+            return Path(resolved)
     p = os.environ.get("ODDSRAIL_PAPER_LEDGER")
     return Path(p).expanduser() if p else Path.home() / ".oddsrail" / "paper.json"
 

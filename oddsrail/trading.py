@@ -36,7 +36,7 @@ Safety model:
 
 import os
 
-from . import geo, guard, paper
+from . import geo, guard, hosted, paper
 
 _secure = None
 
@@ -48,6 +48,8 @@ _LIVE_VALUES = ("0", "false", "no")
 
 
 def dry_run() -> bool:
+    if hosted.enabled():        # the shared server never posts a real order
+        return True
     return os.environ.get("ODDSRAIL_DRY_RUN", "1") not in _LIVE_VALUES
 
 
@@ -154,7 +156,8 @@ async def place_order(token_id: str, side: str, price: float, size: float,
         return {**block, "submitted": intent}
     if dry:
         out = {"dry_run": True, "would_post": intent,
-               "note": "set ODDSRAIL_DRY_RUN=0 to post real orders"}
+               "note": hosted.LIVE_NOTE if hosted.enabled()
+               else "set ODDSRAIL_DRY_RUN=0 to post real orders"}
         if paper.enabled():
             try:
                 out["paper"] = await paper.simulate_polymarket(token_id, side, price, size)

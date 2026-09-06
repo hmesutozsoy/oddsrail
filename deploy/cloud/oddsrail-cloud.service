@@ -1,0 +1,25 @@
+[Unit]
+Description=oddsrail cloud: hosted MCP server with OAuth accounts (paper trading only, no keys)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mm
+WorkingDirectory=/opt/oddsrail
+EnvironmentFile=/etc/oddsrail-cloud.env
+Environment=PYTHONUNBUFFERED=1
+Environment=ODDSRAIL_CLOUD_DATA=/var/lib/oddsrail-cloud
+ExecStart=/opt/oddsrail/.venv/bin/python -m oddsrail.cloud.app
+Restart=always
+RestartSec=3
+# Hardening: the service needs its data dir and outbound network, nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/oddsrail-cloud
+StateDirectory=oddsrail-cloud
+
+[Install]
+WantedBy=multi-user.target

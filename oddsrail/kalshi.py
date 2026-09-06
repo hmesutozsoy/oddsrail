@@ -39,6 +39,8 @@ from decimal import Decimal
 
 import httpx
 
+from . import hosted
+
 PROD = "https://external-api.kalshi.com"
 DEMO = "https://external-api.demo.kalshi.co"
 PREFIX = "/trade-api/v2"
@@ -123,6 +125,8 @@ def _json_or_raise(r: httpx.Response, url: str):
 
 
 async def _get(path: str, params: dict | None = None, signed: bool = False):
+    if hosted.enabled():
+        raise hosted.VenueUnavailable()
     url = base_url() + PREFIX + path
     headers = _signed_headers("GET", PREFIX + path) if signed else {}
     async with httpx.AsyncClient(timeout=20.0) as c:
@@ -132,6 +136,8 @@ async def _get(path: str, params: dict | None = None, signed: bool = False):
 
 
 async def _post(path: str, body: dict):
+    if hosted.enabled():
+        raise hosted.VenueUnavailable()
     url = base_url() + PREFIX + path
     headers = _signed_headers("POST", PREFIX + path)
     async with httpx.AsyncClient(timeout=20.0) as c:

@@ -13,7 +13,7 @@ claude plugin marketplace add hmesutozsoy/oddsrail && claude plugin install odds
 Also: `npx skills add hmesutozsoy/oddsrail`, and one-click links for Cursor and VS Code in the README.
 
 - Status: Verified Polymarket builder
-- Surface: 40 tools, 4 workflow prompts
+- Surface: 41 tools, 4 workflow prompts
 - Cost: 0 bps added to trades
 - Default: dry-run, with a paper ledger
 - License: MIT, self-hosted
@@ -119,3 +119,11 @@ The HTML page renders the weekly builder leaderboard from https://data-api.polym
 - llms.txt: https://oddsrail.app/llms.txt
 
 Not financial or legal advice. Trading prediction markets involves risk; eligibility depends on where you are and who you are.
+
+## Hosted server
+
+https://mcp.oddsrail.app/mcp is the same server as a remote MCP endpoint with
+accounts (OAuth, sign in by email). It serves Polymarket market data, signals,
+check_order and paper trading with a virtual bankroll per account. It holds no
+keys, sends no real order and serves no Kalshi tools. Live trading is
+self-hosted with pip install oddsrail. Privacy: https://oddsrail.app/privacy

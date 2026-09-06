@@ -12,7 +12,7 @@ oddsrail speaks the Model Context Protocol over stdio, so any MCP client (Claude
 
 ## What it does
 
-- 40 tools (30 read-only, 9 trading) and 4 workflow prompts.
+- 41 tools (32 read-only, 9 trading) and 4 workflow prompts.
 - Market data on both venues in one vocabulary: `find_markets`, `get_orderbook` (best-first), `watch_book` (bounded realtime), `price_history`, `closing_soon`, `kalshi_*`.
 - Cost before trading: `quote_cost` walks the book and reports average fill, slippage and the venue's fee schedule; `position_size` is fractional Kelly.
 - Cross-venue with honesty: `compare_venues` finds same-event candidates; `settlement_audit` returns ok / caution / block from resolution sources, UMA status and structure.
@@ -40,3 +40,11 @@ oddsrail speaks the Model Context Protocol over stdio, so any MCP client (Claude
 - Changelog: https://github.com/hmesutozsoy/oddsrail/blob/main/CHANGELOG.md
 - Full documentation as text: https://oddsrail.app/llms-full.txt
 - This page as Markdown: https://oddsrail.app/index.md
+
+## Hosted server
+
+https://mcp.oddsrail.app/mcp is the same server as a remote MCP endpoint with
+accounts (OAuth, sign in by email). It serves Polymarket market data, signals,
+check_order and paper trading with a virtual bankroll per account. It holds no
+keys, sends no real order and serves no Kalshi tools. Live trading is
+self-hosted with pip install oddsrail. Privacy: https://oddsrail.app/privacy

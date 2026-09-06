@@ -1,0 +1,172 @@
+"""SQLite store for the hosted server: accounts, OAuth clients and grants,
+magic-link sign-ins.
+
+One file in WAL mode behind a process-wide lock. The hosted server is a
+single process and this traffic is orders of magnitude below sqlite's
+ceiling; a bigger store is a later problem, and the schema is small enough
+to move when it is one.
+"""
+
+from __future__ import annotations
+
+import json
+import secrets
+import sqlite3
+import threading
+import time
+from pathlib import Path
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL,
+    created REAL NOT NULL, last_login REAL);
+CREATE TABLE IF NOT EXISTS oauth_clients (
+    client_id TEXT PRIMARY KEY, info TEXT NOT NULL, created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS auth_requests (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, params TEXT NOT NULL,
+    created REAL NOT NULL, expires REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS magic_links (
+    token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, req_id TEXT NOT NULL,
+    created REAL NOT NULL, expires REAL NOT NULL, used REAL);
+CREATE TABLE IF NOT EXISTS auth_codes (
+    code_hash TEXT PRIMARY KEY, data TEXT NOT NULL, expires REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS tokens (
+    token_hash TEXT PRIMARY KEY, kind TEXT NOT NULL, client_id TEXT NOT NULL,
+    user_id TEXT NOT NULL, scopes TEXT NOT NULL, pair TEXT NOT NULL,
+    created REAL NOT NULL, expires REAL, revoked REAL);
+CREATE INDEX IF NOT EXISTS tokens_pair ON tokens(pair);
+CREATE INDEX IF NOT EXISTS magic_links_email ON magic_links(email, created);
+"""
+
+
+class DB:
+    def __init__(self, path: str | Path):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._c = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
+        self._c.row_factory = sqlite3.Row
+        self._lock = threading.RLock()
+        with self._lock:
+            self._c.execute("PRAGMA journal_mode=WAL")
+            self._c.execute("PRAGMA busy_timeout=5000")
+            self._c.executescript(SCHEMA)
+
+    def _exec(self, sql: str, params=()) -> sqlite3.Cursor:
+        with self._lock:
+            return self._c.execute(sql, params)
+
+    def _one(self, sql: str, params=()) -> dict | None:
+        with self._lock:
+            r = self._c.execute(sql, params).fetchone()
+        return dict(r) if r else None
+
+    # ------------------------------- users -------------------------------- #
+
+    def user(self, uid: str) -> dict | None:
+        return self._one("SELECT * FROM users WHERE id=?", (uid,))
+
+    def user_by_email(self, email: str) -> dict | None:
+        return self._one("SELECT * FROM users WHERE email=?", (email,))
+
+    def login_user(self, email: str) -> dict:
+        """Find or create the account for a verified email; returns it."""
+        now = time.time()
+        with self._lock:
+            row = self._c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+            if row is None:
+                uid = "u_" + secrets.token_hex(8)
+                self._c.execute("INSERT INTO users (id, email, created, last_login) VALUES (?,?,?,?)",
+                                (uid, email, now, now))
+            else:
+                uid = row["id"]
+                self._c.execute("UPDATE users SET last_login=? WHERE id=?", (now, uid))
+        return self.user(uid)  # type: ignore[return-value]
+
+    # --------------------------- OAuth clients ---------------------------- #
+
+    def put_client(self, client_id: str, info_json: str) -> None:
+        self._exec("INSERT OR REPLACE INTO oauth_clients (client_id, info, created) VALUES (?,?,?)",
+                   (client_id, info_json, time.time()))
+
+    def get_client(self, client_id: str) -> str | None:
+        r = self._one("SELECT info FROM oauth_clients WHERE client_id=?", (client_id,))
+        return r["info"] if r else None
+
+    # --------------------- pending authorization requests ----------------- #
+
+    def put_auth_request(self, rid: str, client_id: str, params: dict, ttl: float) -> None:
+        now = time.time()
+        self._exec("INSERT INTO auth_requests (id, client_id, params, created, expires) VALUES (?,?,?,?,?)",
+                   (rid, client_id, json.dumps(params), now, now + ttl))
+
+    def get_auth_request(self, rid: str) -> dict | None:
+        r = self._one("SELECT * FROM auth_requests WHERE id=? AND expires>?", (rid, time.time()))
+        if r:
+            r["params"] = json.loads(r["params"])
+        return r
+
+    def delete_auth_request(self, rid: str) -> None:
+        self._exec("DELETE FROM auth_requests WHERE id=?", (rid,))
+
+    # ----------------------------- magic links ---------------------------- #
+
+    def put_magic_link(self, token_hash: str, email: str, rid: str, ttl: float) -> None:
+        now = time.time()
+        self._exec("INSERT INTO magic_links (token_hash, email, req_id, created, expires) VALUES (?,?,?,?,?)",
+                   (token_hash, email, rid, now, now + ttl))
+
+    def get_magic_link(self, token_hash: str) -> dict | None:
+        return self._one("SELECT * FROM magic_links WHERE token_hash=? AND used IS NULL AND expires>?",
+                         (token_hash, time.time()))
+
+    def use_magic_link(self, token_hash: str) -> bool:
+        """Mark a link used. Atomic: exactly one caller wins a double click."""
+        now = time.time()
+        cur = self._exec("UPDATE magic_links SET used=? WHERE token_hash=? AND used IS NULL AND expires>?",
+                         (now, token_hash, now))
+        return cur.rowcount == 1
+
+    def recent_links(self, email: str, window: float) -> int:
+        r = self._one("SELECT COUNT(*) AS n FROM magic_links WHERE email=? AND created>?",
+                      (email, time.time() - window))
+        return int(r["n"]) if r else 0
+
+    # -------------------------- authorization codes ----------------------- #
+
+    def put_code(self, code_hash: str, data: dict, ttl: float) -> None:
+        self._exec("INSERT INTO auth_codes (code_hash, data, expires) VALUES (?,?,?)",
+                   (code_hash, json.dumps(data), time.time() + ttl))
+
+    def get_code(self, code_hash: str) -> dict | None:
+        r = self._one("SELECT data FROM auth_codes WHERE code_hash=? AND expires>?", (code_hash, time.time()))
+        return json.loads(r["data"]) if r else None
+
+    def delete_code(self, code_hash: str) -> None:
+        self._exec("DELETE FROM auth_codes WHERE code_hash=?", (code_hash,))
+
+    # -------------------------------- tokens ------------------------------ #
+
+    def put_token(self, token_hash: str, kind: str, client_id: str, user_id: str,
+                  scopes: list[str], pair: str, ttl: float | None) -> None:
+        now = time.time()
+        self._exec("INSERT INTO tokens (token_hash, kind, client_id, user_id, scopes, pair, created, expires) "
+                   "VALUES (?,?,?,?,?,?,?,?)",
+                   (token_hash, kind, client_id, user_id, " ".join(scopes), pair, now,
+                    now + ttl if ttl else None))
+
+    def get_token(self, token_hash: str, kind: str) -> dict | None:
+        return self._one("SELECT * FROM tokens WHERE token_hash=? AND kind=? AND revoked IS NULL "
+                         "AND (expires IS NULL OR expires>?)", (token_hash, kind, time.time()))
+
+    def revoke_pair(self, pair: str) -> None:
+        self._exec("UPDATE tokens SET revoked=? WHERE pair=? AND revoked IS NULL", (time.time(), pair))
+
+    # ------------------------------- hygiene ------------------------------ #
+
+    def cleanup(self) -> None:
+        now = time.time()
+        self._exec("DELETE FROM auth_requests WHERE expires<?", (now,))
+        self._exec("DELETE FROM magic_links WHERE expires<?", (now - 86400,))
+        self._exec("DELETE FROM auth_codes WHERE expires<?", (now,))
+        self._exec("DELETE FROM tokens WHERE (expires IS NOT NULL AND expires<?) OR revoked<?",
+                   (now - 86400, now - 86400))

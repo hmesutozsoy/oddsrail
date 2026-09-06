@@ -81,6 +81,8 @@ overshoot signal on the favorite"*.
 
 | Client | How |
 |---|---|
+| Claude web or desktop, nothing to install (hosted, paper trading) | Settings, Connectors, Add custom connector, URL `https://mcp.oddsrail.app/mcp`, then sign in with your email. See [Hosted](#hosted-nothing-to-install). |
+| Claude Code (hosted, paper trading) | `claude mcp add --transport http oddsrail https://mcp.oddsrail.app/mcp` |
 | Claude Code (plugin, with the four workflow skills) | `claude plugin marketplace add hmesutozsoy/oddsrail` then `claude plugin install oddsrail@oddsrail` |
 | Claude Code (server only) | `claude mcp add --transport stdio oddsrail -- uvx oddsrail` |
 | Any agent that reads skills | `npx skills add hmesutozsoy/oddsrail` |
@@ -96,6 +98,31 @@ Everything starts in dry-run.
 The four skills (`skills/*/SKILL.md`) are generated from the server's own
 MCP prompts by `scripts/gen_skills.py`, and a test fails if they drift, so a
 skill and the prompt it mirrors can never disagree.
+
+## Hosted: nothing to install
+
+`mcp.oddsrail.app` runs the same server as a remote MCP endpoint with
+accounts, so an agent inside Claude can use it without a machine of its own.
+Add the URL as a custom connector (Pro, Max, Team and Enterprise plans), sign
+in with your email when Claude asks, and every call from then on carries
+your account.
+
+What the hosted server is, in one breath: Polymarket market data, the signal
+tools, `check_order`, and **paper trading with a $1,000 virtual bankroll per
+account**, filled against the live book. What it is not: a place where money
+moves. It holds no wallet keys, executes no real order, and serves no Kalshi
+tools (Kalshi's API Developer Agreement limits API use to a member's own
+trading, so a shared service cannot route it). Account-scoped tools such as
+`open_orders` and the gasless relayer tools are absent, because on a shared
+server they would describe nobody's account. Twenty-one tools remain.
+
+Live trading stays self-hosted: `pip install oddsrail` with your own key, and
+the same `place_order` posts real orders when you set `ODDSRAIL_DRY_RUN=0`.
+The paper ledger you build up in Claude is yours to reset with
+`paper_reset`; nothing else about the account exists. Privacy policy:
+[oddsrail.app/privacy](https://oddsrail.app/privacy). Source:
+`oddsrail/cloud/` and `oddsrail/hosted.py`; deployment notes in
+`deploy/cloud/`.
 
 ## See the footguns yourself, no keys
 
@@ -152,11 +179,13 @@ the product, and the code is attached and signed by the operator's own wallet.
 
 ## Status
 
-**Offline tests:** 111 tests covering the paths where a bug costs money: the
+**Offline tests:** 143 tests covering the paths where a bug costs money: the
 Kalshi yes/no→bid/ask translation, Kelly sizing, book walking, cross-venue
 pairing, signal edge cases, the dry-run safety net, and jurisdiction-failure
 handling (a geoblock must never read as an empty search result or a resting
-order). They need no keys and no network:
+order), plus the hosted server end to end (dynamic client registration, PKCE,
+magic-link sign-in, token rotation, one paper ledger per account) against a
+real local process. They need no keys and no network:
 
 ```bash
 pip install -e ".[dev]" && pytest
@@ -439,7 +468,7 @@ the expertise, which a flat tool list cannot convey.
 - **`position_size(bankroll_usd, price, fair_value)`**: fractional-Kelly sizing,
   capped, refusing negative-edge bets, returning its own assumptions.
 
-## Tools (32)
+## Tools (41)
 
 - `search_markets`, `get_market`, `get_orderbook`, `price_history`,
   `get_positions`: read-only, no keys

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>oddsrail privacy policy</title>
+<meta name="description" content="What the oddsrail hosted server and website collect, keep, and never touch.">
+<link rel="canonical" href="https://oddsrail.app/privacy">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/attribution">Attribution</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<section class="hero">
+  <p class="kicker">Privacy policy</p>
+  <h1>What oddsrail keeps, and what it never touches</h1>
+  <p class="lede">Last updated 6 September 2026. This covers the website at oddsrail.app and the hosted server at mcp.oddsrail.app. The open-source package you run yourself sends nothing to us at all.</p>
+</section>
+
+<section id="self-hosted">
+  <h2>The self-hosted package</h2>
+  <p><code>pip install oddsrail</code> runs on your machine and talks only to Polymarket, Kalshi and the public blockchain APIs it needs. It has no telemetry, no analytics and no account. Your keys stay in your environment; the package never transmits them anywhere except to the venue you are trading on, as part of the order you asked it to place.</p>
+</section>
+
+<section id="hosted">
+  <h2>The hosted server (mcp.oddsrail.app)</h2>
+  <p>When you connect Claude or another MCP client to the hosted server, we keep the minimum needed to give you an account:</p>
+  <ul>
+    <li><b>Your email address</b>, used only to sign you in by magic link. We do not send newsletters or share it.</li>
+    <li><b>Your paper-trading ledger</b>: simulated orders, fills and positions with a virtual bankroll. No real money exists in it.</li>
+    <li><b>OAuth records</b>: the client application that connected (for example Claude), and the access and refresh tokens that let it act as you. Tokens are stored hashed. You can disconnect from your client's settings at any time, which invalidates them.</li>
+    <li><b>Server logs</b> with request timestamps, paths and IP addresses, kept for up to 14 days for abuse prevention and debugging.</li>
+  </ul>
+  <p>The hosted server holds <b>no wallet keys, no exchange credentials and no payment details</b>, and it executes no real financial transaction on anyone's behalf. Market data it fetches on your behalf comes from Polymarket's public APIs and is not stored beyond short caches.</p>
+  <p>Conversation content stays between you and your AI client. The server sees only the tool calls the client makes and the results it returns.</p>
+</section>
+
+<section id="website">
+  <h2>The website</h2>
+  <p>oddsrail.app is a static site served by Cloudflare. We run no analytics scripts and set no cookies. Cloudflare may log requests as part of serving the site; its own privacy policy governs that. The attribution page reads public Polymarket data directly from your browser.</p>
+</section>
+
+<section id="sharing">
+  <h2>Sharing and third parties</h2>
+  <ul>
+    <li><b>Resend</b> delivers sign-in emails and processes your email address for that purpose.</li>
+    <li><b>Polymarket</b> receives the market-data requests the server makes for you. No account data is sent with them.</li>
+    <li>We do not sell or rent any data, and we do not share it with anyone else except when required by law.</li>
+  </ul>
+</section>
+
+<section id="retention">
+  <h2>Retention and deletion</h2>
+  <p>Accounts, ledgers and tokens are kept while the account exists. Expired tokens and sign-in links are purged automatically. To delete your account and everything attached to it, email <a href="mailto:hello@oddsrail.app">hello@oddsrail.app</a> from the address you signed up with; deletion completes within 7 days.</p>
+</section>
+
+<section id="contact">
+  <h2>Contact</h2>
+  <p>Questions about this policy: <a href="mailto:hello@oddsrail.app">hello@oddsrail.app</a>. Changes to this policy are noted with the date at the top of this page.</p>
+</section>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
+  </div>
+</footer>
+</body>
+</html>

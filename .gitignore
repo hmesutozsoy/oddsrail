@@ -7,3 +7,6 @@ outreach/
 dist/
 build/
 *.egg-info/
+*.sqlite3
+*.sqlite3-*
+cloud-data/

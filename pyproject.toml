@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oddsrail"
-version = "0.10.2"
+version = "0.11.0"
 description = "MCP server giving AI trading agents access to prediction markets (Polymarket, Kalshi) with on-chain builder-code attribution and trading signals."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,6 +34,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+# The hosted server (oddsrail.cloud): remote MCP over streamable HTTP with
+# OAuth accounts. Starlette ships with mcp; uvicorn serves it.
+cloud = ["uvicorn>=0.30", "python-multipart>=0.0.9"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

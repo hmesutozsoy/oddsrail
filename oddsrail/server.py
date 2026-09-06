@@ -19,18 +19,40 @@ from . import check as ck
 from . import crossvenue as xv
 from . import geo
 from . import guard
+from . import hosted
 from . import paper
 from . import kalshi as kx
 from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.10.2"
+VERSION = "0.11.0"
+
+HOSTED_INSTRUCTIONS = (
+    "Hosted oddsrail: Polymarket market data, signals, deterministic order "
+    "checks (check_order) and PAPER trading, per signed-in account. The "
+    "server holds no keys and never sends a real order: place_order fills "
+    "against the live book into your account's paper ledger and "
+    "paper_positions shows the P&L. Prices are implied probabilities in "
+    "(0,1). Kalshi is not served here (self-host for it). Live trading is "
+    "self-hosted: pip install oddsrail. Call server_info to see the "
+    "signed-in account and the server's venue reachability."
+)
+
+
+def _auth_kwargs() -> dict:
+    """OAuth resource-server + authorization-server wiring, hosted mode only."""
+    if not hosted.enabled():
+        return {}
+    from .cloud.auth import server_auth_kwargs
+    return server_auth_kwargs()
+
 
 srv = MCPServer(
     name="oddsrail",
     version=VERSION,
-    instructions=(
+    **_auth_kwargs(),
+    instructions=HOSTED_INSTRUCTIONS if hosted.enabled() else (
         "Prediction-market rail for trading agents. Read tools need no keys. "
         "place_order defaults to dry-run; the operator must set "
         "ODDSRAIL_DRY_RUN=0 and POLYMARKET_PRIVATE_KEY to trade. Prices are "
@@ -109,6 +131,8 @@ def _err_obj(e: Exception, hint: str = "", host: str = "") -> dict:
     if cls:
         out["failure_class"] = cls
         out["hint"] = geo.HINTS[cls].format(host=host or "the venue")
+    elif getattr(e, "hint", None):
+        out["hint"] = e.hint
     elif hint:
         out["hint"] = hint
     return out
@@ -234,6 +258,8 @@ async def dispute_risk(id_or_slug: str) -> str:
            annotations=READ, structured_output=False)
 async def check_order(venue: str, market_id: str, side: str, price: float,
                       size: float, intent: str = "", outcome: str = "") -> str:
+    if hosted.enabled() and str(venue).lower() == "kalshi":
+        return _j({"verdict": "block", "error": hosted.KALSHI_NOTE})
     try:
         return _j(await ck.check_order(venue, market_id, side, price, size, intent, outcome))
     except Exception as e:
@@ -447,6 +473,9 @@ async def find_markets(query: str, limit: int = 10,
     if want not in ("both", "polymarket", "kalshi"):
         return _j({"error": f"unknown venues={venues!r}",
                    "valid": ["both", "polymarket", "kalshi"]})
+    want, hosted_note = hosted.venues(want)
+    if not want:
+        return _j({"error": hosted_note, "valid": ["polymarket"]})
     out = []
     if want in ("both", "polymarket"):
         try:
@@ -491,7 +520,7 @@ async def find_markets(query: str, limit: int = 10,
                 "absence. " + note)
     return _j({"markets": live[: limit * 2], "venue_errors": errs or None,
                "kalshi_scan": kalshi_scan,
-               "note": note})
+               "note": (hosted_note + " " + note) if hosted_note else note})
 
 
 @srv.tool(description="Find markets that may be the SAME event on both "
@@ -778,7 +807,10 @@ async def closing_soon(hours: float = 24.0, limit: int = 10,
     if want not in ("both", "polymarket", "kalshi"):
         return _j({"error": f"unknown venues={venues!r}",
                    "valid": ["both", "polymarket", "kalshi"]})
-    out = {}
+    want, hosted_note = hosted.venues(want)
+    if not want:
+        return _j({"error": hosted_note, "valid": ["polymarket"]})
+    out = {"note": hosted_note} if hosted_note else {}
     if want in ("both", "polymarket"):
         try:
             out["polymarket"] = await pm.closing_soon(hours, limit)
@@ -926,9 +958,10 @@ open UMA dispute (dispute_risk), and anything resolving within 24h."""
            annotations=READ, structured_output=False)
 async def server_info() -> str:
     has_key = bool(os.environ.get("POLYMARKET_PRIVATE_KEY"))
-    return _j({
+    info = {
         "name": "oddsrail",
         "version": VERSION,
+        "hosted": hosted.enabled(),
         "dry_run": trading.dry_run(),
         "trading_key_configured": has_key,
         "builder_code_configured": bool(trading.builder_code()),
@@ -957,7 +990,50 @@ async def server_info() -> str:
             "disclaimer": geo.DISCLAIMER,
         },
         "premium_tools": ["overshoot_signal", "dispute_risk"],
-    })
+    }
+    if hosted.enabled():
+        info.update({
+            "account": _account(),
+            "custody": "none: hosted paper trading only; no keys, nothing real is sent",
+            "trading_key_configured": False,
+            "relayer_key_configured": False,
+            "live_trading": hosted.LIVE_NOTE,
+        })
+        info["venues"]["kalshi"] = {"available": False, "note": hosted.KALSHI_NOTE}
+        info["geography"]["note"] = ("describes the hosted server, not you; paper orders are "
+                                     "never sent to the venue")
+    return _j(info)
+
+
+def _account() -> dict | None:
+    """The signed-in account behind this request (hosted mode)."""
+    try:
+        from mcp.server.auth.middleware.auth_context import get_access_token
+        tok = get_access_token()
+    except Exception:
+        return None
+    if tok is None:
+        return None
+    return {"id": tok.subject, "email": (tok.claims or {}).get("email"),
+            "client_id": tok.client_id}
+
+
+if hosted.enabled():
+    # Account-scoped and key-holding tools have no meaning on a shared server;
+    # what stays is public data and the caller's own paper ledger.
+    for _name in hosted.HIDDEN_TOOLS:
+        try:
+            srv.remove_tool(_name)
+        except Exception:
+            pass
+    for _name in hosted.HIDDEN_PROMPTS:
+        try:
+            srv.remove_prompt(_name)
+        except Exception:
+            pass
+    srv.remove_tool("place_order")
+    srv.add_tool(place_order, name="place_order", description=hosted.PLACE_ORDER_DESC,
+                 annotations=TRADE, structured_output=False)
 
 
 USAGE = f"""oddsrail {VERSION} — MCP server for AI agents trading prediction

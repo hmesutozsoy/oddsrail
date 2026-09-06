@@ -17,7 +17,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.10.2","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.11.0","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
 </script>
 </head>
 <body>
@@ -47,17 +47,19 @@
   <p class="lede">Live books, costed fills, settlement audits and non-custodial order routing in one open-source MCP server your agent can call. Free to run. 0 bps on every trade. Keys never leave your machine.</p>
 
   <div class="install">
+    <p class="cmd"><code>https://mcp.oddsrail.app/mcp</code><button type="button" data-copy="https://mcp.oddsrail.app/mcp">copy</button></p>
     <p class="cmd"><code>pip install oddsrail</code><button type="button" data-copy="pip install oddsrail">copy</button></p>
     <p class="cmd"><code>claude mcp add --transport stdio oddsrail -- oddsrail</code><button type="button" data-copy="claude mcp add --transport stdio oddsrail -- oddsrail">copy</button></p>
     <p class="cmd"><code>claude plugin marketplace add hmesutozsoy/oddsrail</code><button type="button" data-copy="claude plugin marketplace add hmesutozsoy/oddsrail && claude plugin install oddsrail@oddsrail">copy</button></p>
   </div>
-  <p class="note">The plugin adds four workflow skills generated from the server's own prompts. Also: <a href="https://github.com/hmesutozsoy/oddsrail#install-in-one-step">Cursor and VS Code one-click links, npx skills add</a>.</p>
+  <p class="note">The first line is the hosted server: add it in Claude as a custom connector (Settings, Connectors), sign in with your email, and paper trade Polymarket with no install and no keys. The other lines run the full server on your machine, which is where live trading happens. The plugin adds four workflow skills generated from the server's own prompts. Also: <a href="https://github.com/hmesutozsoy/oddsrail#install-in-one-step">Cursor and VS Code one-click links, npx skills add</a>.</p>
 
   <dl class="facts">
     <div><dt>status</dt><dd>Verified Polymarket builder</dd></div>
-    <div><dt>surface</dt><dd>40 tools, 4 workflow prompts</dd></div>
+    <div><dt>surface</dt><dd>41 tools, 4 workflow prompts</dd></div>
     <div><dt>cost</dt><dd>0 bps added to trades</dd></div>
     <div><dt>default</dt><dd>dry-run, with a paper ledger</dd></div>
+    <div><dt>hosted</dt><dd>mcp.oddsrail.app, paper only, no keys</dd></div>
     <div><dt>license</dt><dd>MIT, self-hosted</dd></div>
   </dl>
 </section>
@@ -127,7 +129,7 @@
 
 <section id="tools" aria-labelledby="h-tools">
   <h2 id="h-tools">What's inside</h2>
-  <p class="sub">31 read-only tools that need no keys, 9 trading tools that respect dry-run and the operator's guardrails, and four prompts that encode the order of operations that keeps an agent out of trouble.</p>
+  <p class="sub">32 read-only tools that need no keys, 9 trading tools that respect dry-run and the operator's guardrails, and four prompts that encode the order of operations that keeps an agent out of trouble.</p>
   <div class="cols">
     <div><h3>Market data</h3><ul><li>search_markets</li><li>get_market</li><li>get_orderbook</li><li>watch_book</li><li>price_history</li><li>closing_soon</li><li>kalshi_*</li></ul></div>
     <div><h3>Cross-venue</h3><ul><li>find_markets</li><li>compare_venues</li><li>settlement_audit</li><li>resolution_criteria</li></ul></div>
