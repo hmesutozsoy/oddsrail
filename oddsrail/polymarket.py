@@ -122,6 +122,16 @@ async def top_markets(limit: int = 60):
     return ms[:limit]
 
 
+async def markets_by_tag(tag_id: int, limit: int = 40):
+    """Open markets carrying one Polymarket tag, ordered by 24h volume."""
+    c = await public()
+    page = await c.list_markets(closed=False, tag_id=int(tag_id), order="volume24hr", ascending=False,
+                                page_size=min(max(limit, 20), 100)).first_page()
+    ms = [slim_market(m) for m in dump(list(page.items))]
+    ms.sort(key=lambda m: -float(m.get("volume_24hr") or 0))
+    return ms[:limit]
+
+
 async def get_market(id_or_slug: str, full: bool = False):
     c = await public()
     try:

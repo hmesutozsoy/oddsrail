@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.3 (2026-09-06)
+
+- Builder and runner: markets are chosen by ticking categories (everything,
+  crypto, politics, geopolitics, economy and the Fed, business, football,
+  esports, tennis, US sports, motorsport), any number at once, plus an
+  optional keyword. Categories map to Polymarket's own tags
+  (`polymarket.markets_by_tag`), fetched in parallel, merged and
+  de-duplicated, most traded first. The run record's universe summary
+  names the categories and keyword used.
+
 ## 0.13.2 (2026-09-06)
 
 - Runner universe: an empty topic now means the whole venue, ordered by 24h

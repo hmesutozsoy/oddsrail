@@ -30,10 +30,27 @@ from .. import signals
 from .arena import FORCED_LEDGER
 
 MAX_CANDIDATES = 15
-SCAN_TOPIC = 40              # search results read for a topic before the filters
+MAX_CANDIDATES_MULTI = 20    # when several categories are switched on
+SCAN_TOPIC = 40              # search results read for a keyword before the filters
+SCAN_TAG = 30                # volume-ordered markets read per tag
 SCAN_ALL = 60                # volume-ordered markets read for the whole venue
 MAX_NEW_ORDERS = 6
 ALL_TOPICS = ("", "all", "any", "all markets", "everything", "*")
+
+# Market categories a builder can switch on, as Polymarket tag ids (from the
+# venue's own tag list) plus search queries where no tag covers the ground.
+CATEGORIES = {
+    "crypto":      {"label": "crypto", "tags": [21, 235]},
+    "politics":    {"label": "politics", "tags": [2, 144]},
+    "geopolitics": {"label": "geopolitics", "tags": [100265, 101970]},
+    "economy":     {"label": "economy and the Fed", "tags": [100328, 159, 100196]},
+    "business":    {"label": "business and finance", "tags": [107, 120, 101031]},
+    "soccer":      {"label": "football (soccer)", "tags": [100350]},
+    "esports":     {"label": "esports", "tags": [64]},
+    "tennis":      {"label": "tennis", "tags": [864]},
+    "us-sports":   {"label": "US sports", "tags": [100381], "queries": ["nfl", "nba"]},
+    "motorsport":  {"label": "motorsport", "tags": [435]},
+}
 MIN_NOTIONAL = 1.05          # the exchange's $1 minimum on marketable orders, with slack
 
 # check_order cautions the runner may accept, and the switch that makes each
@@ -72,8 +89,22 @@ def normalize(raw: dict) -> dict:
     def val(frag, key, default):
         return _f((vals.get(frag) or {}).get(key), default)
 
+    topics_raw = raw.get("topics")
+    if isinstance(topics_raw, str):
+        topics_raw = [t.strip() for t in topics_raw.split(",")]
+    topics = [str(t).strip().lower() for t in (topics_raw or []) if str(t).strip()]
+    topics = [t for t in topics if t in CATEGORIES or t == "all"]
+    keyword = str(raw.get("keyword") or "").strip()[:80]
+    legacy = str(raw.get("topic") or "").strip()
+    if not topics and not keyword and legacy and legacy.lower() not in ALL_TOPICS:
+        keyword = legacy[:80]                      # older configs: a typed topic
+    if not topics and not keyword:
+        topics = ["all"]
+    label = "all markets" if "all" in topics else ", ".join(topics)
+    if keyword:
+        label = f"{label} + {keyword}" if label else keyword
     cfg = {
-        "topic": str(raw.get("topic") or "").strip()[:80],
+        "topics": topics, "keyword": keyword, "topic": label,
         "minvol": max(0.0, _f(raw.get("minvol"), 20000)),
         "bankroll": min(max(10.0, _f(raw.get("bankroll"), 1000)), 100000.0),
         "perorder": min(max(1.0, _f(raw.get("perorder"), 25)), 500.0),
@@ -151,22 +182,55 @@ def _ok_candidate(p: Pass, m: dict) -> str | None:
     return None
 
 
-async def _universe(p: Pass, query: str, closing_hours: float | None = None) -> list[dict]:
-    """Unified, filtered candidates for a query (or the closing-soon list)."""
-    broad = query.strip().lower() in ALL_TOPICS
-    try:
-        if closing_hours:
-            raw = await pm.closing_soon(hours=closing_hours, limit=20)
-            if query and not broad:
-                raw = [m for m in raw if xv.similarity(m.get("question") or "", query) > 0] or raw
-        elif broad:
-            raw = await pm.top_markets(SCAN_ALL)
-        else:
-            raw = await pm.search_markets(query=query, limit=SCAN_TOPIC)
-    except Exception as e:
-        p.log(f"universe scan failed: {type(e).__name__}: {e}")
-        p.universe = {"query": query or "all markets", "scanned": 0, "candidates": 0,
-                      "error": f"{type(e).__name__}: {e}"}
+async def _sources(p: Pass, closing_hours: float | None) -> tuple[list[dict], list[str]]:
+    """Raw market lists for the switched-on categories and keyword, merged
+    and de-duplicated, most traded first. Returns (markets, failures)."""
+    c = p.cfg
+    jobs: list[tuple[str, object]] = []
+    if closing_hours:
+        jobs.append(("closing-soon", pm.closing_soon(hours=closing_hours, limit=20)))
+    else:
+        if "all" in c["topics"]:
+            jobs.append(("all markets", pm.top_markets(SCAN_ALL)))
+        for key in c["topics"]:
+            cat = CATEGORIES.get(key)
+            if not cat:
+                continue
+            for tid in cat.get("tags", []):
+                jobs.append((f"{key}#{tid}", pm.markets_by_tag(tid, SCAN_TAG)))
+            for q in cat.get("queries", []):
+                jobs.append((f"{key}:{q}", pm.search_markets(query=q, limit=SCAN_TAG)))
+        if c["keyword"]:
+            jobs.append((f"keyword {c['keyword']!r}", pm.search_markets(query=c["keyword"], limit=SCAN_TOPIC)))
+    results = await asyncio.gather(*(j[1] for j in jobs), return_exceptions=True)
+    seen, merged, failures = set(), [], []
+    for (name, _), res in zip(jobs, results):
+        if isinstance(res, BaseException):
+            failures.append(f"{name}: {type(res).__name__}")
+            continue
+        for m in res:
+            key = ((m.get("outcomes") or {}).get("yes") or {}).get("token_id") or m.get("id")
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(m)
+    merged.sort(key=lambda m: -float(m.get("volume_24hr") or 0))
+    return merged, failures
+
+
+async def _universe(p: Pass, query: str = "", closing_hours: float | None = None) -> list[dict]:
+    """Unified, filtered candidates for the switched-on categories (or the
+    closing-soon list)."""
+    c = p.cfg
+    raw, failures = await _sources(p, closing_hours)
+    if closing_hours and c["keyword"]:
+        raw = [m for m in raw if xv.similarity(m.get("question") or "", c["keyword"]) > 0] or raw
+    label = "closing-soon" if closing_hours else c["topic"]
+    if not raw and failures:
+        p.log(f"universe {label}: scan failed ({'; '.join(failures)})")
+        if not closing_hours:
+            p.universe = {"query": c["topic"], "topics": c["topics"], "keyword": c["keyword"],
+                          "scanned": 0, "candidates": 0, "error": "; ".join(failures)}
         return []
     out, dropped = [], {}
     for m in raw:
@@ -176,13 +240,15 @@ async def _universe(p: Pass, query: str, closing_hours: float | None = None) -> 
             dropped[why] = dropped.get(why, 0) + 1
             continue
         out.append(u)
-    label = "closing-soon" if closing_hours else ("all markets" if broad else repr(query))
+    cap = MAX_CANDIDATES_MULTI if len(c["topics"]) + bool(c["keyword"]) > 1 else MAX_CANDIDATES
     p.log(f"universe {label}: {len(raw)} scanned, {len(out)} candidates"
-          + (f", dropped {dropped}" if dropped else ""))
+          + (f", dropped {dropped}" if dropped else "") + (f", failed {failures}" if failures else ""))
     if not closing_hours:
-        p.universe = {"query": "all markets" if broad else query, "scanned": len(raw),
-                      "candidates": min(len(out), MAX_CANDIDATES), "dropped": dropped}
-    return out[:MAX_CANDIDATES]
+        p.universe = {"query": c["topic"], "topics": c["topics"], "keyword": c["keyword"],
+                      "scanned": len(raw), "candidates": min(len(out), cap), "dropped": dropped}
+        if failures:
+            p.universe["partial"] = failures
+    return out[:cap]
 
 
 def _tokens(m: dict) -> tuple[str | None, str | None]:
@@ -569,13 +635,13 @@ async def run_pass(raw_cfg: dict, ledger: Path) -> dict:
             await _review(p, pos)
 
         strategies = [s for s in ("fade", "settle", "value", "momentum", "mm") if cfg["on"].get(s)]
-        cands = await _universe(p, cfg["topic"])
+        cands = await _universe(p)
         if not strategies:
             p.log("no strategy switched on: read-only pass")
         if "fade" in strategies:
             await _fade(p, cands)
         if "settle" in strategies:
-            soon = await _universe(p, cfg["topic"], closing_hours=72)
+            soon = await _universe(p, closing_hours=72)
             seen = {c["market_id"] for c in soon}
             await _settle(p, soon + [c for c in cands if c["market_id"] not in seen])
         if "value" in strategies:

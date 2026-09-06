@@ -95,12 +95,12 @@
   var GROUPS = ['strategies', 'risk', 'hygiene', 'extras'];
 
   var PRESETS = {
-    starter: { topic: '', minvol: 20000, on: { settle: 1, momentum: 1, mm: 1, stoploss: 1, liquidity: 1, report: 1 } },
-    fade:   { topic: '', on: { fade: 1, stoploss: 1, daily: 1, dispute: 1, liquidity: 1, report: 1 } },
-    settle: { topic: '', minvol: 5000, on: { settle: 1, noadd: 1, expo: 1, dispute: 1, liquidity: 1, report: 1 }, vals: { dispute: { score: 20 } } },
-    quote:  { topic: '', minvol: 50000, on: { mm: 1, expo: 1, daily: 1, liquidity: 1, watch: 1, report: 1 } },
-    view:   { topic: '', on: { value: 1, stoploss: 1, dispute: 1, liquidity: 1, report: 1 } },
-    clear:  { on: { report: 1 } }
+    starter: { topics: ['all'], keyword: '', minvol: 20000, on: { settle: 1, momentum: 1, mm: 1, stoploss: 1, liquidity: 1, report: 1 } },
+    fade:   { topics: ['crypto', 'politics', 'geopolitics'], keyword: '', on: { fade: 1, stoploss: 1, daily: 1, dispute: 1, liquidity: 1, report: 1 } },
+    settle: { topics: ['all'], keyword: '', minvol: 5000, on: { settle: 1, noadd: 1, expo: 1, dispute: 1, liquidity: 1, report: 1 }, vals: { dispute: { score: 20 } } },
+    quote:  { topics: ['soccer', 'esports', 'tennis'], keyword: '', minvol: 50000, on: { mm: 1, expo: 1, daily: 1, liquidity: 1, watch: 1, report: 1 } },
+    view:   { topics: [], keyword: '', on: { value: 1, stoploss: 1, dispute: 1, liquidity: 1, report: 1 } },
+    clear:  { topics: ['all'], keyword: '', on: { report: 1 } }
   };
 
   // ------------------------------ form rendering ------------------------------
@@ -125,9 +125,12 @@
   });
 
   var form = $('bform');
+  var CATS = ['all', 'crypto', 'politics', 'geopolitics', 'economy', 'business', 'soccer', 'esports', 'tennis', 'us-sports', 'motorsport'];
+  var CAT_QUERIES = { crypto: 'bitcoin, ethereum, crypto', politics: 'election, congress, trump', geopolitics: 'ceasefire, invasion, sanctions', economy: 'fed rates, cpi, jobs report', business: 'earnings, ipo, stock', soccer: 'premier league, la liga, champions league', esports: 'counter-strike, league of legends', tennis: 'us open, atp, wta', 'us-sports': 'nfl, nba, mlb', motorsport: 'f1, grand prix' };
   function read() {
-    var fd = new FormData(form), c = { mode: fd.get('mode') || 'paper', on: {}, vals: {} };
-    ['topic', 'minvol', 'bankroll', 'perorder', 'maxpos', 'closing'].forEach(function (k) { c[k] = fd.get(k); });
+    var fd = new FormData(form), c = { mode: fd.get('mode') || 'paper', on: {}, vals: {}, topics: [] };
+    CATS.forEach(function (k) { if (fd.get('t_' + k) === k) c.topics.push(k); });
+    ['keyword', 'minvol', 'bankroll', 'perorder', 'maxpos', 'closing'].forEach(function (k) { c[k] = fd.get(k); });
     FRAGMENTS.forEach(function (f) {
       c.on[f.id] = fd.get('f_' + f.id) === 'on';
       var v = {};
@@ -143,6 +146,8 @@
       var n = el.name;
       if (n === 'mode') { el.checked = (el.value === (c.mode || 'paper')); return; }
       if (n.slice(0, 2) === 'f_') { el.checked = !!(c.on && c.on[n.slice(2)]); return; }
+      if (n.slice(0, 2) === 't_') { el.checked = (c.topics || ['all']).indexOf(n.slice(2)) !== -1; return; }
+      if (n === 'keyword') { el.value = c.keyword || (c.topic && c.topics ? '' : (c.topic || '')); return; }
       if (c[n] !== undefined && c[n] !== null) { el.value = c[n]; return; }
       var m = n.match(/^([a-z]+)_(.+)$/);
       if (m && c.vals && c.vals[m[1]] && c.vals[m[1]][m[2]] !== undefined && c.vals[m[1]][m[2]] !== null) el.value = c.vals[m[1]][m[2]];
@@ -152,7 +157,8 @@
     var p = PRESETS[name]; if (!p) return;
     var c = read();
     FRAGMENTS.forEach(function (f) { c.on[f.id] = !!(p.on && p.on[f.id]); });
-    ['topic', 'minvol', 'bankroll', 'perorder', 'maxpos', 'closing'].forEach(function (k) { if (p[k] !== undefined) c[k] = p[k]; });
+    if (p.topics) c.topics = p.topics.slice();
+    ['keyword', 'minvol', 'bankroll', 'perorder', 'maxpos', 'closing'].forEach(function (k) { if (p[k] !== undefined) c[k] = p[k]; });
     if (p.vals) Object.keys(p.vals).forEach(function (id) { Object.keys(p.vals[id]).forEach(function (k) { c.vals[id][k] = p.vals[id][k]; }); });
     apply(c);
   }
@@ -167,7 +173,10 @@
       : 'Mode: LIVE, self-hosted. Start by calling server_info. Stop and tell me if dry_run is not false, if trading_key_configured is not true, or if guardrails shows no per-order cap. Real money: when in doubt, do not trade.');
     L.push('');
     L.push('UNIVERSE');
-    L.push('- Markets about: ' + (c.topic || '(anything)') + '. Use find_markets(query, venues="polymarket"); on Polymarket, market_id is the token id of the YES or NO side.');
+    var cats = (c.topics || []).filter(function (t) { return t !== 'all'; });
+    var queries = cats.map(function (t) { return CAT_QUERIES[t] || t; }).concat(c.keyword ? [c.keyword] : []);
+    var where = (c.topics || []).indexOf('all') !== -1 || (!cats.length && !c.keyword) ? 'the whole venue, most traded first' : cats.join(', ') + (c.keyword ? ' plus the keyword ' + c.keyword : '');
+    L.push('- Markets: ' + where + '. Use find_markets(query, venues="polymarket")' + (queries.length ? ' with queries such as: ' + queries.join('; ') : ' with an empty query for the most traded open markets, then closing_soon') + '. On Polymarket, market_id is the token id of the YES or NO side.');
     L.push('- Skip markets with less than $' + c.minvol + ' of 24h volume' + (+c.closing > 0 ? ', and markets closing within ' + c.closing + ' hours' : '') + '.');
     L.push('- Bankroll for this agent: $' + c.bankroll + '. Never spend more than $' + c.perorder + ' on one order, never hold more than ' + c.maxpos + ' open positions.');
     L.push('- Prices are implied probabilities in (0,1); size is in shares; the exchange refuses marketable orders under $1.');
@@ -227,8 +236,13 @@
   var saved = load();
   if (saved) apply(saved); else preset('starter');
   regen();
-  form.querySelectorAll('[data-topic]').forEach(function (b) {
-    b.addEventListener('click', function () { form.querySelector('input[name=topic]').value = b.dataset.topic; regen(); });
+  form.addEventListener('change', function (e) {
+    var t = e.target; if (!t.name || t.name.slice(0, 2) !== 't_') return;
+    var all = form.querySelector('input[name=t_all]');
+    if (t === all && all.checked) form.querySelectorAll('#cats input').forEach(function (i) { if (i !== all) i.checked = false; });
+    else if (t !== all && t.checked) all.checked = false;
+    if (!form.querySelector('#cats input:checked') && !form.querySelector('input[name=keyword]').value) all.checked = true;
+    regen();
   });
   probe(0).then(function (live) {
     var url = (live || HOSTS[0]) + '/mcp';

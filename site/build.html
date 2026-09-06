@@ -7,7 +7,7 @@
 <meta name="description" content="Switch on the strategy pieces and risk rules you want, read the prompt they compose, edit it, and send it to Claude with the oddsrail connector. No code.">
 <link rel="canonical" href="https://oddsrail.app/build">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css?v=0.13.2">
+<link rel="stylesheet" href="/style.css?v=0.13.3">
 </head>
 <body>
 <header class="top">
@@ -64,8 +64,20 @@
     <div class="bpanel">
       <div class="ph"><b>Universe</b><span class="muted">what the agent may touch</span></div>
       <div class="brows">
-        <div class="brow topic"><span>Markets about</span><input type="text" name="topic" value="" placeholder="all markets, or a topic"></div>
-        <div class="brow chips" aria-label="Topic shortcuts"><span class="muted">quick picks</span><span class="chipset"><button type="button" data-topic="">all markets</button><button type="button" data-topic="bitcoin">bitcoin</button><button type="button" data-topic="ethereum">ethereum</button><button type="button" data-topic="fed">fed</button><button type="button" data-topic="election">election</button><button type="button" data-topic="trump">trump</button><button type="button" data-topic="nfl">nfl</button><button type="button" data-topic="premier league">premier league</button><button type="button" data-topic="oil">oil</button></span></div>
+        <div class="brow cats" aria-label="Market categories"><span>Markets <small class="muted">tick any</small></span><span class="chipset" id="cats">
+          <label class="cat"><input type="checkbox" name="t_all" value="all" checked><span>everything</span></label>
+          <label class="cat"><input type="checkbox" name="t_crypto" value="crypto"><span>crypto</span></label>
+          <label class="cat"><input type="checkbox" name="t_politics" value="politics"><span>politics</span></label>
+          <label class="cat"><input type="checkbox" name="t_geopolitics" value="geopolitics"><span>geopolitics</span></label>
+          <label class="cat"><input type="checkbox" name="t_economy" value="economy"><span>economy &amp; fed</span></label>
+          <label class="cat"><input type="checkbox" name="t_business" value="business"><span>business</span></label>
+          <label class="cat"><input type="checkbox" name="t_soccer" value="soccer"><span>football</span></label>
+          <label class="cat"><input type="checkbox" name="t_esports" value="esports"><span>esports</span></label>
+          <label class="cat"><input type="checkbox" name="t_tennis" value="tennis"><span>tennis</span></label>
+          <label class="cat"><input type="checkbox" name="t_us-sports" value="us-sports"><span>US sports</span></label>
+          <label class="cat"><input type="checkbox" name="t_motorsport" value="motorsport"><span>motorsport</span></label>
+        </span></div>
+        <div class="brow topic"><span>Plus a keyword <small class="muted">optional</small></span><input type="text" name="keyword" value="" placeholder="e.g. bitcoin, trump, arsenal"></div>
         <div class="brow"><span>Min 24h volume</span><label class="unit"><em>$</em><input type="number" name="minvol" value="20000" min="0" step="1000"></label></div>
         <div class="brow"><span>Bankroll</span><label class="unit"><em>$</em><input type="number" name="bankroll" value="1000" min="10" step="10"></label></div>
         <div class="brow"><span>Max per order</span><label class="unit"><em>$</em><input type="number" name="perorder" value="25" min="1" step="1"></label></div>
@@ -162,6 +174,6 @@
     <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
   </div>
 </footer>
-<script src="/build.js?v=0.13.2" defer></script>
+<script src="/build.js?v=0.13.3" defer></script>
 </body>
 </html>

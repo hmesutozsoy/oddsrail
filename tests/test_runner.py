@@ -45,6 +45,9 @@ class Fake:
         async def top_markets(limit=60):
             self.calls.append(("top", limit)); return [self.market]
 
+        async def markets_by_tag(tag_id, limit=40):
+            self.calls.append(("tag", tag_id)); return [self.market]
+
         async def get_orderbook(token_id):
             b = self.books[token_id]
             return {"best_bid": str(b[0]), "best_ask": str(b[1]),
@@ -65,7 +68,7 @@ class Fake:
             return {"description": "Resolves YES if the Binance BTC/USDT price is above 80,000.",
                     "resolution_source": "Binance"}
 
-        for name, fn in (("search_markets", search_markets), ("closing_soon", closing_soon), ("top_markets", top_markets),
+        for name, fn in (("search_markets", search_markets), ("closing_soon", closing_soon), ("top_markets", top_markets), ("markets_by_tag", markets_by_tag),
                          ("get_orderbook", get_orderbook), ("price_history", price_history),
                          ("get_market_by_token", get_market_by_token), ("get_market", get_market),
                          ("resolution_criteria", resolution_criteria)):
@@ -217,8 +220,34 @@ async def test_empty_topic_scans_the_whole_venue_and_reports_the_universe(ledger
     fake.install(monkeypatch)
     out = await runner.run_pass(cfg(["report"], topic=""), ledger)
     assert ("top", 60) in fake.calls and not [c for c in fake.calls if c[0] == "search"]
-    assert out["universe"] == {"query": "all markets", "scanned": 1, "candidates": 1, "dropped": {}}
+    u = out["universe"]
+    assert (u["query"], u["topics"], u["keyword"], u["scanned"], u["candidates"], u["dropped"]) == \
+        ("all markets", ["all"], "", 1, 1, {})
     fake2 = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51), market=slim(vol=10))
     fake2.install(monkeypatch)
     out = await runner.run_pass(cfg(["report"], topic="all"), ledger)
     assert out["universe"]["candidates"] == 0 and "24h volume below $1,000" in out["universe"]["dropped"]
+
+
+async def test_categories_union_tags_and_keyword_without_duplicates(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    c = cfg(["report"]); c.pop("topic"); c["topics"] = ["crypto", "tennis", "bogus"]; c["keyword"] = "arsenal"
+    out = await runner.run_pass(c, ledger)
+    tags = sorted(x[1] for x in fake.calls if x[0] == "tag")
+    assert tags == [21, 235, 864], tags                       # crypto (two tags) + tennis; 'bogus' ignored
+    assert ("search", "arsenal") in fake.calls and not [x for x in fake.calls if x[0] == "top"]
+    u = out["universe"]
+    assert u["topics"] == ["crypto", "tennis"] and u["keyword"] == "arsenal"
+    assert u["scanned"] == 1 and u["candidates"] == 1, "the same market from four sources counts once"
+    assert out["candidates"][0]["title"] == TITLE
+
+
+def test_normalize_topics_and_legacy_topic():
+    c = runner.normalize({"topics": ["Politics", "nope"], "keyword": "x" * 200})
+    assert c["topics"] == ["politics"] and len(c["keyword"]) == 80
+    assert runner.normalize({"topic": "bitcoin"})["keyword"] == "bitcoin"
+    assert runner.normalize({"topic": ""})["topics"] == ["all"]
+    assert runner.normalize({"topics": "crypto, esports"})["topics"] == ["crypto", "esports"]
+    assert runner.normalize({"topics": ["all", "crypto"]})["topic"] == "all markets"
+    assert runner.normalize({"topics": ["crypto"], "keyword": "arsenal"})["topic"] == "crypto + arsenal"
