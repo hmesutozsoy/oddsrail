@@ -12,10 +12,11 @@ oddsrail speaks the Model Context Protocol over stdio, so any MCP client (Claude
 
 ## What it does
 
-- 39 tools (30 read-only, 9 trading) and 4 workflow prompts.
+- 40 tools (30 read-only, 9 trading) and 4 workflow prompts.
 - Market data on both venues in one vocabulary: `find_markets`, `get_orderbook` (best-first), `watch_book` (bounded realtime), `price_history`, `closing_soon`, `kalshi_*`.
 - Cost before trading: `quote_cost` walks the book and reports average fill, slippage and the venue's fee schedule; `position_size` is fractional Kelly.
 - Cross-venue with honesty: `compare_venues` finds same-event candidates; `settlement_audit` returns ok / caution / block from resolution sources, UMA status and structure.
+- `check_order`: deterministic pre-trade verification (market, intent vs YES/NO side, price vs book, size, guardrails, liquidity, resolution) returning ok / caution / block. Call it before `place_order`.
 - Trading, non-custodial: `place_order`, `cancel_order`, `cancel_all_orders`, `kalshi_place_order`; gasless `split_position`, `merge_positions`, `redeem_positions` through the operator's own relayer key.
 - Operator guardrails: `ODDSRAIL_MAX_ORDER_NOTIONAL`, `ODDSRAIL_MAX_SESSION_NOTIONAL`, `ODDSRAIL_MAX_OPEN_ORDERS`, `ODDSRAIL_ALLOWED_MARKETS`. Enforced before any request, in dry-run too. The agent cannot change them.
 - Paper trading: in dry-run, Polymarket orders fill against the live book; `paper_positions` shows cash, marks and P&L. Simulated: no queue, no impact, no fees.

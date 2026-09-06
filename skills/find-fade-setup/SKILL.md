@@ -23,7 +23,9 @@ Work in this order and stop if a step fails:
    position regardless of price action.
 6. position_size(bankroll_usd=<bankroll_usd>, price, fair_value) where
    fair_value is the pre-jump price if you believe it fully reverts.
-7. place_order(...) — dry-run first and read back the intent before setting
+7. check_order(venue, market_id, side, price, size, intent=<the operator's
+   words>) — a 'block' ends it; read any 'caution' back to the operator.
+8. place_order(...) — dry-run first and read back the intent before setting
    ODDSRAIL_DRY_RUN=0.
 
 Report the candidates you rejected and why; a rejected setup is a result.

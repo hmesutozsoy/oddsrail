@@ -13,7 +13,7 @@ claude plugin marketplace add hmesutozsoy/oddsrail && claude plugin install odds
 Also: `npx skills add hmesutozsoy/oddsrail`, and one-click links for Cursor and VS Code in the README.
 
 - Status: Verified Polymarket builder
-- Surface: 39 tools, 4 workflow prompts
+- Surface: 40 tools, 4 workflow prompts
 - Cost: 0 bps added to trades
 - Default: dry-run, with a paper ledger
 - License: MIT, self-hosted
@@ -83,7 +83,7 @@ Reproduce all six live, no keys: `pip install oddsrail && python examples/footgu
 
 - Market data: search_markets, get_market, get_orderbook, watch_book, price_history, closing_soon, kalshi_*
 - Cross-venue: find_markets, compare_venues, settlement_audit, resolution_criteria
-- Cost and sizing: quote_cost, position_size, overshoot_signal, dispute_risk
+- Cost and sizing: quote_cost, position_size, check_order, overshoot_signal, dispute_risk
 - Trading: place_order, cancel_order, cancel_all_orders, kalshi_place_order, split_position, merge_positions, redeem_positions
 - Lifecycle: order_status, open_orders, my_fills, my_positions, redeemable_positions, paper_positions, server_info
 - Prompts: find_fade_setup, check_cross_venue_edge, settle_resolved, daily_review

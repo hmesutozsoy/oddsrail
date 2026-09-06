@@ -428,6 +428,14 @@ the expertise, which a flat tool list cannot convey.
   close times, resolution sources, UMA dispute status and market structure on
   **live data with no pre-curated pair list**, returning `ok` / `caution` /
   `block` with reasons, and listing the checks it did *not* perform.
+- **`check_order(venue, market_id, side, price, size, intent)`**: the last step
+  before `place_order`. Deterministic checks of the proposed order against the
+  operator's own words and the live market: does the market exist and accept
+  orders, do the intent's words match the market and the YES/NO side, is the
+  price sane against the book, is the size above Polymarket's $1 minimum and
+  inside the guardrails, is there liquidity within the limit, is a resolution
+  source named. Returns `ok` / `caution` / `block` with the evidence per check
+  and a one-line read-back. No second model judges anything; nothing is sent.
 - **`position_size(bankroll_usd, price, fair_value)`**: fractional-Kelly sizing,
   capped, refusing negative-edge bets, returning its own assumptions.
 

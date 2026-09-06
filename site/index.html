@@ -17,7 +17,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.10.1","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.10.2","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
 </script>
 </head>
 <body>
@@ -55,7 +55,7 @@
 
   <dl class="facts">
     <div><dt>status</dt><dd>Verified Polymarket builder</dd></div>
-    <div><dt>surface</dt><dd>39 tools, 4 workflow prompts</dd></div>
+    <div><dt>surface</dt><dd>40 tools, 4 workflow prompts</dd></div>
     <div><dt>cost</dt><dd>0 bps added to trades</dd></div>
     <div><dt>default</dt><dd>dry-run, with a paper ledger</dd></div>
     <div><dt>license</dt><dd>MIT, self-hosted</dd></div>
@@ -127,11 +127,11 @@
 
 <section id="tools" aria-labelledby="h-tools">
   <h2 id="h-tools">What's inside</h2>
-  <p class="sub">30 read-only tools that need no keys, 9 trading tools that respect dry-run and the operator's guardrails, and four prompts that encode the order of operations that keeps an agent out of trouble.</p>
+  <p class="sub">31 read-only tools that need no keys, 9 trading tools that respect dry-run and the operator's guardrails, and four prompts that encode the order of operations that keeps an agent out of trouble.</p>
   <div class="cols">
     <div><h3>Market data</h3><ul><li>search_markets</li><li>get_market</li><li>get_orderbook</li><li>watch_book</li><li>price_history</li><li>closing_soon</li><li>kalshi_*</li></ul></div>
     <div><h3>Cross-venue</h3><ul><li>find_markets</li><li>compare_venues</li><li>settlement_audit</li><li>resolution_criteria</li></ul></div>
-    <div><h3>Cost and sizing</h3><ul><li>quote_cost</li><li>position_size</li><li>overshoot_signal</li><li>dispute_risk</li></ul></div>
+    <div><h3>Cost and sizing</h3><ul><li>quote_cost</li><li>check_order</li><li>position_size</li><li>overshoot_signal</li><li>dispute_risk</li></ul></div>
     <div><h3>Trading</h3><ul><li>place_order</li><li>cancel_order</li><li>cancel_all_orders</li><li>kalshi_place_order</li><li>split_position</li><li>merge_positions</li><li>redeem_positions</li></ul></div>
     <div><h3>Lifecycle</h3><ul><li>order_status</li><li>open_orders</li><li>my_fills</li><li>my_positions</li><li>redeemable_positions</li><li>paper_positions</li><li>server_info</li></ul></div>
     <div><h3>Prompts</h3><ul><li>find_fade_setup</li><li>check_cross_venue_edge</li><li>settle_resolved</li><li>daily_review</li></ul></div>

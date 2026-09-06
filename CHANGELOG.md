@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.10.2 (2026-09-06)
+
+- **`check_order`**: deterministic pre-trade verification of a proposed order
+  against the operator's intent, the live market and the guardrails. Checks
+  that the market exists and is open, that the intent's words match the
+  market and the YES/NO side, that the price is sane against the book, the
+  size and Polymarket's $1 minimum, the guardrails, liquidity within the
+  limit, and the resolution source. Returns ok / caution / block with
+  evidence and a one-line read-back. No second model; nothing is sent. The
+  `find_fade_setup` prompt (and skill) now calls it before `place_order`.
 
 - Claude Code plugin (`.claude-plugin/plugin.json`, marketplace manifest,
   `.mcp.json`) and four skills generated from the MCP prompts

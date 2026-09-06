@@ -15,6 +15,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
 from . import audit as au
+from . import check as ck
 from . import crossvenue as xv
 from . import geo
 from . import guard
@@ -24,7 +25,7 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.10.1"
+VERSION = "0.10.2"
 
 srv = MCPServer(
     name="oddsrail",
@@ -220,6 +221,25 @@ async def dispute_risk(id_or_slug: str) -> str:
 
 
 # ------------------------------ trading ------------------------------------ #
+
+@srv.tool(description="CHECK BEFORE YOU PLACE: deterministic verification of "
+                      "a proposed order against the operator's intent, the "
+                      "live market and the guardrails. Pass the operator's own "
+                      "words as `intent`. Returns ok / caution / block with "
+                      "the evidence per check (market exists and is open, "
+                      "intent matches the market and the YES/NO side, price "
+                      "is sane vs the book, size and $1 minimum, guardrails, "
+                      "liquidity, resolution source) plus a one-line "
+                      "read-back. No model judges anything; nothing is sent.",
+           annotations=READ, structured_output=False)
+async def check_order(venue: str, market_id: str, side: str, price: float,
+                      size: float, intent: str = "", outcome: str = "") -> str:
+    try:
+        return _j(await ck.check_order(venue, market_id, side, price, size, intent, outcome))
+    except Exception as e:
+        return _err(e, "market_id is the Polymarket token id or the Kalshi ticker",
+                    host="the venue")
+
 
 @srv.tool(description="Place a limit order. DRY-RUN by default: returns the "
                       "order it would post. Real trading needs "
@@ -833,7 +853,9 @@ Work in this order and stop if a step fails:
    position regardless of price action.
 6. position_size(bankroll_usd={bankroll_usd}, price, fair_value) where
    fair_value is the pre-jump price if you believe it fully reverts.
-7. place_order(...) — dry-run first and read back the intent before setting
+7. check_order(venue, market_id, side, price, size, intent=<the operator's
+   words>) — a 'block' ends it; read any 'caution' back to the operator.
+8. place_order(...) — dry-run first and read back the intent before setting
    ODDSRAIL_DRY_RUN=0.
 
 Report the candidates you rejected and why; a rejected setup is a result."""
