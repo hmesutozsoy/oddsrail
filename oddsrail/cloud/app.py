@@ -64,7 +64,7 @@ def build_app():
     from .. import server as S
     from . import arena
     from . import auth as A
-    from . import mail, pages
+    from . import mail, pages, runner
 
     prov = A.provider()
     base = A.base_url()
@@ -141,6 +141,105 @@ def build_app():
         # CORS so the site can probe which hostname is live.
         return JSONResponse({"ok": True, "version": S.VERSION, "hosted": True, "mail": mail.mode()},
                             headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"})
+
+    # ---- the runner: a paper pass for a builder config, no account needed ---- #
+
+    guests = A.data_dir() / "guests"
+    guests.mkdir(parents=True, exist_ok=True)
+    run_limiter = RateLimiter(limit=40, window=3600.0)
+    guest_limiter = RateLimiter(limit=30, window=3600.0)
+    ALLOWED_ORIGINS = ("https://oddsrail.app", "https://www.oddsrail.app", base)
+
+    def cors(request: Request) -> dict:
+        origin = request.headers.get("origin", "")
+        ok = origin in ALLOWED_ORIGINS or origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:")
+        return {"Access-Control-Allow-Origin": origin if ok else ALLOWED_ORIGINS[0],
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "content-type",
+                "Access-Control-Max-Age": "600", "Vary": "Origin", "Cache-Control": "no-store"}
+
+    def guest_ledger(gid: str):
+        if not re.fullmatch(r"[a-f0-9]{16,64}", gid or ""):
+            return None
+        return guests / f"{gid}.json"
+
+    async def run_json(request: Request) -> tuple[dict | None, str | None]:
+        try:
+            body = await request.json()
+        except Exception:
+            return None, "body must be JSON"
+        if not isinstance(body, dict):
+            return None, "body must be an object"
+        return body, None
+
+    @srv.custom_route("/run", methods=["POST", "OPTIONS"])
+    async def run_pass(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        body, err = await run_json(request)
+        if err:
+            return JSONResponse({"ok": False, "error": err}, status_code=400, headers=cors(request))
+        ledger = guest_ledger(str(body.get("guest", "")))
+        if ledger is None:
+            return JSONResponse({"ok": False, "error": "guest must be 16 to 64 hex characters"},
+                                status_code=400, headers=cors(request))
+        if not run_limiter.allow(client_ip(request)) or not guest_limiter.allow(ledger.name):
+            return JSONResponse({"ok": False, "error": "too many runs; try again in a while"},
+                                status_code=429, headers=cors(request))
+        cfg = body.get("config") or {}
+        if not isinstance(cfg, dict):
+            return JSONResponse({"ok": False, "error": "config must be an object"}, status_code=400,
+                                headers=cors(request))
+        async with runner.lock_for(ledger):
+            try:
+                out = await runner.run_pass(cfg, ledger)
+            except Exception as e:
+                print(f"[oddsrail-cloud] run failed: {type(e).__name__}: {e}", flush=True)
+                return JSONResponse({"ok": False, "error": f"the pass failed: {type(e).__name__}"},
+                                    status_code=500, headers=cors(request))
+        return JSONResponse(out, headers=cors(request))
+
+    @srv.custom_route("/run/ledger", methods=["GET", "OPTIONS"])
+    async def run_ledger(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        ledger = guest_ledger(request.query_params.get("guest", ""))
+        if ledger is None:
+            return JSONResponse({"ok": False, "error": "guest must be 16 to 64 hex characters"},
+                                status_code=400, headers=cors(request))
+        token = arena.FORCED_LEDGER.set(ledger)
+        try:
+            if not ledger.exists():
+                return JSONResponse({"ok": True, "fresh": True, "cash": paper.bankroll(),
+                                     "equity": paper.bankroll(), "positions": [], "open_orders": [],
+                                     "fills": 0, "realized_pnl": 0.0, "unrealized_pnl": 0.0,
+                                     "bankroll": paper.bankroll()}, headers=cors(request))
+            async with runner.lock_for(ledger):
+                pos = await paper.positions()
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": f"{type(e).__name__}: {e}"}, status_code=502,
+                                headers=cors(request))
+        finally:
+            arena.FORCED_LEDGER.reset(token)
+        pos["ok"] = True
+        return JSONResponse(pos, headers=cors(request))
+
+    @srv.custom_route("/run/reset", methods=["POST", "OPTIONS"])
+    async def run_reset(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        body, err = await run_json(request)
+        ledger = guest_ledger(str((body or {}).get("guest", "")))
+        if err or ledger is None:
+            return JSONResponse({"ok": False, "error": err or "guest must be 16 to 64 hex characters"},
+                                status_code=400, headers=cors(request))
+        token = arena.FORCED_LEDGER.set(ledger)
+        try:
+            out = paper.reset()
+        finally:
+            arena.FORCED_LEDGER.reset(token)
+        out["ok"] = True
+        return JSONResponse(out, headers=cors(request))
 
     @srv.custom_route("/arena/paper.json", methods=["GET"])
     async def arena_board(request: Request):

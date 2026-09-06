@@ -1,0 +1,189 @@
+"""The deterministic runner: a builder config becomes one paper pass, offline.
+
+Polymarket is faked at the polymarket.py boundary, so what runs is the real
+signal code, the real check_order, and the real paper ledger."""
+
+import json
+import time
+
+import pytest
+
+from oddsrail import paper, polymarket as pm
+from oddsrail.cloud import runner
+
+YES, NO = "111", "222"
+SLUG = "btc-above-80k-sep-30"
+TITLE = "Will Bitcoin be above $80,000 on September 30?"
+FAR = "2026-12-31T12:00:00Z"
+
+
+def slim(yes_px=0.5, spread=0.02, vol=50000):
+    return {"id": "1", "slug": SLUG, "question": TITLE, "condition_id": "0xc",
+            "outcomes": {"yes": {"label": "Yes", "token_id": YES, "price": yes_px},
+                         "no": {"label": "No", "token_id": NO, "price": round(1 - yes_px, 4)}},
+            "best_bid": round(yes_px - spread / 2, 4), "best_ask": round(yes_px + spread / 2, 4),
+            "spread": spread, "volume_24hr": vol, "liquidity": 1e5, "active": True, "closed": False,
+            "accepting_orders": True, "neg_risk": False, "end_date": FAR, "resolution_source": "Binance"}
+
+
+class Fake:
+    """Books per token and a price series for YES."""
+
+    def __init__(self, yes_book, no_book, series=None, market=None):
+        self.books = {YES: yes_book, NO: no_book}
+        self.series = series or ([], [])
+        self.market = market or slim()
+        self.calls = []
+
+    def install(self, monkeypatch):
+        async def search_markets(query="", limit=10):
+            self.calls.append(("search", query)); return [self.market]
+
+        async def closing_soon(hours=24.0, limit=15):
+            return []
+
+        async def get_orderbook(token_id):
+            b = self.books[token_id]
+            return {"best_bid": str(b[0]), "best_ask": str(b[1]),
+                    "bids": [{"price": str(b[0]), "size": "500"}], "asks": [{"price": str(b[1]), "size": "500"}]}
+
+        async def price_history(token_id, hours=6.0, fidelity_minutes=1):
+            return self.series
+
+        async def get_market_by_token(token_id, full=False):
+            m = dict(self.market); m["uma_resolution_status"] = None
+            return m
+
+        async def get_market(id_or_slug, full=False):
+            return {**self.market, "resolution": {"source": "Binance", "uma_resolution_status": None},
+                    "description": "Resolves YES if the Binance BTC/USDT price is above 80,000 at 12:00 ET."}
+
+        async def resolution_criteria(id_or_slug):
+            return {"description": "Resolves YES if the Binance BTC/USDT price is above 80,000.",
+                    "resolution_source": "Binance"}
+
+        for name, fn in (("search_markets", search_markets), ("closing_soon", closing_soon),
+                         ("get_orderbook", get_orderbook), ("price_history", price_history),
+                         ("get_market_by_token", get_market_by_token), ("get_market", get_market),
+                         ("resolution_criteria", resolution_criteria)):
+            monkeypatch.setattr(pm, name, fn)
+
+
+def jump_series(pre=0.50, post=0.66, n=240, step=30.0):
+    """Flat at `pre`, then a fresh jump to `post` 90 seconds before now, with a small retrace."""
+    now = time.time()
+    times = [now - (n - i) * step for i in range(n)]
+    prices = [pre] * n
+    prices[-4] = post            # the jump (>= 0.08 within 60s lookback)
+    prices[-3] = post            # extreme
+    prices[-2] = post - 0.02
+    prices[-1] = post - 0.03
+    return times, prices
+
+
+def cfg(on, **kw):
+    c = {"topic": "bitcoin", "minvol": 1000, "bankroll": 1000, "perorder": 25, "maxpos": 5, "closing": 2,
+         "on": {k: True for k in on}, "vals": {}}
+    c.update(kw)
+    return c
+
+
+@pytest.fixture
+def ledger(tmp_path, monkeypatch):
+    monkeypatch.delenv("ODDSRAIL_MAX_ORDER_NOTIONAL", raising=False)
+    return tmp_path / "guest.json"
+
+
+async def test_fade_buys_the_other_side_after_a_fresh_jump(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=jump_series())
+    fake.install(monkeypatch)
+    out = await runner.run_pass(cfg(["fade", "report"]), ledger)
+    assert out["ok"] and out["strategies"] == ["fade"]
+    placed = [d for d in out["decisions"] if d["result"] == "filled"]
+    assert len(placed) == 1, out["decisions"]
+    d = placed[0]
+    assert d["strategy"] == "fade" and d["outcome"] == "NO" and d["side"] == "BUY" and d["price"] == 0.38
+    assert d["verdict"] == "ok" and d["notional"] <= 25.01
+    assert "pre-jump price 0.50" in d["why"]
+    led = json.loads(ledger.read_text())
+    assert NO in led["positions"] and abs(led["cash"] - (1000 - d["notional"])) < 0.05
+    assert out["ledger"]["fills"] == 1 and out["orders_placed"] == 1
+
+
+async def test_no_strategy_is_a_read_only_pass(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    out = await runner.run_pass(cfg(["report"]), ledger)
+    assert out["ok"] and out["strategies"] == [] and out["decisions"] == []
+    assert out["candidates"][0]["title"] == TITLE
+    assert any("read-only" in s for s in out["steps"])
+
+
+async def test_stop_loss_sells_at_the_bid_on_review(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.40, 0.42), no_book=(0.58, 0.60))
+    fake.install(monkeypatch)
+    token = runner.FORCED_LEDGER.set(ledger)
+    try:
+        d = paper.load(); d["cash"] = 994.0
+        d["positions"][YES] = {"size": 10.0, "cost": 6.0, "title": TITLE}
+        paper.save(d)
+    finally:
+        runner.FORCED_LEDGER.reset(token)
+    out = await runner.run_pass(cfg(["stoploss"]), ledger)          # mark 0.41 vs entry 0.60: -32%
+    sells = [x for x in out["decisions"] if x["strategy"] == "stoploss"]
+    assert sells and sells[0]["side"] == "SELL" and sells[0]["result"] == "filled" and sells[0]["price"] == 0.40
+    led = json.loads(ledger.read_text())
+    assert YES not in led["positions"] and abs(led["realized_pnl"] - (0.40 - 0.60) * 10) < 1e-6
+
+
+async def test_daily_loss_limit_halts_new_entries(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=jump_series())
+    fake.install(monkeypatch)
+    token = runner.FORCED_LEDGER.set(ledger)
+    try:
+        d = paper.load(); d["cash"] = 900.0
+        d["runner"] = {"day": time.strftime("%Y-%m-%d", time.gmtime()), "day_start_equity": 1000.0}
+        paper.save(d)
+    finally:
+        runner.FORCED_LEDGER.reset(token)
+    c = cfg(["fade", "daily"]); c["vals"] = {"daily": {"usd": 50}}
+    out = await runner.run_pass(c, ledger)
+    assert out["halted"] and "daily loss limit" in out["halted"]
+    assert all(x["result"] == "skipped" for x in out["decisions"]) and out["orders_placed"] == 0
+
+
+async def test_universe_filters_and_dispute_hygiene(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=jump_series(), market=slim(vol=500))
+    fake.install(monkeypatch)
+    out = await runner.run_pass(cfg(["fade"]), ledger)               # volume below the minimum
+    assert out["candidates"] == [] and out["orders_placed"] == 0
+
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=jump_series())
+    fake.install(monkeypatch)
+
+    async def disputed(id_or_slug, full=False):
+        return {**slim(), "resolution": {"source": "Binance", "uma_resolution_status": "disputed"},
+                "description": "In the opinion of the consensus of credible reports"}
+    monkeypatch.setattr(pm, "get_market", disputed)
+    c = cfg(["fade", "dispute"]); c["vals"] = {"dispute": {"score": 30}}
+    out = await runner.run_pass(c, ledger)
+    skipped = [d for d in out["decisions"] if d["result"] == "skipped"]
+    assert skipped and "dispute_risk" in skipped[0]["detail"] and out["orders_placed"] == 0
+
+
+def test_normalize_bounds_the_config():
+    c = runner.normalize({"perorder": "9999", "maxpos": "0", "bankroll": "abc", "on": {"fade": 1},
+                          "vals": {"fade": {"jump": "8", "hours": "99"}, "settle": {"hi": "0.99"}}})
+    assert c["perorder"] == 500 and c["maxpos"] == 1 and c["bankroll"] == 1000
+    assert c["fade"] == {"jump": 0.08, "hours": 24.0} and c["settle"]["hi"] < 0.97 and c["on"]["fade"] is True
+
+
+async def test_two_sided_quotes_rest_even_with_fill_checks_on(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    c = cfg(["mm", "liquidity"]); c["vals"] = {"mm": {"edge": 2, "shares": 20}}
+    out = await runner.run_pass(c, ledger)
+    rest = [d for d in out["decisions"] if d["strategy"] == "mm"]
+    assert [d["result"] for d in rest] == ["resting", "resting"], rest
+    assert {d["outcome"] for d in rest} == {"YES", "NO"} and all(d["price"] == 0.48 for d in rest)
+    assert out["ledger"]["open_orders"] and len(out["ledger"]["open_orders"]) == 2 and out["orders_placed"] == 2

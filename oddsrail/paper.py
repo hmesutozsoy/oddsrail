@@ -20,6 +20,7 @@ intent). The ledger is one local JSON file the operator can read or delete.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import time
@@ -37,8 +38,16 @@ def enabled() -> bool:
 # path below.
 ledger_resolver = None
 
+# Set for the duration of one task to point every paper call at one file:
+# how the hosted runner and the arena board work on a ledger that is not the
+# request's own. Wins over the resolver and the environment.
+forced_ledger: contextvars.ContextVar[Path | None] = contextvars.ContextVar("oddsrail_forced_ledger", default=None)
+
 
 def ledger_path() -> Path:
+    forced = forced_ledger.get()
+    if forced is not None:
+        return Path(forced)
     if ledger_resolver is not None:
         resolved = ledger_resolver()
         if resolved:

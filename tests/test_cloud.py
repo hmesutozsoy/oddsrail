@@ -294,3 +294,24 @@ async def test_arena_register_and_public_board(cloud):
         assert (await call(s, "arena_unregister"))["removed"] is True
     board = httpx.get(base + "/arena/paper.json?refresh=1").json()
     assert not [x for x in board["entries"] if not x["house"]]
+
+
+def test_run_endpoint_serves_guests_with_cors(cloud):
+    base = cloud["base"]
+    gid = "ab" * 16
+    pre = httpx.options(base + "/run", headers={"origin": "https://oddsrail.app",
+                                                 "access-control-request-method": "POST"})
+    assert pre.status_code == 204 and pre.headers["access-control-allow-origin"] == "https://oddsrail.app"
+    assert httpx.post(base + "/run", json={"guest": "nope", "config": {}}).status_code == 400
+    fresh = httpx.get(base + "/run/ledger", params={"guest": gid}).json()
+    assert fresh["ok"] and fresh["fresh"] and fresh["cash"] == 1000
+    r = httpx.post(base + "/run", json={"guest": gid, "config": {"on": {"report": True}, "topic": "bitcoin"}},
+                   headers={"origin": "https://oddsrail.app"}, timeout=120)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["ok"] and out["engine"] == "rules" and out["strategies"] == [] and out["decisions"] == []
+    assert out["ledger"]["cash"] == 1000 and isinstance(out["steps"], list)
+    assert r.headers["access-control-allow-origin"] == "https://oddsrail.app"
+    assert (cloud["data"] / "guests" / f"{gid}.json").exists()
+    reset = httpx.post(base + "/run/reset", json={"guest": gid}).json()
+    assert reset["ok"] and reset["reset"] is True

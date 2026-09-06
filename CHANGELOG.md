@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.0 (2026-09-06)
+
+- **The runner** (`oddsrail.cloud.runner`): a deterministic paper pass for a
+  builder configuration. Scans the universe, computes the signal each
+  strategy names (overshoot, closing-soon resolution, momentum, stated
+  probabilities, two-sided quotes), sizes with Kelly, applies the risk rules
+  to what is held (stop loss, take profit, daily loss limit, exposure caps,
+  never add to a loser), runs `check_order` on every order and paper-fills
+  against the live book. No model is consulted; every decision is returned
+  with its verdict and reason.
+- Hosted endpoints `POST /run`, `GET /run/ledger`, `POST /run/reset` with a
+  guest ledger per browser, CORS for the site, rate limits, and a lock per
+  ledger. The builder page gets a Run tab: press Run, read the pass, no
+  account, nothing installed.
+- `paper.forced_ledger`: a context variable that points every paper call at
+  one file for the duration of a task; the arena board and the runner use it.
+
 ## 0.12.0 (2026-09-06)
 
 - **Paper arena** on the hosted server: `arena_register`, `arena_unregister`

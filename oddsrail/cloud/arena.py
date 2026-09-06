@@ -10,11 +10,11 @@ real money, and the ranking says so.
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import re
 import time
 from pathlib import Path
 
+from .. import paper
 from .db import DB
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{2,23}$")
@@ -23,9 +23,8 @@ STRATEGY_MAX = 140
 BOARD_TTL = 300.0
 
 # Set while the board marks one ledger, so the paper module reads that file
-# instead of the request's account. Read by the app's ledger resolver.
-FORCED_LEDGER: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
-    "oddsrail_arena_ledger", default=None)
+# instead of the request's account.
+FORCED_LEDGER = paper.forced_ledger
 
 
 class ArenaError(Exception):

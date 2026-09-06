@@ -128,16 +128,21 @@ The paper ledger you build up in Claude is yours to reset with
 
 ## Builder page and arena
 
-[oddsrail.app/build](https://oddsrail.app/build) composes a trading prompt
-from tickable pieces: strategies (fade overshoots, buy near-certain
-resolutions, trade your own probability, follow the move, two-sided quotes),
-risk rules (stop loss as a review rule, take profit, daily loss limit, never
-add to losers, exposure caps) and market hygiene (dispute risk, fill
-quality, watching the book). Every piece is written with the real tool
-names in the order that keeps an agent out of trouble, `check_order` before
-every `place_order` is not optional, and the two-sided-quotes piece carries
-the maintainer's own warning about markout. The result is a prompt you read,
-edit and send to Claude with the connector.
+[oddsrail.app/build](https://oddsrail.app/build) is a set of switches:
+strategies (fade overshoots, buy near-certain resolutions, trade your own
+probability, follow the move, two-sided quotes), risk rules (stop loss as a
+review rule, take profit, daily loss limit, never add to losers, exposure
+caps) and market hygiene (dispute risk, fill quality, watching the book).
+Press **Run** and the switches execute on the hosted server as a
+deterministic paper pass (`oddsrail/cloud/runner.py`): the universe is
+scanned, each strategy's signal is computed with the same code the MCP
+tools use, every order goes through `check_order`, fills come from the live
+book into a paper ledger that belongs to your browser, and the pass comes
+back as a list of decisions with verdicts and reasons. No account, no
+install, no key, no model. The same switches also compose into a prompt for
+running the pieces inside your own Claude with the connector; the
+two-sided-quotes piece carries the maintainer's own warning about markout
+either way.
 
 [oddsrail.app/arena](https://oddsrail.app/arena) is the public board. Paper
 division: hosted accounts that entered themselves with `arena_register`,

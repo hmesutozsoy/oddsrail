@@ -27,7 +27,7 @@
 <section class="hero compact" aria-labelledby="h-title">
   <p class="kicker">Agent builder</p>
   <h1 id="h-title">Switch on the pieces. Read the prompt. Send it to Claude.</h1>
-  <p class="lede">Each switch is a strategy fragment or a risk rule written with the right oddsrail tools in the right order. They compose into one prompt on the right, which you edit and run in Claude with the oddsrail connector. Paper by default; nothing here needs a key.</p>
+  <p class="lede">Each switch is a strategy fragment or a risk rule written with the right oddsrail tools in the right order. Press Run and they execute on our server against the live book, into a paper ledger for this browser, in seconds. No account, no install, no key. Or take the same pieces as a prompt into your own Claude.</p>
 </section>
 
 <section id="builder" aria-label="Builder" class="bterm">
@@ -48,7 +48,7 @@
     </div>
 
     <div class="bpanel connect" id="connect">
-      <div class="ph"><b>Connect</b><span class="muted">one-time setup, before the first prompt</span></div>
+      <div class="ph"><b>Connect</b><span class="muted">only for the Prompt tab, running inside your own Claude; the Run tab needs none of this</span></div>
       <div class="brows" data-mode="paper">
         <div class="brow"><span><b class="step">1</b> Claude, Settings, Connectors, <i>Add custom connector</i>, paste this URL <small id="host-note" class="muted"></small></span><label class="unit url"><input type="text" readonly value="https://mcp.oddsrail.app/mcp"><button type="button" data-copy="https://mcp.oddsrail.app/mcp">copy</button></label></div>
         <div class="brow"><span><b class="step">2</b> Sign in with your email when Claude asks. The account holds a paper ledger and nothing else.</span><b class="pill">no keys</b></div>
@@ -96,22 +96,51 @@
     </div>
   </form>
 
-  <aside class="preview" aria-label="Composed prompt">
-    <div class="pv-h">
-      <b>Prompt</b>
-      <span id="status" class="muted"></span>
-      <div class="pv-tools">
-        <button type="button" id="regen" title="Regenerate from the switches">↻ regen</button>
-        <button type="button" id="copy" title="Copy the prompt">copy</button>
-        <button type="button" id="copycfg" title="Copy the configuration as JSON">json</button>
+  <aside class="preview" aria-label="Run and prompt">
+    <div class="tabs pv-tabs" role="tablist">
+      <button type="button" class="tab on" role="tab" data-ptab="run">Run</button>
+      <button type="button" class="tab" role="tab" data-ptab="prompt">Prompt for Claude</button>
+    </div>
+
+    <div class="ppane on" data-ppane="run">
+      <div class="pv-h">
+        <b>Paper pass</b>
+        <span id="run-status" class="muted">not run yet</span>
+        <div class="pv-tools">
+          <button type="button" id="ledger-reset" title="Reset this browser's paper ledger to $1,000">reset ledger</button>
+        </div>
+      </div>
+      <div class="run-body" id="run-body">
+        <p class="run-intro">Runs the switches on our server against the live Polymarket book, into a paper ledger that belongs to this browser. No account, nothing installed. Every decision comes back with its check_order verdict.</p>
+        <div class="tiles" id="run-tiles" hidden></div>
+        <div class="tablewrap slim" id="run-decisions" hidden></div>
+        <div class="tablewrap slim" id="run-positions" hidden></div>
+        <details id="run-steps" hidden><summary>steps</summary><pre id="run-log"></pre></details>
+        <p class="muted run-note" id="run-note"></p>
+      </div>
+      <div class="pv-f">
+        <button type="button" id="run" class="btn primary">▶ Run paper pass</button>
+        <span class="muted">Ledgers start at $1,000 for everyone. Paper fills come from the live book with no queue and no fees, an upper bound. Keeping an agent and putting it on the board comes with sign-in, next.</span>
       </div>
     </div>
-    <textarea id="out" spellcheck="false" aria-label="Composed prompt"></textarea>
-    <div class="pv-tags" id="tools" aria-label="Tools the prompt uses"></div>
-    <div class="pv-f">
-      <button type="button" id="copy2" class="btn primary">Copy prompt</button>
-      <a id="open" class="btn" href="#" target="_blank" rel="noopener">Open in Claude ↗</a>
-      <span class="muted">Claude shows a caution banner on any prompt opened from a link. It is Claude's standard notice, not about this prompt; copying and pasting avoids it.</span>
+
+    <div class="ppane" data-ppane="prompt">
+      <div class="pv-h">
+        <b>Prompt</b>
+        <span id="status" class="muted"></span>
+        <div class="pv-tools">
+          <button type="button" id="regen" title="Regenerate from the switches">↻ regen</button>
+          <button type="button" id="copy" title="Copy the prompt">copy</button>
+          <button type="button" id="copycfg" title="Copy the configuration as JSON">json</button>
+        </div>
+      </div>
+      <textarea id="out" spellcheck="false" aria-label="Composed prompt"></textarea>
+      <div class="pv-tags" id="tools" aria-label="Tools the prompt uses"></div>
+      <div class="pv-f">
+        <button type="button" id="copy2" class="btn primary">Copy prompt</button>
+        <a id="open" class="btn" href="#" target="_blank" rel="noopener">Open in Claude ↗</a>
+        <span class="muted">For running the same pieces inside your own Claude, with the connector from the Connect panel. Claude shows a caution banner on any prompt opened from a link; copying and pasting avoids it.</span>
+      </div>
     </div>
   </aside>
 </section>

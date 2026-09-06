@@ -18,11 +18,11 @@
     // ------------------------------ strategies ------------------------------
     { id: 'fade', group: 'strategies', label: 'Fade overshoots', tag: 'mean reversion',
       blurb: 'Trade against fresh panic jumps the market has historically reverted.',
-      params: [{ k: 'jump', label: 'jump ≥', def: 8, unit: '%' }, { k: 'hours', label: 'lookback', def: 6, unit: 'h' }],
+      params: [{ k: 'jump', label: 'jump ≥', def: 8, unit: 'pts' }, { k: 'hours', label: 'lookback', def: 6, unit: 'h' }],
       render: function (c, v) { return [
         'Strategy: fade overshoots.',
         '- For each candidate market call overshoot_signal(token_id, hours=' + v.hours + ', threshold=' + (v.jump / 100) + ').',
-        '- Act only when it reports a fresh jump of at least ' + v.jump + '% of price AND the market\'s own history shows reversion after jumps of that size. No signal, no trade.',
+        '- Act only when it reports a fresh jump of at least ' + v.jump + ' probability points AND the market\'s own history shows reversion after jumps of that size. No signal, no trade.',
         '- Trade against the jump: if YES jumped up, buy NO (or sell YES if held); if YES jumped down, buy YES.',
         '- Fair value is the pre-jump price. Size with position_size(bankroll_usd=' + c.bankroll + ', price=<entry>, fair_value=<pre-jump price>) and use no more than the quarter-Kelly figure it returns.',
         '- Exit when the price has retraced half the jump, or at the risk rules below.' ]; } },
@@ -254,4 +254,84 @@
   });
   $('copycfg').addEventListener('click', function () { navigator.clipboard.writeText(JSON.stringify(read(), null, 1)).then(function () { flash('config copied'); }); });
   out.addEventListener('input', function () { setLink(); tags(); status.textContent = out.value.length + ' ch · edited'; });
+
+  // ------------------------------ the Run tab --------------------------------
+  document.querySelectorAll('.pv-tabs .tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      document.querySelectorAll('.pv-tabs .tab').forEach(function (x) { x.classList.toggle('on', x === t); });
+      document.querySelectorAll('.ppane').forEach(function (p) { p.classList.toggle('on', p.dataset.ppane === t.dataset.ptab); });
+    });
+  });
+  function guest() {
+    var g = null;
+    try { g = localStorage.getItem('oddsrail-guest'); } catch (e) {}
+    if (!g || !/^[a-f0-9]{32}$/.test(g)) {
+      var b = new Uint8Array(16); (window.crypto || window.msCrypto).getRandomValues(b);
+      g = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+      try { localStorage.setItem('oddsrail-guest', g); } catch (e) {}
+    }
+    return g;
+  }
+  function usd(v) { if (v == null || isNaN(+v)) return ''; v = +v; var s = v < 0 ? '-' : ''; v = Math.abs(v); return s + '$' + v.toFixed(2); }
+  function signed(v) { if (v == null || isNaN(+v)) return ''; return (v > 0 ? '+' : '') + usd(v).replace('$-', '-$'); }
+  function cls(v) { return v > 0 ? 'pos' : v < 0 ? 'neg' : ''; }
+  function tile(label, value, klass) { return '<div class="tile' + (klass ? ' ' + klass : '') + '"><span>' + label + '</span><b>' + value + '</b></div>'; }
+  function showLedger(l) {
+    if (!l) return;
+    var pnl = (+l.realized_pnl || 0) + (+l.unrealized_pnl || 0);
+    var pos = l.positions || [];
+    $('run-tiles').innerHTML = tile('equity', usd(l.equity)) + tile('cash', usd(l.cash)) + tile('P&L', signed(pnl), cls(pnl)) +
+      tile('positions', pos.length) + tile('resting', (l.open_orders || []).length) + tile('fills', l.fills == null ? '' : l.fills);
+    $('run-tiles').hidden = false;
+    var P = $('run-positions');
+    if (pos.length) {
+      P.innerHTML = '<table class="cmp mini"><thead><tr><th>position</th><th>size</th><th>avg</th><th>mark</th><th>P&L</th></tr></thead><tbody>' +
+        pos.map(function (p) { return '<tr><td class="strat">' + esc(p.title || p.token_id) + '</td><td>' + (+p.size).toFixed(2) + '</td><td>' + (p.avg_cost == null ? '' : (+p.avg_cost).toFixed(3)) + '</td><td>' + (p.mark == null ? '' : (+p.mark).toFixed(3)) + '</td><td class="' + cls(p.unrealized_pnl) + '">' + signed(p.unrealized_pnl) + '</td></tr>'; }).join('') + '</tbody></table>';
+      P.hidden = false;
+    } else { P.hidden = true; }
+  }
+  function showRun(r) {
+    $('run-status').textContent = (r.orders_placed || 0) + ' orders · ' + (r.decisions || []).length + ' decisions · ' + r.seconds + 's' + (r.halted ? ' · halted' : '');
+    showLedger(r.ledger);
+    var D = $('run-decisions'), ds = r.decisions || [];
+    if (ds.length) {
+      D.innerHTML = '<table class="cmp mini"><thead><tr><th>market</th><th>order</th><th>result</th></tr></thead><tbody>' +
+        ds.map(function (d) {
+          var order = d.side ? d.side + ' ' + (d.outcome || '') + (d.size ? ' ' + (+d.size).toFixed(2) + ' @ ' + d.price : '') : '';
+          var res = d.result === 'filled' ? 'filled' + (d.avg_price ? ' @ ' + d.avg_price : '') : d.result === 'resting' ? 'resting' : d.result === 'partial' ? 'partial ' + d.filled : d.result;
+          return '<tr class="r-' + esc(d.result) + '"><td class="strat">' + esc(d.market || '') + '<small>' + esc(d.strategy || '') + (d.why ? ' · ' + esc(d.why) : '') + '</small></td>' +
+            '<td class="mono">' + esc(order) + (d.verdict ? '<small>check ' + esc(d.verdict) + '</small>' : '') + '</td>' +
+            '<td>' + esc(res) + (d.detail ? '<small>' + esc(d.detail) + '</small>' : '') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+      D.hidden = false;
+    } else {
+      D.innerHTML = '<p class="muted">No decisions this pass: ' + ((r.candidates || []).length ? (r.candidates.length + ' candidates scanned, nothing qualified. That is the rules working, not a bug.') : 'no market passed the universe filters. Widen the topic or lower the volume floor.') + '</p>';
+      D.hidden = false;
+    }
+    $('run-log').textContent = (r.steps || []).join('\n');
+    $('run-steps').hidden = !(r.steps || []).length;
+    $('run-note').textContent = r.halted || '';
+  }
+  function runError(msg) { $('run-status').textContent = 'failed'; $('run-note').textContent = msg; }
+  var runBtn = $('run'), running = false;
+  runBtn.addEventListener('click', function () {
+    if (running) return;
+    running = true; runBtn.disabled = true; runBtn.textContent = 'Running…';
+    $('run-status').textContent = 'scanning the live book…'; $('run-note').textContent = '';
+    var t0 = Date.now();
+    fetch(HOST + '/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest(), config: read() }) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) { if (!x.ok || !x.j.ok) runError(x.j.error || ('HTTP error')); else showRun(x.j); })
+      .catch(function (e) { runError('could not reach the server (' + e.message + ')'); })
+      .then(function () { running = false; runBtn.disabled = false; runBtn.textContent = '▶ Run paper pass'; });
+  });
+  $('ledger-reset').addEventListener('click', function () {
+    fetch(HOST + '/run/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest() }) })
+      .then(function (r) { return r.json(); }).then(function () { $('run-status').textContent = 'ledger reset to $1,000'; $('run-decisions').hidden = true; $('run-steps').hidden = true; loadLedger(); })
+      .catch(function (e) { runError('reset failed (' + e.message + ')'); });
+  });
+  function loadLedger() {
+    fetch(HOST + '/run/ledger?guest=' + guest()).then(function (r) { return r.json(); }).then(function (l) { if (l && l.ok) { showLedger(l); if (!l.fresh) $('run-status').textContent = 'ledger loaded'; } }).catch(function () {});
+  }
+  probe(0).then(function () { loadLedger(); });
 })();
