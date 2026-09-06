@@ -26,7 +26,7 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 
 HOSTED_INSTRUCTIONS = (
     "Hosted oddsrail: Polymarket market data, signals, deterministic order "

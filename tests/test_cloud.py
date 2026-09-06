@@ -149,8 +149,8 @@ async def mcp(base: str, access_token: str):
                 yield session
 
 
-async def call(session, name: str, **args) -> dict:
-    res = await session.call_tool(name, args)
+async def call(session, tool: str, **args) -> dict:
+    res = await session.call_tool(tool, args)
     assert not res.is_error, res
     return json.loads(res.content[0].text)
 
@@ -258,3 +258,39 @@ def test_sign_in_page_rejects_junk(cloud):
     rid = parse_qs(urlparse(r.headers["location"]).query)["req"][0]
     bad = httpx.post(base + "/login", data={"req": rid, "email": "not-an-email"})
     assert bad.status_code == 400 and "email address" in bad.text
+
+
+async def test_arena_register_and_public_board(cloud):
+    base = cloud["base"]
+    d = sign_in(base, "dana@example.com")["token_response"].json()
+    e = sign_in(base, "erin@example.com")["token_response"].json()
+    async with mcp(base, d["access_token"]) as s:
+        names = {t.name for t in (await s.list_tools()).tools}
+        assert {"arena_register", "arena_unregister", "arena_status"} <= names
+        assert (await call(s, "arena_status"))["registered"] is False
+        await call(s, "paper_reset")
+        bad = await call(s, "arena_register", name="x")
+        assert bad["registered"] is False and "3 to 24" in bad["error"]
+        ok = await call(s, "arena_register", name="Dana's fade bot", strategy="fades 8% overshoots")
+        assert ok["registered"] is False, "apostrophes are not allowed"
+        ok = await call(s, "arena_register", name="dana fade bot", strategy="fades 8% overshoots " + "x" * 200)
+        assert ok["registered"] is True and ok["name"] == "dana fade bot" and len(ok["strategy"]) <= 140
+        st = await call(s, "arena_status")
+        assert st["registered"] is True and st["name"] == "dana fade bot"
+    async with mcp(base, e["access_token"]) as s:
+        taken = await call(s, "arena_register", name="DANA FADE BOT")
+        assert taken["registered"] is False and "taken" in taken["error"]
+
+    r = httpx.get(base + "/arena/paper.json?refresh=1")
+    assert r.status_code == 200 and r.headers["access-control-allow-origin"] == "*"
+    board = r.json()
+    assert board["division"] == "paper" and "computed_at_ts" not in board
+    rows = [x for x in board["entries"] if not x["house"]]
+    assert [x["name"] for x in rows] == ["dana fade bot"]
+    assert rows[0]["rank"] == 1 and rows[0]["equity"] == 1000.0 and rows[0]["return_pct"] == 0.0
+    assert rows[0]["fills"] == 0 and rows[0]["positions"] == 0
+
+    async with mcp(base, d["access_token"]) as s:
+        assert (await call(s, "arena_unregister"))["removed"] is True
+    board = httpx.get(base + "/arena/paper.json?refresh=1").json()
+    assert not [x for x in board["entries"] if not x["house"]]

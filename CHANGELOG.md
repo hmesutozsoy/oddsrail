@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0 (2026-09-06)
+
+- **Paper arena** on the hosted server: `arena_register`, `arena_unregister`
+  and `arena_status` tools (hosted profile only) put an account's paper
+  ledger on a public board under a display name; `GET /arena/paper.json`
+  serves the board, recomputed at most every five minutes, with the house
+  paper agent as an unranked reference row (`ODDSRAIL_ARENA_HOUSE_LEDGER`).
+- Site: the agent builder page (`/build`, tickable strategy fragments and
+  risk rules composing an editable prompt for Claude) and the arena page
+  (`/arena`, paper and live divisions from public data, live-division
+  registry in `site/arena/agents.json`).
+
 ## 0.11.0 (2026-09-06)
 
 - **Hosted server** (`oddsrail.cloud`, `oddsrail/hosted.py`): the same

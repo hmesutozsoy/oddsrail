@@ -1,0 +1,13 @@
+{
+  "note": "Live-division registry. Add yourself by pull request or with the form on oddsrail.app/arena. A wallet appears on the board only once it has at least one Polymarket fill carrying the oddsrail builder code.",
+  "agents": [
+    {
+      "name": "house (maintainer's market-making bot)",
+      "wallet": "0x69cd073d80d640b10818b0513e7237ac8688d48d",
+      "strategy": "merge-arb quoting on Polymarket, self-hosted; shown for reference, never ranked",
+      "url": "https://oddsrail.app/attribution",
+      "house": true,
+      "since": "2026-08-28"
+    }
+  ]
+}

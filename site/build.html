@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Build a trading agent with oddsrail</title>
+<meta name="description" content="Tick the strategy pieces and risk rules you want, read the prompt they compose, edit it, and send it to Claude with the oddsrail connector. No code.">
+<link rel="canonical" href="https://oddsrail.app/build">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build" aria-current="page">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/attribution">Attribution</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<section class="hero" aria-labelledby="h-title">
+  <p class="kicker">Agent builder</p>
+  <h1 id="h-title">Tick the pieces. Read the prompt. Send it to Claude.</h1>
+  <p class="lede">Every box below is a strategy fragment or a risk rule written with the right oddsrail tools in the right order. They compose into one prompt you can edit, then run in Claude with the oddsrail connector. Paper by default; nothing here needs a key.</p>
+  <p class="note">Claude runs one pass per message. For an agent that keeps going, run the same prompt on a schedule with the self-hosted plugin, or ask Claude to run another pass.</p>
+</section>
+
+<section id="builder" aria-labelledby="h-builder">
+  <h2 id="h-builder">Compose</h2>
+  <form id="bform" class="builder" autocomplete="off">
+    <fieldset>
+      <legend>Where it runs</legend>
+      <div class="opts">
+        <label><input type="radio" name="mode" value="paper" checked> Hosted, paper trading: <code>mcp.oddsrail.app/mcp</code> in Claude, no keys</label>
+        <label><input type="radio" name="mode" value="live"> Self-hosted, live: your machine, your key, guardrails set</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Universe</legend>
+      <div class="grid2">
+        <label>Markets about<input type="text" name="topic" placeholder="bitcoin, NFL, Fed rate decision" value="bitcoin"></label>
+        <label>Minimum 24h volume, USD<input type="number" name="minvol" value="20000" min="0" step="1000"></label>
+        <label>Paper or live bankroll to use, USD<input type="number" name="bankroll" value="1000" min="10" step="10"></label>
+        <label>Max per order, USD<input type="number" name="perorder" value="25" min="1" step="1"></label>
+        <label>Max open positions<input type="number" name="maxpos" value="5" min="1" step="1"></label>
+        <label>Skip markets closing within, hours<input type="number" name="closing" value="2" min="0" step="1"></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Strategy <span class="muted">(tick one or more)</span></legend>
+      <div class="opts" id="strategies"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Risk rules</legend>
+      <div class="opts" id="risk"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Market hygiene</legend>
+      <div class="opts" id="hygiene"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Reporting and extras</legend>
+      <div class="opts" id="extras"></div>
+    </fieldset>
+  </form>
+</section>
+
+<section id="prompt" aria-labelledby="h-prompt">
+  <h2 id="h-prompt">The prompt</h2>
+  <p class="sub">Edit anything. Regenerate overwrites your edits from the boxes above.</p>
+  <textarea id="out" rows="28" spellcheck="false" aria-label="Composed prompt"></textarea>
+  <div class="actions">
+    <button type="button" id="regen">Regenerate</button>
+    <button type="button" id="copy">Copy prompt</button>
+    <a id="open" class="btn" href="#" target="_blank" rel="noopener">Open in Claude</a>
+    <button type="button" id="copycfg">Copy config JSON</button>
+    <span class="muted" id="status"></span>
+  </div>
+  <p class="note">Open in Claude starts a new chat with the prompt filled in. Make sure the oddsrail connector is enabled in that chat (Settings, Connectors) or the tools will not be there. In Claude Code, paste the prompt with the hosted server added by <code>claude mcp add --transport http oddsrail https://mcp.oddsrail.app/mcp</code>.</p>
+</section>
+
+<section id="honest" aria-labelledby="h-honest">
+  <h2 id="h-honest">What the boxes cannot do</h2>
+  <ul class="lessons">
+    <li><b>Stop losses are review rules, not orders.</b> Polymarket has no stop orders. A stop here means: at each review, if the mark is below your threshold, sell at the bid. Between reviews nothing protects you.</li>
+    <li><b>Paper is an upper bound.</b> Fills are simulated from the live book with no queue, no impact and no fees, and paper does not pay out at resolution; it marks at the mid.</li>
+    <li><b>Two-sided quoting looked fine on paper for us too.</b> The maintainer's own market-making engine lost about 4.5 cents per share on markout live at small size. The fragment ships with that warning inside the prompt.</li>
+    <li><b>check_order is always on.</b> Every fragment routes each order through it with your intent verbatim, and a block is final. That is the one piece you cannot untick.</li>
+  </ul>
+</section>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
+  </div>
+</footer>
+<script src="/build.js" defer></script>
+</body>
+</html>

@@ -136,3 +136,30 @@ details.tbl th{color:var(--muted);font-size:12px;text-transform:uppercase;letter
   .live{grid-template-columns:minmax(0,1fr)}
   .row{grid-template-columns:24px 96px minmax(0,1fr) 56px}
 }
+
+/* builder + arena */
+.builder fieldset{border:1px solid var(--line);border-radius:10px;padding:14px 18px 6px;margin:0 0 16px;background:var(--panel)}
+.builder legend{font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--amber);padding:0 6px}
+.builder .muted,.muted{color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
+.opts{display:grid;gap:4px 24px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.opt{padding:8px 0;border-top:1px solid var(--line)}
+.opt:first-child{border-top:0}
+.opt > label{display:block;font-size:15px;color:var(--ink)}
+.opt .blurb{display:block;font-size:13px;color:var(--muted);margin:2px 0 4px 22px}
+.opt .inl{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);margin:4px 14px 4px 22px}
+.opt .inl.wide{display:flex;flex-direction:column;align-items:stretch}
+.opt .inl input{width:90px}.opt .inl input[type=text]{width:180px}
+.opts label input[type=checkbox],.opts label input[type=radio]{margin-right:6px}
+.grid2{display:grid;gap:10px 24px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));padding-bottom:10px}
+.grid2 label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--ink-soft)}
+.builder input[type=text],.builder input[type=number],.builder input[type=url],.builder textarea,textarea#out{font:14px/1.5 var(--sans);color:var(--ink);background:var(--bg2);border:1px solid var(--line);border-radius:7px;padding:7px 9px;max-width:100%}
+textarea#out{width:100%;font:13.5px/1.55 var(--mono);padding:12px 14px;resize:vertical}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 0}
+.actions button,.btn{display:inline-block;background:var(--amber);color:#0e1116;border:0;border-radius:7px;padding:9px 14px;font:600 14px var(--sans);cursor:pointer;text-decoration:none}
+.actions button:hover,.btn:hover{text-decoration:none;filter:brightness(1.08)}
+.btn.disabled{opacity:.45;pointer-events:none}
+.steps{padding-left:20px;color:var(--ink-soft);font-size:15px}.steps li{margin:6px 0}
+.lessons li > b{display:block;color:var(--ink);margin-bottom:4px}
+table.cmp td.pos{color:#6cc38a}table.cmp td.neg{color:var(--red)}
+table.cmp tr.house td,table.cmp tr.house th{color:var(--muted);font-style:italic}
+table.cmp td.strat{max-width:280px;font-size:13px}

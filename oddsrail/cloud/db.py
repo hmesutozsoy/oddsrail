@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS tokens (
     user_id TEXT NOT NULL, scopes TEXT NOT NULL, pair TEXT NOT NULL,
     created REAL NOT NULL, expires REAL, revoked REAL);
 CREATE INDEX IF NOT EXISTS tokens_pair ON tokens(pair);
+CREATE TABLE IF NOT EXISTS arena (
+    user_id TEXT PRIMARY KEY, name TEXT NOT NULL, name_lc TEXT UNIQUE NOT NULL,
+    strategy TEXT NOT NULL DEFAULT '', created REAL NOT NULL, updated REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS magic_links_email ON magic_links(email, created);
 """
 
@@ -160,6 +163,30 @@ class DB:
 
     def revoke_pair(self, pair: str) -> None:
         self._exec("UPDATE tokens SET revoked=? WHERE pair=? AND revoked IS NULL", (time.time(), pair))
+
+    # -------------------------------- arena ------------------------------- #
+
+    def arena_by_name(self, name: str) -> dict | None:
+        return self._one("SELECT * FROM arena WHERE name_lc=?", (name.lower(),))
+
+    def arena_get(self, user_id: str) -> dict | None:
+        return self._one("SELECT * FROM arena WHERE user_id=?", (user_id,))
+
+    def arena_put(self, user_id: str, name: str, strategy: str) -> None:
+        now = time.time()
+        with self._lock:
+            row = self._c.execute("SELECT created FROM arena WHERE user_id=?", (user_id,)).fetchone()
+            created = row["created"] if row else now
+            self._c.execute("INSERT OR REPLACE INTO arena (user_id, name, name_lc, strategy, created, updated) "
+                            "VALUES (?,?,?,?,?,?)", (user_id, name, name.lower(), strategy, created, now))
+
+    def arena_delete(self, user_id: str) -> bool:
+        return self._exec("DELETE FROM arena WHERE user_id=?", (user_id,)).rowcount == 1
+
+    def arena_list(self) -> list[dict]:
+        with self._lock:
+            rows = self._c.execute("SELECT * FROM arena ORDER BY created").fetchall()
+        return [dict(r) for r in rows]
 
     # ------------------------------- hygiene ------------------------------ #
 

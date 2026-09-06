@@ -23,6 +23,7 @@ import collections
 import os
 import re
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
@@ -61,6 +62,7 @@ def build_app():
 
     from .. import paper
     from .. import server as S
+    from . import arena
     from . import auth as A
     from . import mail, pages
 
@@ -70,6 +72,9 @@ def build_app():
     ledgers.mkdir(parents=True, exist_ok=True)
 
     def account_ledger():
+        forced = arena.FORCED_LEDGER.get()
+        if forced is not None:              # the arena board marking one ledger
+            return forced
         tok = get_access_token()
         if tok is None or not tok.subject:
             raise RuntimeError("no signed-in account on this request")
@@ -77,9 +82,52 @@ def build_app():
 
     paper.ledger_resolver = account_ledger
 
+    def account_id() -> str:
+        tok = get_access_token()
+        if tok is None or not tok.subject:
+            raise RuntimeError("no signed-in account on this request")
+        return tok.subject
+
+    house = os.environ.get("ODDSRAIL_ARENA_HOUSE_LEDGER")
+    board = arena.Board(prov.db, ledgers, Path(house) if house else None)
+
     srv = S.srv
     dev = os.environ.get("ODDSRAIL_CLOUD_DEV") == "1"
     limiter = RateLimiter()
+
+    # ---- arena tools: an agent enters itself from its own chat ---- #
+
+    def arena_register(name: str, strategy: str = "") -> str:
+        try:
+            out = arena.register(prov.db, account_id(), name, strategy)
+        except arena.ArenaError as e:
+            return S._j({"registered": False, "error": str(e)})
+        board.invalidate()
+        return S._j(out)
+
+    def arena_unregister() -> str:
+        out = arena.unregister(prov.db, account_id())
+        board.invalidate()
+        return S._j(out)
+
+    def arena_status() -> str:
+        e = prov.db.arena_get(account_id())
+        return S._j({"registered": bool(e), "name": e["name"] if e else None,
+                     "strategy": e["strategy"] if e else None, "board": "https://oddsrail.app/arena"})
+
+    srv.add_tool(arena_register, name="arena_register",
+                 description=("Enter this account's PAPER ledger on the public oddsrail arena board "
+                              "(oddsrail.app/arena) under a display name (3 to 24 characters) with a "
+                              "one-line strategy description. Ranked by return on the paper bankroll. "
+                              "Makes the ledger's equity and P&L public under that name; nothing else "
+                              "about the account is shown. arena_unregister removes it."),
+                 annotations=S.TRADE, structured_output=False)
+    srv.add_tool(arena_unregister, name="arena_unregister",
+                 description="Remove this account from the public arena board.",
+                 annotations=S.TRADE, structured_output=False)
+    srv.add_tool(arena_status, name="arena_status",
+                 description="Whether this account is on the arena board, and under which name.",
+                 annotations=S.READ, structured_output=False)
 
     def client_ip(request: Request) -> str:
         return request.client.host if request.client else "?"
@@ -92,6 +140,13 @@ def build_app():
     async def healthz(request: Request):
         return JSONResponse({"ok": True, "version": S.VERSION, "hosted": True,
                              "mail": "resend" if mail.configured() else "console"})
+
+    @srv.custom_route("/arena/paper.json", methods=["GET"])
+    async def arena_board(request: Request):
+        data = await board.get(force=request.query_params.get("refresh") == "1" and dev)
+        body = {k: v for k, v in data.items() if k != "computed_at_ts"}
+        return JSONResponse(body, headers={"Access-Control-Allow-Origin": "*",
+                                           "Cache-Control": "public, max-age=60"})
 
     @srv.custom_route("/robots.txt", methods=["GET"])
     async def robots(request: Request):

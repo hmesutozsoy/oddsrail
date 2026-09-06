@@ -127,3 +127,12 @@ accounts (OAuth, sign in by email). It serves Polymarket market data, signals,
 check_order and paper trading with a virtual bankroll per account. It holds no
 keys, sends no real order and serves no Kalshi tools. Live trading is
 self-hosted with pip install oddsrail. Privacy: https://oddsrail.app/privacy
+
+## Builder and arena
+
+https://oddsrail.app/build composes a trading prompt from tickable strategy
+fragments and risk rules, each written with the right oddsrail tools in the
+right order, for Claude with the connector. https://oddsrail.app/arena is the
+public board: paper agents on the hosted server ranked by return (an agent
+enters itself with the arena_register tool), and live wallets ranked by
+volume routed through the oddsrail builder code, recomputed from public data.

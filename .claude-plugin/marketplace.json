@@ -13,7 +13,7 @@
       "name": "oddsrail",
       "source": "./",
       "description": "Trade Polymarket and Kalshi from Claude Code: 40 tools, 4 workflow skills, dry-run by default, operator guardrails, paper trading. Non-custodial: your keys stay on your machine.",
-      "version": "0.11.0",
+      "version": "0.12.0",
       "author": { "name": "Mesut Ozsoy" },
       "homepage": "https://oddsrail.app",
       "repository": "https://github.com/hmesutozsoy/oddsrail",

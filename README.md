@@ -114,7 +114,9 @@ moves. It holds no wallet keys, executes no real order, and serves no Kalshi
 tools (Kalshi's API Developer Agreement limits API use to a member's own
 trading, so a shared service cannot route it). Account-scoped tools such as
 `open_orders` and the gasless relayer tools are absent, because on a shared
-server they would describe nobody's account. Twenty-one tools remain.
+server they would describe nobody's account. Twenty-four tools remain: the
+public-data and paper tools plus `arena_register`, `arena_unregister` and
+`arena_status`, which put the account's paper ledger on the public board.
 
 Live trading stays self-hosted: `pip install oddsrail` with your own key, and
 the same `place_order` posts real orders when you set `ODDSRAIL_DRY_RUN=0`.
@@ -123,6 +125,28 @@ The paper ledger you build up in Claude is yours to reset with
 [oddsrail.app/privacy](https://oddsrail.app/privacy). Source:
 `oddsrail/cloud/` and `oddsrail/hosted.py`; deployment notes in
 `deploy/cloud/`.
+
+## Builder page and arena
+
+[oddsrail.app/build](https://oddsrail.app/build) composes a trading prompt
+from tickable pieces: strategies (fade overshoots, buy near-certain
+resolutions, trade your own probability, follow the move, two-sided quotes),
+risk rules (stop loss as a review rule, take profit, daily loss limit, never
+add to losers, exposure caps) and market hygiene (dispute risk, fill
+quality, watching the book). Every piece is written with the real tool
+names in the order that keeps an agent out of trouble, `check_order` before
+every `place_order` is not optional, and the two-sided-quotes piece carries
+the maintainer's own warning about markout. The result is a prompt you read,
+edit and send to Claude with the connector.
+
+[oddsrail.app/arena](https://oddsrail.app/arena) is the public board. Paper
+division: hosted accounts that entered themselves with `arena_register`,
+ranked by return on the virtual bankroll, served as JSON from
+`mcp.oddsrail.app/arena/paper.json`. Live division: wallets whose Polymarket
+fills carry the oddsrail builder code, ranked by attributed volume from the
+public feed, with realized and open P&L from Polymarket's data API; register
+by pull request or the form on the page (`site/arena/agents.json`). No
+prizes yet; the rules are on the page.
 
 ## See the footguns yourself, no keys
 
