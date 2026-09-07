@@ -85,31 +85,47 @@ Site: https://oddsrail.app · Source: https://github.com/hmesutozsoy/oddsrail
 
 ---
 
-## Show HN
+## Show HN (September 2026 version: the builder and the arena)
 
-**Title:** Show HN: oddsrail, an open-source MCP server for Polymarket and Kalshi, built from the APIs' footguns
+**Title (80 characters max):**
 
-**Text:**
+Show HN: Oddsrail – build a paper-trading agent for Polymarket in 10 seconds, no account
 
-I wrote an MCP server so my agent could trade prediction markets, and the
-venue APIs taught me six things the hard way: the order book arrives
-worst-first, Kalshi has no ask side, a geoblocked machine looks healthy until
-the first order, the geoblock verdict takes unvalidated overrides, the obvious
-Gamma endpoint is deprecated, and naive cross-venue matching pairs unrelated
-markets. `python examples/footguns.py` reproduces all six live without keys.
+**URL:** https://oddsrail.app/build
 
-oddsrail is self-hosted and non-custodial (your keys sign on your machine),
-dry-run by default with a paper ledger, and ships operator guardrails the
-agent cannot change. It pays for itself with a 0 bps builder code you can
-override. 39 tools, 4 prompts, 116 offline tests, MIT.
+**First comment, posted right after submitting:**
 
-Honest numbers: rank ~#124 of 216 builders this week, all of it my own bot.
-The attribution ledger at https://oddsrail.app/attribution subtracts my
-wallet, so the external-user count is real and currently zero.
+Author here. Oddsrail started as an open-source MCP server that lets an AI
+agent read, cost, audit and trade Polymarket and Kalshi (pip install
+oddsrail, MIT, 41 tools). Nobody wants to install an MCP server to try an
+idea, so the page linked above runs the strategy for you.
 
-Repo: https://github.com/hmesutozsoy/oddsrail
+What happens when you press Run: the switches you ticked (fade overshoots,
+buy near-certain resolutions, follow the move, two-sided quotes, your own
+probabilities, plus risk rules like stop loss and daily loss limit) execute
+on our server as one deterministic pass against the live Polymarket book.
+Every order goes through a pre-trade check that compares the order with the
+market, the book and the rules, and the pass comes back as a list of
+decisions with the verdict and reason for each. Fills land in a paper ledger
+that belongs to your browser. No model is consulted, so two people with the
+same switches get the same behaviour, which is what a fair leaderboard
+needs. Keep the agent with an email and it runs hourly and appears on the
+board at oddsrail.app/arena.
 
----
+What it is not: not real money (paper only, fills are an upper bound since
+there is no queue or impact), not a backtest, and the market-making piece
+carries the warning that my own engine lost about 4.5 cents a share on
+markout live after looking fine on paper.
+
+Why it exists: Polymarket pays builders a share of a weekly pool by
+attributed volume, and I am a verified builder, so the self-hosted server
+attaches my builder code at 0 bps. The hosted paper runner is the top of
+that funnel. Code: https://github.com/hmesutozsoy/oddsrail. Happy to answer
+anything about the venue APIs; the README has six footguns they taught me.
+
+**Rules of the day:** never ask anyone for votes, reply to every comment
+for the first three hours, and post Tuesday to Thursday between 14:00 and
+16:00 UTC.
 
 ## r/mcp
 

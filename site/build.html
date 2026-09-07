@@ -7,7 +7,7 @@
 <meta name="description" content="Switch on the strategy pieces and risk rules you want, read the prompt they compose, edit it, and send it to Claude with the oddsrail connector. No code.">
 <link rel="canonical" href="https://oddsrail.app/build">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css?v=0.13.3b">
+<link rel="stylesheet" href="/style.css?v=0.14.0">
 </head>
 <body>
 <header class="top">
@@ -139,10 +139,32 @@
         <div class="tablewrap slim" id="run-positions" hidden></div>
         <details id="run-steps" hidden><summary>steps</summary><pre id="run-log"></pre></details>
         <p class="muted run-note" id="run-note"></p>
+      <div class="acct" id="acct" hidden>
+        <div class="acct-out" id="acct-out">
+          <p class="muted">Enter your email. The link we send turns this browser's ledger into your account's, so what you built here comes with you.</p>
+          <form id="claim" autocomplete="off"><input type="email" name="email" required placeholder="you@example.com" autocomplete="email"><button type="submit" class="btn primary">Send sign-in link</button></form>
+          <p class="muted" id="claim-status"></p>
+        </div>
+        <div class="acct-in" id="acct-in" hidden>
+          <div class="ph slim"><b>Your agent</b><span class="muted" id="acct-email"></span><button type="button" id="signout" class="link">sign out</button></div>
+          <form id="agent" autocomplete="off">
+            <div class="grid2">
+              <label>Agent name<input type="text" name="name" maxlength="24" placeholder="fade-bot-3000" required></label>
+              <label>Strategy, one line<input type="text" name="strategy" maxlength="140" placeholder="quotes football and tennis, stop loss 25%"></label>
+            </div>
+            <div class="opts-inline">
+              <label class="sw"><input type="checkbox" name="schedule"><span></span></label><span>Run every hour on our server, with the switches as they are now</span>
+              <label class="sw"><input type="checkbox" name="arena"><span></span></label><span>Show on the <a href="/arena">arena board</a> under this name</span>
+            </div>
+            <div class="actions"><button type="submit" class="btn primary">Save agent</button><span class="muted" id="agent-status"></span></div>
+          </form>
+        </div>
+      </div>
       </div>
       <div class="pv-f">
         <button type="button" id="run" class="btn primary">▶ Run paper pass</button>
-        <span class="muted">Ledgers start at $1,000 for everyone. Paper fills come from the live book with no queue and no fees, an upper bound. One pass is one tick; a record needs many. Keeping an agent, scheduling it hourly and putting it on the board comes with sign-in, next.</span>
+        <button type="button" id="keep" class="btn">Keep this agent</button>
+        <span class="muted">Ledgers start at $1,000 for everyone. Paper fills come from the live book with no queue and no fees, an upper bound. One pass is one tick; a record needs many. Keep the agent to name it, run it hourly on our server and put it on the board.</span>
       </div>
     </div>
 
@@ -183,6 +205,6 @@
     <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
   </div>
 </footer>
-<script src="/build.js?v=0.13.3b" defer></script>
+<script src="/build.js?v=0.14.0" defer></script>
 </body>
 </html>

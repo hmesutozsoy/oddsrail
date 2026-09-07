@@ -307,3 +307,15 @@ table.cmp.mini tr.r-filled td:last-child{color:#6cc38a}table.cmp.mini tr.r-skipp
 .howto summary{cursor:pointer;font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--amber)}
 .howto ul{margin:6px 0 2px;padding-left:16px;color:var(--ink-soft);font-size:12px}
 .howto li{margin:3px 0}.howto li b{color:var(--ink)}
+.acct{border:1px solid var(--line);border-radius:8px;padding:10px 12px 12px;background:var(--bg2)}
+.acct .muted{font-size:12px;margin:0 0 8px}
+#claim{display:flex;gap:6px;flex-wrap:wrap}
+#claim input[type=email]{flex:1;min-width:180px;height:30px;color:var(--ink);background:#0b0e13;border:1px solid var(--line);border-radius:6px;padding:0 9px;font-size:13px}
+.ph.slim{padding:0 0 8px;background:transparent;border-bottom:1px solid var(--line);margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.ph.slim .muted{flex:1;margin:0}
+button.link{background:transparent;border:0;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
+button.link:hover{color:var(--ink)}
+.acct .grid2{padding-bottom:6px}
+.acct .grid2 input[type=text]{height:28px;color:var(--ink);background:#0b0e13;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:13px}
+.opts-inline{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:12.5px;color:var(--ink-soft);margin:4px 0 6px}
+.acct .actions{margin-top:6px}

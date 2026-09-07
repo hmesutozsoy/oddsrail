@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS tokens (
     user_id TEXT NOT NULL, scopes TEXT NOT NULL, pair TEXT NOT NULL,
     created REAL NOT NULL, expires REAL, revoked REAL);
 CREATE INDEX IF NOT EXISTS tokens_pair ON tokens(pair);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created REAL NOT NULL,
+    expires REAL NOT NULL, revoked REAL);
+CREATE TABLE IF NOT EXISTS agents (
+    user_id TEXT PRIMARY KEY, name TEXT NOT NULL, strategy TEXT NOT NULL DEFAULT '',
+    config TEXT NOT NULL, schedule TEXT NOT NULL DEFAULT 'off', created REAL NOT NULL,
+    updated REAL NOT NULL, last_run REAL, last_result TEXT, runs INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS arena (
     user_id TEXT PRIMARY KEY, name TEXT NOT NULL, name_lc TEXT UNIQUE NOT NULL,
     strategy TEXT NOT NULL DEFAULT '', created REAL NOT NULL, updated REAL NOT NULL);
@@ -187,6 +194,55 @@ class DB:
         with self._lock:
             rows = self._c.execute("SELECT * FROM arena ORDER BY created").fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------ sessions ------------------------------ #
+
+    def put_session(self, token_hash: str, user_id: str, ttl: float) -> None:
+        now = time.time()
+        self._exec("INSERT INTO sessions (token_hash, user_id, created, expires) VALUES (?,?,?,?)",
+                   (token_hash, user_id, now, now + ttl))
+
+    def get_session(self, token_hash: str) -> dict | None:
+        return self._one("SELECT * FROM sessions WHERE token_hash=? AND revoked IS NULL AND expires>?",
+                         (token_hash, time.time()))
+
+    def revoke_session(self, token_hash: str) -> None:
+        self._exec("UPDATE sessions SET revoked=? WHERE token_hash=?", (time.time(), token_hash))
+
+    # ------------------------------- agents ------------------------------- #
+
+    def agent_get(self, user_id: str) -> dict | None:
+        r = self._one("SELECT * FROM agents WHERE user_id=?", (user_id,))
+        if r:
+            r["config"] = json.loads(r["config"] or "{}")
+            r["last_result"] = json.loads(r["last_result"]) if r.get("last_result") else None
+        return r
+
+    def agent_put(self, user_id: str, name: str, strategy: str, config: dict, schedule: str) -> None:
+        """Create or update the account's agent; run history survives an update."""
+        now = time.time()
+        self._exec("INSERT INTO agents (user_id, name, strategy, config, schedule, created, updated) "
+                   "VALUES (?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET name=excluded.name, "
+                   "strategy=excluded.strategy, config=excluded.config, schedule=excluded.schedule, "
+                   "updated=excluded.updated",
+                   (user_id, name, strategy, json.dumps(config), schedule, now, now))
+
+    def agent_delete(self, user_id: str) -> bool:
+        return self._exec("DELETE FROM agents WHERE user_id=?", (user_id,)).rowcount == 1
+
+    def agents_due(self, older_than: float) -> list[dict]:
+        with self._lock:
+            rows = self._c.execute("SELECT * FROM agents WHERE schedule='hourly' AND "
+                                   "(last_run IS NULL OR last_run<?) ORDER BY COALESCE(last_run,0)",
+                                   (older_than,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r); d["config"] = json.loads(d["config"] or "{}"); out.append(d)
+        return out
+
+    def agent_ran(self, user_id: str, result: dict) -> None:
+        self._exec("UPDATE agents SET last_run=?, last_result=?, runs=runs+1 WHERE user_id=?",
+                   (time.time(), json.dumps(result), user_id))
 
     # ------------------------------- hygiene ------------------------------ #
 

@@ -60,11 +60,14 @@ def build_app():
     from starlette.requests import Request
     from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 
+    import asyncio
+
     from .. import paper
     from .. import server as S
     from . import arena
     from . import auth as A
-    from . import mail, pages, runner
+    from . import mail, pages, runner, scheduler
+    from .accounts import Accounts
 
     prov = A.provider()
     base = A.base_url()
@@ -154,14 +157,31 @@ def build_app():
         origin = request.headers.get("origin", "")
         ok = origin in ALLOWED_ORIGINS or origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:")
         return {"Access-Control-Allow-Origin": origin if ok else ALLOWED_ORIGINS[0],
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "content-type",
+                "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "content-type, authorization",
                 "Access-Control-Max-Age": "600", "Vary": "Origin", "Cache-Control": "no-store"}
 
     def guest_ledger(gid: str):
         if not re.fullmatch(r"[a-f0-9]{16,64}", gid or ""):
             return None
         return guests / f"{gid}.json"
+
+    accounts = Accounts(prov.db, base, ledgers, guests)
+    site_url = os.environ.get("ODDSRAIL_SITE_URL", "https://oddsrail.app").rstrip("/")
+
+    def bearer(request: Request) -> str | None:
+        h = request.headers.get("authorization", "")
+        return h[7:].strip() if h.lower().startswith("bearer ") else None
+
+    def who(request: Request) -> dict | None:
+        return accounts.user_for(bearer(request))
+
+    def ledger_for(request: Request, gid: str):
+        """A signed-in account's ledger wins over the browser's guest id."""
+        user = who(request)
+        if user:
+            return ledgers / f"{user['id']}.json", user
+        return guest_ledger(gid), None
 
     async def run_json(request: Request) -> tuple[dict | None, str | None]:
         try:
@@ -179,7 +199,7 @@ def build_app():
         body, err = await run_json(request)
         if err:
             return JSONResponse({"ok": False, "error": err}, status_code=400, headers=cors(request))
-        ledger = guest_ledger(str(body.get("guest", "")))
+        ledger, user = ledger_for(request, str(body.get("guest", "")))
         if ledger is None:
             return JSONResponse({"ok": False, "error": "guest must be 16 to 64 hex characters"},
                                 status_code=400, headers=cors(request))
@@ -197,13 +217,16 @@ def build_app():
                 print(f"[oddsrail-cloud] run failed: {type(e).__name__}: {e}", flush=True)
                 return JSONResponse({"ok": False, "error": f"the pass failed: {type(e).__name__}"},
                                     status_code=500, headers=cors(request))
+        if user and prov.db.agent_get(user["id"]):
+            prov.db.agent_ran(user["id"], scheduler.summary(out))
+        out["account"] = user["email"] if user else None
         return JSONResponse(out, headers=cors(request))
 
     @srv.custom_route("/run/ledger", methods=["GET", "OPTIONS"])
     async def run_ledger(request: Request):
         if request.method == "OPTIONS":
             return PlainTextResponse("", status_code=204, headers=cors(request))
-        ledger = guest_ledger(request.query_params.get("guest", ""))
+        ledger, user = ledger_for(request, request.query_params.get("guest", ""))
         if ledger is None:
             return JSONResponse({"ok": False, "error": "guest must be 16 to 64 hex characters"},
                                 status_code=400, headers=cors(request))
@@ -222,6 +245,7 @@ def build_app():
         finally:
             arena.FORCED_LEDGER.reset(token)
         pos["ok"] = True
+        pos["account"] = user["email"] if user else None
         return JSONResponse(pos, headers=cors(request))
 
     @srv.custom_route("/run/reset", methods=["POST", "OPTIONS"])
@@ -229,7 +253,7 @@ def build_app():
         if request.method == "OPTIONS":
             return PlainTextResponse("", status_code=204, headers=cors(request))
         body, err = await run_json(request)
-        ledger = guest_ledger(str((body or {}).get("guest", "")))
+        ledger, _user = ledger_for(request, str((body or {}).get("guest", "")))
         if err or ledger is None:
             return JSONResponse({"ok": False, "error": err or "guest must be 16 to 64 hex characters"},
                                 status_code=400, headers=cors(request))
@@ -240,6 +264,113 @@ def build_app():
             arena.FORCED_LEDGER.reset(token)
         out["ok"] = True
         return JSONResponse(out, headers=cors(request))
+
+    # ---- keep this agent: email sign-in for the site, sessions, the agent record ---- #
+
+    @srv.custom_route("/claim/start", methods=["POST", "OPTIONS"])
+    async def claim_start(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        body, err = await run_json(request)
+        if err:
+            return JSONResponse({"ok": False, "error": err}, status_code=400, headers=cors(request))
+        gid = str(body.get("guest", ""))
+        email = str(body.get("email", "")).strip().lower()
+        if guest_ledger(gid) is None:
+            return JSONResponse({"ok": False, "error": "guest must be 16 to 64 hex characters"},
+                                status_code=400, headers=cors(request))
+        if len(email) > 254 or not EMAIL_RE.match(email):
+            return JSONResponse({"ok": False, "error": "that does not look like an email address"},
+                                status_code=400, headers=cors(request))
+        if not limiter.allow(client_ip(request)):
+            return JSONResponse({"ok": False, "error": "too many sign-in attempts from this network"},
+                                status_code=429, headers=cors(request))
+        try:
+            url = accounts.start_claim(email, gid)
+        except A.LoginError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=429, headers=cors(request))
+        try:
+            mode = await mail.send_magic_link(email, url)
+        except Exception as e:
+            print(f"[oddsrail-cloud] mail failure for {email}: {type(e).__name__}: {e}", flush=True)
+            return JSONResponse({"ok": False, "error": "we could not send the email right now; try again in a minute"},
+                                status_code=502, headers=cors(request))
+        out = {"ok": True, "sent": mode != "console", "mode": mode}
+        if dev and mode == "console":
+            out["dev_link"] = url
+        return JSONResponse(out, headers=cors(request))
+
+    @srv.custom_route("/claim/verify", methods=["GET"])
+    async def claim_verify_get(request: Request):
+        t = request.query_params.get("t", "")
+        info = accounts.peek_claim(t) if t else None
+        if not info:
+            return HTMLResponse(pages.error("This sign-in link is invalid, already used, or expired. "
+                                            "Ask for a new one from the builder page."), status_code=400)
+        return HTMLResponse(pages.confirm_claim(t, info["email"]))
+
+    @srv.custom_route("/claim/verify", methods=["POST"])
+    async def claim_verify_post(request: Request):
+        form = await request.form()
+        t = str(form.get("t", ""))
+        try:
+            done = accounts.finish_claim(t)
+        except A.LoginError as e:
+            return HTMLResponse(pages.error(str(e)), status_code=400)
+        return RedirectResponse(f"{site_url}/build#session={done['session']}", status_code=303)
+
+    @srv.custom_route("/me", methods=["GET", "OPTIONS"])
+    async def me(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        user = who(request)
+        if not user:
+            return JSONResponse({"ok": True, "signed_in": False}, headers=cors(request))
+        agent = prov.db.agent_get(user["id"])
+        on_board = prov.db.arena_get(user["id"])
+        return JSONResponse({"ok": True, "signed_in": True, "email": user["email"], "agent": agent,
+                             "arena": on_board["name"] if on_board else None}, headers=cors(request))
+
+    @srv.custom_route("/agents", methods=["POST", "DELETE", "OPTIONS"])
+    async def agents_route(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        user = who(request)
+        if not user:
+            return JSONResponse({"ok": False, "error": "sign in first"}, status_code=401, headers=cors(request))
+        if request.method == "DELETE":
+            prov.db.agent_delete(user["id"])
+            arena.unregister(prov.db, user["id"])
+            board.invalidate()
+            return JSONResponse({"ok": True, "deleted": True}, headers=cors(request))
+        body, err = await run_json(request)
+        if err:
+            return JSONResponse({"ok": False, "error": err}, status_code=400, headers=cors(request))
+        try:
+            name = arena.validate_name(str(body.get("name", "")))
+        except arena.ArenaError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400, headers=cors(request))
+        strategy = " ".join(str(body.get("strategy") or "").split())[:arena.STRATEGY_MAX]
+        cfg = body.get("config") if isinstance(body.get("config"), dict) else {}
+        schedule = "hourly" if body.get("schedule") in ("hourly", True) else "off"
+        prov.db.agent_put(user["id"], name, strategy, cfg, schedule)
+        if body.get("arena"):
+            try:
+                arena.register(prov.db, user["id"], name, strategy)
+            except arena.ArenaError as e:
+                return JSONResponse({"ok": False, "error": str(e)}, status_code=400, headers=cors(request))
+        else:
+            arena.unregister(prov.db, user["id"])
+        board.invalidate()
+        return JSONResponse({"ok": True, "agent": prov.db.agent_get(user["id"]),
+                             "arena": bool(body.get("arena"))}, headers=cors(request))
+
+    @srv.custom_route("/logout", methods=["POST", "OPTIONS"])
+    async def logout(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        accounts.sign_out(bearer(request))
+        return JSONResponse({"ok": True}, headers=cors(request))
 
     @srv.custom_route("/arena/paper.json", methods=["GET"])
     async def arena_board(request: Request):
@@ -313,15 +444,42 @@ def build_app():
             return HTMLResponse(pages.error(str(e)), status_code=400)
         return RedirectResponse(url, status_code=303)
 
+    # The scheduler lives inside the app's lifespan, wrapped around the one
+    # the MCP transport installs, so it shares the event loop and its locks.
+    import contextlib
+
+    def with_scheduler(app):
+        inner = app.router.lifespan_context
+
+        @contextlib.asynccontextmanager
+        async def lifespan(a):
+            async with inner(a):
+                stop = asyncio.Event()
+                task = None
+                if os.environ.get("ODDSRAIL_SCHEDULER", "1") not in ("0", "false", "no"):
+                    task = asyncio.create_task(scheduler.loop(prov.db, ledgers, stop))
+                try:
+                    yield
+                finally:
+                    stop.set()
+                    if task:
+                        task.cancel()
+                        with contextlib.suppress(BaseException):
+                            await task
+
+        app.router.lifespan_context = lifespan
+        return app
+
     public_host = urlparse(base).netloc
     security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=[public_host, "127.0.0.1:*", "localhost:*"],
         allowed_origins=[base, "http://127.0.0.1:*", "http://localhost:*"],
     )
-    return srv.streamable_http_app(streamable_http_path="/mcp", stateless_http=True,
-                                   json_response=True, host=public_host,
-                                   transport_security=security)
+    app = srv.streamable_http_app(streamable_http_path="/mcp", stateless_http=True,
+                                  json_response=True, host=public_host,
+                                  transport_security=security)
+    return with_scheduler(app)
 
 
 def main() -> None:

@@ -79,6 +79,19 @@ It cannot move money: there is none here.</p>
 """)
 
 
+def confirm_claim(token: str, email: str) -> str:
+    return page("Keep your agent", f"""
+<h1>Keep your agent</h1>
+<p>Sign in as <b>{escape(email)}</b>. The paper ledger from the browser you pressed Run in becomes
+this account's, and you can name the agent, put it on the board, and let it run hourly.</p>
+<form method="post" action="/claim/verify">
+  <input type="hidden" name="t" value="{escape(token)}">
+  <button type="submit">Continue to the builder</button>
+</form>
+<p class="muted">Not you? Close this page; nothing happens until Continue is pressed.</p>
+""")
+
+
 def error(message: str) -> str:
     return page("oddsrail", f"<h1>That did not work</h1><p class=\"err\">{escape(message)}</p>"
                             f"<p class=\"muted\"><a href=\"https://oddsrail.app/\">oddsrail.app</a></p>")

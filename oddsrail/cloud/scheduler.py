@@ -1,0 +1,61 @@
+"""Hourly runs for kept agents.
+
+One loop in the server process: every minute, find agents whose schedule is
+hourly and whose last pass is older than an hour, and run them one at a
+time on their own ledger. The result summary is stored on the agent so the
+site and the board can show it. Failures are recorded, never raised."""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from pathlib import Path
+
+from . import runner
+from .db import DB
+
+INTERVAL = 3600.0
+TICK = 60.0
+
+
+def summary(out: dict) -> dict:
+    led = out.get("ledger") or {}
+    return {"at": out.get("started"), "seconds": out.get("seconds"), "orders": out.get("orders_placed"),
+            "decisions": len(out.get("decisions") or []), "equity": led.get("equity"),
+            "halted": out.get("halted"), "ok": bool(out.get("ok"))}
+
+
+async def run_agent(db: DB, ledgers: Path, agent: dict) -> dict:
+    ledger = ledgers / f"{agent['user_id']}.json"
+    async with runner.lock_for(ledger):
+        try:
+            out = await runner.run_pass(agent["config"], ledger)
+            res = summary(out)
+        except Exception as e:
+            res = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "ok": False,
+                   "error": f"{type(e).__name__}: {e}"}
+    db.agent_ran(agent["user_id"], res)
+    return res
+
+
+async def tick(db: DB, ledgers: Path, now: float | None = None) -> int:
+    """Run every due agent once. Returns how many ran."""
+    now = now or time.time()
+    due = db.agents_due(now - INTERVAL)
+    for agent in due:
+        await run_agent(db, ledgers, agent)
+    return len(due)
+
+
+async def loop(db: DB, ledgers: Path, stop: asyncio.Event) -> None:
+    while not stop.is_set():
+        try:
+            n = await tick(db, ledgers)
+            if n:
+                print(f"[oddsrail-cloud] scheduler ran {n} agent(s)", flush=True)
+        except Exception as e:
+            print(f"[oddsrail-cloud] scheduler error: {type(e).__name__}: {e}", flush=True)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=TICK)
+        except asyncio.TimeoutError:
+            pass

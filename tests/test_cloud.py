@@ -315,3 +315,50 @@ def test_run_endpoint_serves_guests_with_cors(cloud):
     assert (cloud["data"] / "guests" / f"{gid}.json").exists()
     reset = httpx.post(base + "/run/reset", json={"guest": gid}).json()
     assert reset["ok"] and reset["reset"] is True
+
+
+def test_keep_this_agent_claims_the_guest_ledger_and_schedules(cloud):
+    base, data = cloud["base"], cloud["data"]
+    gid = "cd" * 16
+    # a guest runs once so there is a ledger to keep
+    r = httpx.post(base + "/run", json={"guest": gid, "config": {"on": {"report": True}}}, timeout=120)
+    assert r.status_code == 200 and (data / "guests" / f"{gid}.json").exists()
+
+    assert httpx.post(base + "/claim/start", json={"guest": gid, "email": "not-an-email"}).status_code == 400
+    r = httpx.post(base + "/claim/start", json={"guest": gid, "email": "keeper@example.com"})
+    assert r.status_code == 200 and r.json()["ok"] and r.json()["mode"] == "console" and r.json().get("dev_link")
+    link = r.json()["dev_link"]
+    token = parse_qs(urlparse(link).query)["t"][0]
+    assert httpx.get(link).status_code == 200 and "Keep your agent" in httpx.get(link).text
+    done = httpx.post(base + "/claim/verify", data={"t": token}, follow_redirects=False)
+    assert done.status_code == 303
+    loc = done.headers["location"]
+    assert loc.startswith("https://oddsrail.app/build#session=")
+    session = loc.split("#session=")[1]
+    assert httpx.post(base + "/claim/verify", data={"t": token}).status_code == 400, "single use"
+
+    auth = {"authorization": f"Bearer {session}"}
+    me = httpx.get(base + "/me", headers=auth).json()
+    assert me["signed_in"] is True and me["email"] == "keeper@example.com" and me["agent"] is None
+    assert not (data / "guests" / f"{gid}.json").exists(), "the guest ledger moved to the account"
+    led = httpx.get(base + "/run/ledger", params={"guest": gid}, headers=auth).json()
+    assert led["ok"] and led["account"] == "keeper@example.com"
+
+    assert httpx.post(base + "/agents", json={"name": "keeper bot"}).status_code == 401
+    r = httpx.post(base + "/agents", headers=auth, json={"name": "keeper bot", "strategy": "quotes football",
+                                                          "config": {"on": {"mm": True}}, "schedule": "hourly",
+                                                          "arena": True})
+    assert r.status_code == 200, r.text
+    a = r.json()["agent"]
+    assert a["name"] == "keeper bot" and a["schedule"] == "hourly" and a["config"] == {"on": {"mm": True}}
+    board = httpx.get(base + "/arena/paper.json?refresh=1").json()
+    assert [e["name"] for e in board["entries"] if not e["house"]] == ["keeper bot"]
+    me = httpx.get(base + "/me", headers=auth).json()
+    assert me["agent"]["name"] == "keeper bot" and me["arena"] == "keeper bot"
+
+    r = httpx.post(base + "/agents", headers=auth, json={"name": "keeper bot", "schedule": "off", "arena": False})
+    assert r.json()["agent"]["schedule"] == "off"
+    assert not [e for e in httpx.get(base + "/arena/paper.json?refresh=1").json()["entries"] if not e["house"]]
+
+    assert httpx.post(base + "/logout", headers=auth).json()["ok"]
+    assert httpx.get(base + "/me", headers=auth).json()["signed_in"] is False

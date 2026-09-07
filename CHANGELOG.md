@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.14.0 (2026-09-07)
+
+- **Keep this agent.** Email sign-in on the builder's Run tab: the link
+  turns the browser's guest ledger into the account's, hands the page a
+  bearer session, and unlocks naming the agent, putting it on the arena
+  board and running it hourly. Endpoints `/claim/start`, `/claim/verify`,
+  `/me`, `/agents`, `/logout`; `/run` and `/run/ledger` use the account's
+  ledger when a session is present.
+- **Hourly scheduling.** A loop inside the hosted server runs every kept
+  agent whose schedule is hourly, one at a time on its own ledger, and
+  stores a result summary on the agent (`oddsrail.cloud.scheduler`).
+- Launch post: the Show HN title and first comment rewritten for the
+  builder and the arena.
+
 ## 0.13.3 (2026-09-06)
 
 - Builder and runner: markets are chosen by ticking categories (everything,

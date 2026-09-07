@@ -281,6 +281,17 @@
       document.querySelectorAll('.ppane').forEach(function (p) { p.classList.toggle('on', p.dataset.ppane === t.dataset.ptab); });
     });
   });
+  function session() { try { return localStorage.getItem('oddsrail-session') || ''; } catch (e) { return ''; } }
+  function setSession(t) { try { if (t) localStorage.setItem('oddsrail-session', t); else localStorage.removeItem('oddsrail-session'); } catch (e) {} }
+  function api(path, opts) {
+    opts = opts || {}; opts.headers = opts.headers || {};
+    if (session()) opts.headers['authorization'] = 'Bearer ' + session();
+    return fetch(HOST + path, opts);
+  }
+  (function pickUpSession() {
+    var m = (location.hash || '').match(/session=([A-Za-z0-9_-]{20,})/);
+    if (m) { setSession(m[1]); history.replaceState(null, '', location.pathname + location.search); }
+  })();
   function guest() {
     var g = null;
     try { g = localStorage.getItem('oddsrail-guest'); } catch (e) {}
@@ -345,19 +356,68 @@
     running = true; runBtn.disabled = true; runBtn.textContent = 'Running…';
     $('run-status').textContent = 'scanning the live book…'; $('run-note').textContent = '';
     var t0 = Date.now();
-    fetch(HOST + '/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest(), config: read() }) })
+    api('/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest(), config: read() }) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (x) { if (!x.ok || !x.j.ok) runError(x.j.error || ('HTTP error')); else showRun(x.j); })
       .catch(function (e) { runError('could not reach the server (' + e.message + ')'); })
       .then(function () { running = false; runBtn.disabled = false; runBtn.textContent = '▶ Run paper pass'; });
   });
   $('ledger-reset').addEventListener('click', function () {
-    fetch(HOST + '/run/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest() }) })
+    api('/run/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest() }) })
       .then(function (r) { return r.json(); }).then(function () { $('run-status').textContent = 'ledger reset to $1,000'; $('run-decisions').hidden = true; $('run-steps').hidden = true; loadLedger(); })
       .catch(function (e) { runError('reset failed (' + e.message + ')'); });
   });
   function loadLedger() {
-    fetch(HOST + '/run/ledger?guest=' + guest()).then(function (r) { return r.json(); }).then(function (l) { if (l && l.ok) { showLedger(l); if (!l.fresh) $('run-status').textContent = 'ledger loaded'; } }).catch(function () {});
+    api('/run/ledger?guest=' + guest()).then(function (r) { return r.json(); }).then(function (l) { if (l && l.ok) { showLedger(l); if (!l.fresh) $('run-status').textContent = (l.account ? l.account + ' · ' : '') + 'ledger loaded'; } }).catch(function () {});
   }
-  probe(0).then(function () { loadLedger(); });
+
+  // ------------------------------ keep this agent ---------------------------
+  var acct = $('acct');
+  function showAccount(me) {
+    acct.hidden = false;
+    var signedIn = !!(me && me.signed_in);
+    $('acct-out').hidden = signedIn; $('acct-in').hidden = !signedIn;
+    $('keep').hidden = signedIn;
+    if (!signedIn) return;
+    $('acct-email').textContent = me.email;
+    var f = $('agent'), a = me.agent || {};
+    f.querySelector('[name=name]').value = a.name || (me.arena || '');
+    f.querySelector('[name=strategy]').value = a.strategy || '';
+    f.querySelector('[name=schedule]').checked = a.schedule === 'hourly';
+    f.querySelector('[name=arena]').checked = !!me.arena;
+    var last = a.last_result;
+    $('agent-status').textContent = a.runs ? (a.runs + ' scheduled run' + (a.runs === 1 ? '' : 's') + (last && last.at ? ', last ' + String(last.at).replace('T', ' ').slice(0, 16) + ' UTC' : '')) : (a.name ? 'saved' : '');
+  }
+  function loadMe() {
+    if (!session()) { $('keep').hidden = false; return; }
+    api('/me').then(function (r) { return r.json(); }).then(function (me) { if (me && me.ok && me.signed_in) showAccount(me); else { setSession(''); $('keep').hidden = false; } }).catch(function () {});
+  }
+  $('keep').addEventListener('click', function () { acct.hidden = !acct.hidden; $('acct-out').hidden = false; $('acct-in').hidden = true; if (!acct.hidden) acct.scrollIntoView({ block: 'nearest' }); });
+  $('claim').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = $('claim').querySelector('[name=email]').value.trim();
+    $('claim-status').textContent = 'sending…';
+    api('/claim/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest(), email: email }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) { $('claim-status').textContent = j.error || 'could not send'; return; }
+        $('claim-status').innerHTML = j.sent ? 'Sent. Open the link in the email within 15 minutes; it brings you back here signed in.' : ('Mail is not configured on this server yet' + (j.dev_link ? ': <a href="' + esc(j.dev_link) + '">use this link</a>' : ', so the link went to the server log') + '.');
+      })
+      .catch(function (err) { $('claim-status').textContent = 'could not reach the server (' + err.message + ')'; });
+  });
+  $('agent').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = $('agent');
+    var body = { name: f.querySelector('[name=name]').value.trim(), strategy: f.querySelector('[name=strategy]').value.trim(), config: read(), schedule: f.querySelector('[name=schedule]').checked ? 'hourly' : 'off', arena: f.querySelector('[name=arena]').checked };
+    $('agent-status').textContent = 'saving…';
+    api('/agents', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { $('agent-status').textContent = j.ok ? ('saved' + (body.schedule === 'hourly' ? ', runs every hour' : '') + (body.arena ? ', on the board' : '')) : (j.error || 'could not save'); })
+      .catch(function (err) { $('agent-status').textContent = 'could not reach the server (' + err.message + ')'; });
+  });
+  $('signout').addEventListener('click', function () {
+    api('/logout', { method: 'POST' }).catch(function () {}).then(function () { setSession(''); acct.hidden = true; $('keep').hidden = false; $('run-status').textContent = 'signed out'; loadLedger(); });
+  });
+
+  probe(0).then(function () { loadLedger(); loadMe(); });
 })();
