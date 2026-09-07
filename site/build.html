@@ -7,7 +7,7 @@
 <meta name="description" content="Switch on the strategy pieces and risk rules you want, read the prompt they compose, edit it, and send it to Claude with the oddsrail connector. No code.">
 <link rel="canonical" href="https://oddsrail.app/build">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css?v=0.13.3">
+<link rel="stylesheet" href="/style.css?v=0.13.3b">
 </head>
 <body>
 <header class="top">
@@ -125,6 +125,15 @@
       </div>
       <div class="run-body" id="run-body">
         <p class="run-intro">Runs the switches on our server against the live Polymarket book, into a paper ledger that belongs to this browser. No account, nothing installed. Every decision comes back with its check_order verdict.</p>
+        <details class="howto" open>
+          <summary>What one pass is, and is not</summary>
+          <ul>
+            <li><b>One tick, now.</b> A pass reads the book at this moment and decides once. It is not a backtest and does not replay past days.</li>
+            <li><b>The ledger remembers.</b> Positions, resting quotes and fills from earlier passes are loaded, re-marked at the current mid, and the risk rules are applied to them before anything new is placed.</li>
+            <li><b>Signals look back, orders do not.</b> Fade and momentum read the last hours of prices to judge a move; they only act on what is happening now.</li>
+            <li><b>Nothing is watched between passes.</b> A resting quote fills and a stop loss triggers only when the next pass looks. Run again to advance the clock; hourly scheduling on our server is the next step.</li>
+          </ul>
+        </details>
         <div class="tiles" id="run-tiles" hidden></div>
         <div class="tablewrap slim" id="run-decisions" hidden></div>
         <div class="tablewrap slim" id="run-positions" hidden></div>
@@ -133,7 +142,7 @@
       </div>
       <div class="pv-f">
         <button type="button" id="run" class="btn primary">▶ Run paper pass</button>
-        <span class="muted">Ledgers start at $1,000 for everyone. Paper fills come from the live book with no queue and no fees, an upper bound. Keeping an agent and putting it on the board comes with sign-in, next.</span>
+        <span class="muted">Ledgers start at $1,000 for everyone. Paper fills come from the live book with no queue and no fees, an upper bound. One pass is one tick; a record needs many. Keeping an agent, scheduling it hourly and putting it on the board comes with sign-in, next.</span>
       </div>
     </div>
 
@@ -174,6 +183,6 @@
     <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
   </div>
 </footer>
-<script src="/build.js?v=0.13.3" defer></script>
+<script src="/build.js?v=0.13.3b" defer></script>
 </body>
 </html>

@@ -310,7 +310,8 @@
     } else { P.hidden = true; }
   }
   function showRun(r) {
-    $('run-status').textContent = (r.orders_placed || 0) + ' orders · ' + (r.decisions || []).length + ' decisions · ' + r.seconds + 's' + (r.halted ? ' · halted' : '');
+    $('run-status').textContent = (r.orders_placed || 0) + ' orders · ' + (r.decisions || []).length + ' decisions · ' + r.seconds + 's' + (r.halted ? ' · halted' : '') + ' · one tick';
+    document.querySelector('.howto').open = false;
     showLedger(r.ledger);
     var D = $('run-decisions'), ds = r.decisions || [];
     if (ds.length) {

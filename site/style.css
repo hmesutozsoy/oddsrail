@@ -303,3 +303,7 @@ table.cmp.mini tr.r-filled td:last-child{color:#6cc38a}table.cmp.mini tr.r-skipp
 .cat input:checked + span{color:var(--amber);border-color:rgba(245,158,11,.6);background:rgba(245,158,11,.1)}
 .cat input:focus-visible + span{box-shadow:0 0 0 2px rgba(245,158,11,.4)}
 .cat span:hover{color:var(--ink)}
+.howto{border:1px solid var(--line);border-radius:8px;background:#0b0e13;padding:6px 10px}
+.howto summary{cursor:pointer;font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--amber)}
+.howto ul{margin:6px 0 2px;padding-left:16px;color:var(--ink-soft);font-size:12px}
+.howto li{margin:3px 0}.howto li b{color:var(--ink)}

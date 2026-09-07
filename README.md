@@ -139,7 +139,9 @@ scanned, each strategy's signal is computed with the same code the MCP
 tools use, every order goes through `check_order`, fills come from the live
 book into a paper ledger that belongs to your browser, and the pass comes
 back as a list of decisions with verdicts and reasons. No account, no
-install, no key, no model. The same switches also compose into a prompt for
+install, no key, no model. One pass is one tick at the current book, not a
+backtest: the ledger carries positions and resting quotes between passes,
+and nothing is watched in between, so a record needs many passes. The same switches also compose into a prompt for
 running the pieces inside your own Claude with the connector; the
 two-sided-quotes piece carries the maintainer's own warning about markout
 either way.
