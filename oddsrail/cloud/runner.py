@@ -417,8 +417,11 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
             continue
         name = x.get("check")
         switch = ADVISORY.get(name)
+        # check_order's liquidity caution is advisory here: when the fill-quality
+        # switch is on the runner has already walked the book with the user's
+        # own allowance, and when it is off the user chose not to gate on it.
         advisory = (st == "caution" and switch is not None
-                    and (not c["on"].get(switch) or (name == "liquidity" and resting)))
+                    and (name == "liquidity" or not c["on"].get(switch)))
         (accepted if advisory else binding).append(f"{name}: {x.get('detail', '')}")
     if binding:
         return p.decide(**base, result="skipped", detail="; ".join(binding))
