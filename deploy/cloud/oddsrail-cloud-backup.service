@@ -1,0 +1,6 @@
+[Unit]
+Description=oddsrail cloud nightly backup (sqlite + ledgers, 14 days kept)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oddsrail/deploy/cloud/backup.sh

@@ -6,8 +6,18 @@
 <title>Build a trading agent with oddsrail</title>
 <meta name="description" content="Switch on the strategy pieces and risk rules you want, read the prompt they compose, edit it, and send it to Claude with the oddsrail connector. No code.">
 <link rel="canonical" href="https://oddsrail.app/build">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="Build a trading agent with oddsrail">
+<meta property="og:description" content="Switch on strategy pieces and risk rules, press Run, and read what your agent did against the live Polymarket book. Paper, no account, ten seconds.">
+<meta property="og:url" content="https://oddsrail.app/build">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Build a trading agent with oddsrail">
+<meta name="twitter:description" content="Switch on strategy pieces and risk rules, press Run, and read what your agent did against the live Polymarket book. Paper, no account, ten seconds.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css?v=0.14.0">
+<link rel="stylesheet" href="/style.css?v=0.15.0">
 </head>
 <body>
 <header class="top">
@@ -26,8 +36,8 @@
 <main class="wrap wide">
 <section class="hero compact" aria-labelledby="h-title">
   <p class="kicker">Agent builder</p>
-  <h1 id="h-title">Switch on the pieces. Read the prompt. Send it to Claude.</h1>
-  <p class="lede">Each switch is a strategy fragment or a risk rule written with the right oddsrail tools in the right order. Press Run and they execute on our server against the live book, into a paper ledger for this browser, in seconds. No account, no install, no key. Or take the same pieces as a prompt into your own Claude.</p>
+  <h1 id="h-title">Switch on the pieces. Press Run. Read what your agent did.</h1>
+  <p class="lede">Each switch is a strategy fragment or a risk rule. Press Run and they execute on our server against the live Polymarket book, into a paper ledger for this browser, in seconds. No account, no install, no key. The same pieces also compose into a prompt for your own Claude, on the second tab.</p>
 </section>
 
 <section id="builder" aria-label="Builder" class="bterm">
@@ -47,8 +57,8 @@
       </div>
     </div>
 
-    <div class="bpanel connect" id="connect">
-      <div class="ph"><b>Connect</b><span class="muted">only for the Prompt tab, running inside your own Claude; the Run tab needs none of this</span></div>
+    <details class="bpanel connect" id="connect">
+      <summary class="ph"><b>Connect your own Claude</b><span class="muted">only for the Prompt tab; the Run tab needs none of this</span></summary>
       <div class="brows" data-mode="paper">
         <div class="brow"><span><b class="step">1</b> Claude, Settings, Connectors, <i>Add custom connector</i>, paste this URL <small id="host-note" class="muted"></small></span><label class="unit url"><input type="text" readonly value="https://mcp.oddsrail.app/mcp"><button type="button" data-copy="https://mcp.oddsrail.app/mcp">copy</button></label></div>
         <div class="brow"><span><b class="step">2</b> Sign in with your email when Claude asks. The account holds a paper ledger and nothing else.</span><b class="pill">no keys</b></div>
@@ -59,7 +69,7 @@
         <div class="brow"><span><b class="step">2</b> Add it to Claude Code, then set your key and guardrails in the environment</span><label class="unit url"><input type="text" readonly value="claude mcp add --transport stdio oddsrail -- oddsrail"><button type="button" data-copy="claude mcp add --transport stdio oddsrail -- oddsrail">copy</button></label></div>
         <div class="brow"><span><b class="step">3</b> Everything starts in dry-run. <code>ODDSRAIL_DRY_RUN=0</code> is the only switch that makes an order real.</span><b class="pill">your keys</b></div>
       </div>
-    </div>
+    </details>
 
     <div class="bpanel">
       <div class="ph"><b>Universe</b><span class="muted">what the agent may touch</span></div>
@@ -88,10 +98,10 @@
 
     <div class="bpanel">
       <div class="tabs" role="tablist">
-        <button type="button" class="tab on" role="tab" data-tab="strategies">Strategy <i>0</i></button>
-        <button type="button" class="tab" role="tab" data-tab="risk">Risk <i>0</i></button>
-        <button type="button" class="tab" role="tab" data-tab="hygiene">Hygiene <i>0</i></button>
-        <button type="button" class="tab" role="tab" data-tab="extras">Output <i>0</i></button>
+        <button type="button" class="tab on" role="tab" aria-selected="true" data-tab="strategies">Strategy <i>0</i></button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="risk">Risk <i>0</i></button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="hygiene">Hygiene <i>0</i></button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="extras">Output <i>0</i></button>
       </div>
       <div class="pane on" data-pane="strategies" id="strategies"></div>
       <div class="pane" data-pane="risk" id="risk"></div>
@@ -103,7 +113,7 @@
       <div class="ph"><b>Always on</b><span class="muted">cannot be switched off</span></div>
       <div class="brows">
         <div class="brow"><span><code>check_order</code> before every <code>place_order</code>, with your intent verbatim</span><b class="pill on">on</b></div>
-        <div class="brow"><span>a <code>block</code> verdict is final; <code>caution</code> stops and asks</span><b class="pill on">on</b></div>
+        <div class="brow"><span>a <code>block</code> verdict is final. A <code>caution</code> about the resolution source or fill quality is recorded, and enforced when its switch is on; any other caution stops the order</span><b class="pill on">on</b></div>
         <div class="brow"><span>never resubmit an order whose result is unknown</span><b class="pill on">on</b></div>
       </div>
     </div>
@@ -189,6 +199,8 @@
   </aside>
 </section>
 
+<div class="runbar" id="runbar" hidden><button type="button" id="run-mobile" class="btn primary">▶ Run paper pass</button><span class="muted" id="runbar-status"></span></div>
+
 <section id="honest" aria-labelledby="h-honest" class="notes">
   <h2 id="h-honest">What the switches cannot do</h2>
   <ul class="lessons">
@@ -205,6 +217,6 @@
     <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
   </div>
 </footer>
-<script src="/build.js?v=0.14.0" defer></script>
+<script src="/build.js?v=0.15.0" defer></script>
 </body>
 </html>

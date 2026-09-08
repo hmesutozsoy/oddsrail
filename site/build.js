@@ -6,10 +6,12 @@
   // maintainer controls; until it resolves, the page shows the temporary one
   // so the connector can be added today and the prompt names a live URL.
   var HOSTS = ['https://mcp.oddsrail.app', 'https://151-241-155-39.sslip.io'];
-  var HOST = HOSTS[0];
+  var HOST = HOSTS[0], MAIL = null;
   function probe(i) {
     if (i >= HOSTS.length) return Promise.resolve(null);
-    return fetch(HOSTS[i] + '/healthz', { cache: 'no-store' }).then(function (r) { return r.ok ? HOSTS[i] : probe(i + 1); }).catch(function () { return probe(i + 1); });
+    return fetch(HOSTS[i] + '/healthz', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) return probe(i + 1); return r.json().then(function (j) { MAIL = j.mail || null; return HOSTS[i]; }); })
+      .catch(function () { return probe(i + 1); });
   }
 
   // Every fragment: id, group, label, tag, blurb, params (k, label, def, unit,
@@ -95,7 +97,7 @@
   var GROUPS = ['strategies', 'risk', 'hygiene', 'extras'];
 
   var PRESETS = {
-    starter: { topics: ['all'], keyword: '', minvol: 20000, on: { settle: 1, momentum: 1, mm: 1, stoploss: 1, liquidity: 1, report: 1 } },
+    starter: { topics: ['all'], keyword: '', minvol: 20000, on: { settle: 1, momentum: 1, stoploss: 1, liquidity: 1, report: 1 } },
     fade:   { topics: ['crypto', 'politics', 'geopolitics'], keyword: '', on: { fade: 1, stoploss: 1, daily: 1, dispute: 1, liquidity: 1, report: 1 } },
     settle: { topics: ['all'], keyword: '', minvol: 5000, on: { settle: 1, noadd: 1, expo: 1, dispute: 1, liquidity: 1, report: 1 }, vals: { dispute: { score: 20 } } },
     quote:  { topics: ['soccer', 'esports', 'tennis'], keyword: '', minvol: 50000, on: { mm: 1, expo: 1, daily: 1, liquidity: 1, watch: 1, report: 1 } },
@@ -106,13 +108,13 @@
   // ------------------------------ form rendering ------------------------------
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function paramHtml(f, p) {
-    var inp = '<input type="' + (p.text ? 'text' : 'number') + '" name="' + f.id + '_' + p.k + '" value="' + esc(p.def) + '"' + (p.text ? '' : ' step="any"') + '>';
+    var inp = '<input type="' + (p.text ? 'text' : 'number') + '" name="' + f.id + '_' + p.k + '" value="' + esc(p.def) + '"' + (p.text ? '' : ' step="any"') + ' aria-label="' + esc(f.label + ': ' + p.label + (p.unit ? ' (' + p.unit + ')' : '')) + '">';
     var unit = p.unit ? '<em>' + esc(p.unit) + '</em>' : '';
     return '<label class="chip"><span>' + esc(p.label) + '</span>' + (p.pre ? unit + inp : inp + unit) + '</label>';
   }
   function itemHtml(f) {
     var h = '<div class="item' + (f.checked ? ' on' : '') + '" data-id="' + f.id + '">' +
-      '<div class="item-h"><label class="sw"><input type="checkbox" name="f_' + f.id + '"' + (f.checked ? ' checked' : '') + '><span></span></label>' +
+      '<div class="item-h"><label class="sw"><input type="checkbox" name="f_' + f.id + '"' + (f.checked ? ' checked' : '') + ' aria-label="' + esc(f.label) + '"><span></span></label>' +
       '<div class="item-t"><div class="item-n"><b>' + esc(f.label) + '</b>' + (f.tag ? '<span class="tag' + (f.warn ? ' warn' : '') + '">' + esc(f.tag) + '</span>' : '') + '</div>' +
       (f.blurb ? '<small>' + esc(f.blurb) + '</small>' : '') + '</div>';
     if (f.params) h += '<div class="params">' + f.params.map(function (p) { return paramHtml(f, p); }).join('') + '</div>';
@@ -247,6 +249,16 @@
   probe(0).then(function (live) {
     var url = (live || HOSTS[0]) + '/mcp';
     HOST = live || HOSTS[0];
+    ready = !!live;
+    setRunButtons(live ? '▶ Run paper pass' : 'server unreachable', !live);
+    if (live && MAIL === 'console') {
+      $('keep').hidden = true;
+      var note = document.createElement('span'); note.className = 'muted'; note.id = 'mail-note';
+      note.textContent = 'Accounts open once sign-in email is live on the server; until then the ledger stays in this browser.';
+      $('keep').parentNode.insertBefore(note, $('keep').nextSibling);
+    }
+    $('runbar').hidden = false;
+    if (!live) $('run-note').textContent = 'The hosted server did not answer from here. It may be a network block on your side; try again in a minute.';
     var inp = document.querySelector('#connect input[value$="/mcp"]');
     if (inp) { inp.value = url; inp.nextElementSibling.dataset.copy = url; }
     var note = document.getElementById('host-note');
@@ -258,7 +270,7 @@
   form.addEventListener('input', function (e) { if (e.target.type === 'text' || e.target.type === 'number' || e.target.tagName === 'TEXTAREA') regen(); });
   form.querySelectorAll('.tab').forEach(function (t) {
     t.addEventListener('click', function () {
-      form.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('on', x === t); });
+      form.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('on', x === t); x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
       form.querySelectorAll('.pane').forEach(function (p) { p.classList.toggle('on', p.dataset.pane === t.dataset.tab); });
     });
   });
@@ -350,18 +362,25 @@
     $('run-note').textContent = r.halted || '';
   }
   function runError(msg) { $('run-status').textContent = 'failed'; $('run-note').textContent = msg; }
-  var runBtn = $('run'), running = false;
-  runBtn.addEventListener('click', function () {
-    if (running) return;
-    running = true; runBtn.disabled = true; runBtn.textContent = 'Running…';
-    $('run-status').textContent = 'scanning the live book…'; $('run-note').textContent = '';
-    var t0 = Date.now();
+  var runBtn = $('run'), runMobile = $('run-mobile'), running = false, ready = false;
+  function setRunButtons(label, disabled) { [runBtn, runMobile].forEach(function (b) { b.disabled = disabled; b.textContent = label; }); }
+  setRunButtons('connecting…', true);
+  function runPass() {
+    if (running || !ready) return;
+    running = true; setRunButtons('Running…', true);
+    $('run-status').textContent = 'scanning the live book…'; $('run-note').textContent = ''; $('runbar-status').textContent = 'running…';
+    document.querySelector('.pv-tabs .tab[data-ptab=run]').click();
     api('/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest(), config: read() }) })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-      .then(function (x) { if (!x.ok || !x.j.ok) runError(x.j.error || ('HTTP error')); else showRun(x.j); })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
+      .then(function (x) {
+        if (x.status === 401 && session()) { setSession(''); acct.hidden = true; $('keep').hidden = false; runError('your sign-in expired; press Keep this agent to sign in again'); return; }
+        if (!x.ok || !x.j.ok) runError(x.j.error || ('HTTP ' + x.status)); else { showRun(x.j); $('runbar-status').textContent = (x.j.orders_placed || 0) + ' orders · ' + (x.j.decisions || []).length + ' decisions'; if (window.innerWidth <= 1000) document.querySelector('.preview').scrollIntoView({ behavior: 'smooth' }); }
+      })
       .catch(function (e) { runError('could not reach the server (' + e.message + ')'); })
-      .then(function () { running = false; runBtn.disabled = false; runBtn.textContent = '▶ Run paper pass'; });
-  });
+      .then(function () { running = false; setRunButtons('▶ Run paper pass', false); });
+  }
+  runBtn.addEventListener('click', runPass);
+  runMobile.addEventListener('click', runPass);
   $('ledger-reset').addEventListener('click', function () {
     api('/run/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest() }) })
       .then(function (r) { return r.json(); }).then(function () { $('run-status').textContent = 'ledger reset to $1,000'; $('run-decisions').hidden = true; $('run-steps').hidden = true; loadLedger(); })
@@ -390,9 +409,9 @@
   }
   function loadMe() {
     if (!session()) { $('keep').hidden = false; return; }
-    api('/me').then(function (r) { return r.json(); }).then(function (me) { if (me && me.ok && me.signed_in) showAccount(me); else { setSession(''); $('keep').hidden = false; } }).catch(function () {});
+    api('/me').then(function (r) { return r.json(); }).then(function (me) { if (me && me.ok && me.signed_in) showAccount(me); else { setSession(''); $('keep').hidden = false; $('run-status').textContent = 'your sign-in expired; the ledger shown is this browser\'s guest ledger'; } }).catch(function () {});
   }
-  $('keep').addEventListener('click', function () { acct.hidden = !acct.hidden; $('acct-out').hidden = false; $('acct-in').hidden = true; if (!acct.hidden) acct.scrollIntoView({ block: 'nearest' }); });
+  $('keep').addEventListener('click', function () { if (MAIL === 'console') return; acct.hidden = !acct.hidden; $('acct-out').hidden = false; $('acct-in').hidden = true; if (!acct.hidden) acct.scrollIntoView({ block: 'nearest' }); });
   $('claim').addEventListener('submit', function (e) {
     e.preventDefault();
     var email = $('claim').querySelector('[name=email]').value.trim();

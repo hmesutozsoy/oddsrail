@@ -1,0 +1,6 @@
+[Unit]
+Description=oddsrail cloud watchdog (restart on dead app or stale scheduler)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oddsrail/deploy/cloud/watchdog.sh

@@ -111,21 +111,30 @@ def normalize(raw: dict) -> dict:
         "maxpos": int(min(max(1, _f(raw.get("maxpos"), 5)), 50)),
         "closing_h": max(0.0, _f(raw.get("closing"), 2)),
         "on": on,
-        "fade": {"jump": val("fade", "jump", 8) / 100.0, "hours": min(max(1.0, val("fade", "hours", 6)), 24.0)},
-        "settle": {"lo": val("settle", "lo", 0.9), "hi": min(val("settle", "hi", 0.97), 0.969)},
-        "value": {"edge": val("value", "edge", 5) / 100.0, "kelly": min(max(0.05, val("value", "kelly", 0.25)), 1.0),
-                  "views": str((vals.get("value") or {}).get("views") or "")},
-        "momentum": {"move": val("momentum", "move", 10) / 100.0, "hours": min(max(1.0, val("momentum", "hours", 6)), 24.0)},
-        "mm": {"edge": val("mm", "edge", 2) / 100.0, "shares": min(max(5.0, val("mm", "shares", 20)), 500.0)},
-        "stoploss": val("stoploss", "pct", 25) / 100.0,
-        "takeprofit": val("takeprofit", "pct", 40) / 100.0,
-        "daily": val("daily", "usd", 50),
-        "expo": val("expo", "usd", 50),
-        "dispute": int(val("dispute", "score", 30)),
-        "liquidity": val("liquidity", "slip", 2) / 100.0,
-        "watch": min(max(1.0, val("watch", "sec", 20)), 8.0),
+        "fade": {"jump": clamp(val("fade", "jump", 8), 1, 90) / 100.0,
+                 "hours": clamp(val("fade", "hours", 6), 1, 24)},
+        "settle": {"lo": clamp(val("settle", "lo", 0.9), 0.5, 0.96), "hi": clamp(val("settle", "hi", 0.97), 0.51, 0.969)},
+        "value": {"edge": clamp(val("value", "edge", 5), 0.5, 50) / 100.0,
+                  "kelly": clamp(val("value", "kelly", 0.25), 0.05, 1.0),
+                  "views": str((vals.get("value") or {}).get("views") or "")[:2000]},
+        "momentum": {"move": clamp(val("momentum", "move", 10), 1, 90) / 100.0,
+                     "hours": clamp(val("momentum", "hours", 6), 1, 24)},
+        "mm": {"edge": clamp(val("mm", "edge", 2), 0.5, 20) / 100.0, "shares": clamp(val("mm", "shares", 20), 5, 500)},
+        "stoploss": clamp(val("stoploss", "pct", 25), 1, 95) / 100.0,
+        "takeprofit": clamp(val("takeprofit", "pct", 40), 1, 500) / 100.0,
+        "daily": clamp(val("daily", "usd", 50), 1, 100000),
+        "expo": clamp(val("expo", "usd", 50), 1, 100000),
+        "dispute": int(clamp(val("dispute", "score", 30), 0, 100)),
+        "liquidity": clamp(val("liquidity", "slip", 2), 0.1, 20) / 100.0,
+        "watch": clamp(val("watch", "sec", 20), 1, 8),
     }
+    if cfg["settle"]["lo"] >= cfg["settle"]["hi"]:
+        cfg["settle"]["lo"] = min(cfg["settle"]["lo"], cfg["settle"]["hi"] - 0.01)
     return cfg
+
+
+def clamp(x: float, lo: float, hi: float) -> float:
+    return min(max(float(x), lo), hi)
 
 
 # --------------------------------------------------------------------------- #
@@ -142,7 +151,9 @@ class Pass:
         self.new_orders = 0
         self.halted: str | None = None
         self.positions: dict = {}        # token_id -> row from paper.positions()
-        self.cost_by_market: dict = {}   # slug -> cost of held positions
+        self.cost_by_market: dict = {}   # market title -> cost of positions held or bought
+        self.taken: dict = {}            # market title -> outcome bought this pass
+        self.outcome_of: dict = {}       # token_id -> "yes" | "no", looked up once
 
     def log(self, msg: str) -> None:
         self.steps.append(f"{time.time() - self.t0:5.1f}s {msg}")
@@ -265,12 +276,31 @@ async def _book(token_id: str) -> dict | None:
             "bids": ob.get("bids") or [], "asks": ob.get("asks") or []}
 
 
+def _price_to_cover(levels: list, size: float) -> float | None:
+    """The price of the deepest level needed to fill `size` on one side of a
+    best-first book, or None when the side is too thin."""
+    left = float(size)
+    for lvl in levels:
+        try:
+            px, sz = float(lvl.get("price")), float(lvl.get("size"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        left -= sz
+        if left <= 1e-9:
+            return px
+    return None
+
+
 async def _hygiene(p: Pass, m: dict, token: str, side: str, price: float, size: float,
-                   resting: bool = False) -> str | None:
-    """Dispute, fill-quality and watch checks. Returns a skip reason or None.
-    A resting quote is meant not to fill now, so the fill checks do not
-    apply to it; the dispute check still does."""
+                   resting: bool = False) -> tuple[str | None, float]:
+    """Dispute, fill-quality and watch checks. Returns (skip reason or None,
+    limit price to use). The fill check walks the whole side of the book, so
+    an order that needs deeper levels gets a limit that covers them, and one
+    that would pay more than the allowance is refused. A resting quote is
+    meant not to fill now, so the fill checks do not apply to it; the dispute
+    check still does."""
     c = p.cfg
+    limit = price
     slug = (m.get("venue_ref") or {}).get("slug")
     if c["on"].get("dispute") and slug:
         try:
@@ -282,35 +312,42 @@ async def _hygiene(p: Pass, m: dict, token: str, side: str, price: float, size: 
             score = int(signals.dispute_risk(flat).get("score", 0))
             source = (res.get("source") if isinstance(res, dict) else None)
             if not source:
-                return "no resolution source named"
+                return "no resolution source named", limit
             if score > c["dispute"]:
-                return f"dispute_risk {score} above {c['dispute']}"
+                return f"dispute_risk {score} above {c['dispute']}", limit
         except Exception as e:
-            return f"dispute check failed: {type(e).__name__}"
+            return f"dispute check failed: {type(e).__name__}", limit
     if not resting and (c["on"].get("liquidity") or c["on"].get("watch")):
         book = await _book(token)
         if not book:
-            return "no order book"
+            return "no order book", limit
         levels = book["asks"] if side == "BUY" else book["bids"]
-        walk = xv.walk_book(paper._within_limit(levels, side, price), size)
         if c["on"].get("liquidity"):
+            walk = xv.walk_book(levels, size)
             if not walk.get("fillable"):
-                return "book cannot fill the size inside the limit"
+                return "book cannot fill the size", limit
             best = book["ask"] if side == "BUY" else book["bid"]
             slip = abs(float(walk.get("slippage_vs_best") or 0))
             if best and slip / best > c["liquidity"]:
-                return f"slippage {slip:.3f} above {c['liquidity']:.1%} of best"
+                return f"slippage {slip:.3f} above {c['liquidity']:.1%} of best {best}", limit
+            worst = _price_to_cover(levels, size)
+            if worst is None:
+                return "book cannot fill the size", limit
+            if best is not None and abs(worst - best) > 0.049:
+                return f"filling {size:g} shares would need a limit more than 5 points through the book", limit
+            # The limit must reach the deepest level the fill touches, not the average.
+            limit = round(max(price, worst), 4) if side == "BUY" else round(min(price, worst), 4)
         if c["on"].get("watch"):
             await asyncio.sleep(c["watch"])
             again = await _book(token)
             if again:
                 if side == "BUY" and again["ask"] is not None and book["ask"] is not None \
                         and again["ask"] > book["ask"] + 0.01:
-                    return f"book moved against while watching (ask {book['ask']} -> {again['ask']})"
+                    return f"book moved against while watching (ask {book['ask']} -> {again['ask']})", limit
                 if side == "SELL" and again["bid"] is not None and book["bid"] is not None \
                         and again["bid"] < book["bid"] - 0.01:
-                    return f"book moved against while watching (bid {book['bid']} -> {again['bid']})"
-    return None
+                    return f"book moved against while watching (bid {book['bid']} -> {again['bid']})", limit
+    return None, limit
 
 
 async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: float,
@@ -320,23 +357,30 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
     title = m.get("title") or ""
     base = dict(strategy=strategy, market=title, slug=(m.get("venue_ref") or {}).get("slug"),
                 token_id=token, outcome=outcome.upper(), side=side, price=round(price, 4), why=why)
-    if p.halted:
-        return p.decide(**base, result="skipped", detail=p.halted)
-    if p.new_orders >= MAX_NEW_ORDERS:
-        return p.decide(**base, result="skipped", detail=f"pass limit of {MAX_NEW_ORDERS} new orders")
     held = p.positions.get(token)
     if side == "BUY":
+        # Entries are rationed: the loss limit, the pass cap, positions cap,
+        # exposure cap and the no-add rule all apply. Exits never are.
+        if p.halted:
+            return p.decide(**base, result="skipped", detail=p.halted)
+        if p.new_orders >= MAX_NEW_ORDERS:
+            return p.decide(**base, result="skipped", detail=f"pass limit of {MAX_NEW_ORDERS} new orders")
+        other = p.taken.get(title)
+        if other and other != outcome.lower():
+            return p.decide(**base, result="skipped",
+                            detail=f"another piece already bought {other.upper()} on this market this pass")
         if not held and len(p.positions) >= c["maxpos"]:
             return p.decide(**base, result="skipped", detail=f"max open positions ({c['maxpos']}) reached")
         if held and c["on"].get("noadd") and held.get("mark") is not None and held["mark"] < held["avg_cost"]:
             return p.decide(**base, result="skipped", detail="never add to a loser: mark below entry")
         notional = min(notional_usd, c["perorder"])
         if c["on"].get("expo"):
-            spent = p.cost_by_market.get(base["slug"], 0.0)
+            spent = p.cost_by_market.get(title, 0.0)
             if spent + notional > c["expo"]:
                 notional = c["expo"] - spent
                 if notional <= 0:
-                    return p.decide(**base, result="skipped", detail=f"exposure cap ${c['expo']:g} reached for this market")
+                    return p.decide(**base, result="skipped",
+                                    detail=f"exposure cap ${c['expo']:g} reached for this market (${spent:.2f} held)")
         if not resting and notional < MIN_NOTIONAL:
             if c["perorder"] >= MIN_NOTIONAL:
                 notional = MIN_NOTIONAL
@@ -352,9 +396,11 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
     base["size"] = size
     base["notional"] = round(size * price, 2)
 
-    skip = await _hygiene(p, m, token, side, price, size, resting=resting)
+    skip, price = await _hygiene(p, m, token, side, price, size, resting=resting)
     if skip:
         return p.decide(**base, result="skipped", detail=skip)
+    base["price"] = round(price, 4)
+    base["notional"] = round(size * price, 2)
 
     # The intent is what check_order compares with the market: the plain
     # order in words. The strategy's reasoning stays in the decision record.
@@ -388,8 +434,10 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
         return p.decide(**base, result="refused", detail=fill["refused"])
     filled = float(fill.get("filled_size") or 0)
     result = "filled" if filled >= size - 1e-9 else "partial" if filled > 0 else "resting"
+    if side == "BUY":
+        p.taken[title] = outcome.lower()
     if side == "BUY" and filled > 0:
-        p.cost_by_market[base["slug"]] = p.cost_by_market.get(base["slug"], 0.0) + filled * float(fill.get("avg_price") or price)
+        p.cost_by_market[title] = p.cost_by_market.get(title, 0.0) + filled * float(fill.get("avg_price") or price)
         p.positions.setdefault(token, {"size": 0.0, "avg_cost": price, "mark": None})
         p.positions[token]["size"] += filled
     return p.decide(**base, result=result, filled=filled, avg_price=fill.get("avg_price"),
@@ -420,6 +468,11 @@ async def _fade(p: Pass, cands: list[dict]) -> None:
                      detail=f"jump detected but this series barely reverts (median {tend:.0%})")
             continue
         e = rep["active_jump"]
+        age = time.time() - float(e.get("extreme_at") or 0)
+        if age > 300:
+            p.decide(strategy="fade", market=m.get("title"), result="skipped",
+                     detail=f"the jump is {age / 60:.0f} minutes old by the clock; only fresh jumps are faded")
+            continue
         up = e.get("direction") == "up"
         pre_yes = e.get("pre_jump_price")
         if pre_yes is None:
@@ -430,7 +483,11 @@ async def _fade(p: Pass, cands: list[dict]) -> None:
         book = await _book(token)
         if not book or book["ask"] is None:
             continue
-        fair = (1 - pre_yes) if up else pre_yes
+        # Fair value assumes the series' own median retrace of past jumps,
+        # half the move when there is no history, never a full reversion.
+        rev = min(max(float(tend) if tend is not None else 0.5, 0.2), 1.0)
+        fair_yes = e["extreme_price"] - e["jump_size"] * rev if up else e["extreme_price"] + e["jump_size"] * rev
+        fair = (1 - fair_yes) if up else fair_yes
         k = au.kelly_size(min(p.cfg["bankroll"], p.equity), book["ask"], fair, 0.25)
         stake = float(k.get("recommended_stake_usd") or 0)
         if stake <= 0:
@@ -438,7 +495,8 @@ async def _fade(p: Pass, cands: list[dict]) -> None:
                      detail=f"no edge at the ask ({book['ask']}) against pre-jump fair {fair:.3f}")
             continue
         await _order(p, m, token, outcome, "BUY", book["ask"], stake, "fade",
-                     f"fade the {e.get('direction')} overshoot of {e['jump_size']:.0%}, pre-jump price {pre_yes:.2f}")
+                     f"fade the {e.get('direction')} overshoot of {e['jump_size']:.0%}, pre-jump price {pre_yes:.2f}, "
+                     f"expected retrace {rev:.0%}")
     p.log(f"fade: {checked} candidates checked, {quiet} without a fresh jump of {c['jump']:.0%} in the last 5 minutes")
 
 
@@ -456,8 +514,6 @@ async def _settle(p: Pass, cands: list[dict]) -> None:
             continue
         ask = book["ask"]
         if not (c["lo"] <= ask <= c["hi"]):
-            continue
-        if 1 - ask < 0.025:
             continue
         in_range += 1
         slug = (m.get("venue_ref") or {}).get("slug")
@@ -552,13 +608,23 @@ async def _value(p: Pass) -> None:
 
 async def _mm(p: Pass, cands: list[dict]) -> None:
     c = p.cfg["mm"]
-    liquid = 0
+    liquid = quoted = cancelled = 0
+    resting = paper.load().get("open_orders") or []
     for m in cands:
         if (m.get("spread") or 1) > 0.02:
             continue
         liquid += 1
         yes, no = _tokens(m)
         if not yes or not no:
+            continue
+        # Fresh quotes every pass: stale ones on this market are pulled first.
+        for o in [o for o in resting if o.get("token_id") in (yes, no)]:
+            paper.cancel(o["id"])
+            cancelled += 1
+        held_here = yes in p.positions or no in p.positions
+        if not held_here and len(p.positions) + quoted >= p.cfg["maxpos"]:
+            p.decide(strategy="mm", market=m.get("title"), result="skipped",
+                     detail=f"max open positions ({p.cfg['maxpos']}) would be exceeded if these quotes filled")
             continue
         book = await _book(yes)
         if not book or book["bid"] is None or book["ask"] is None:
@@ -568,11 +634,16 @@ async def _mm(p: Pass, cands: list[dict]) -> None:
         pn = round((1 - mid) - c["edge"], 2)
         if not (0.02 < py < 0.98 and 0.02 < pn < 0.98):
             continue
-        await _order(p, m, yes, "yes", "BUY", py, c["shares"] * py, "mm",
-                     f"rest a YES bid {c['edge']:.0%} below mid {mid:.2f}", resting=True)
-        await _order(p, m, no, "no", "BUY", pn, c["shares"] * pn, "mm",
-                     f"rest a NO bid {c['edge']:.0%} below the NO mid {1 - mid:.2f}", resting=True)
-    p.log(f"quotes: {liquid} of {len(cands)} candidates had a spread of 2 points or less")
+        a = await _order(p, m, yes, "yes", "BUY", py, c["shares"] * py, "mm",
+                         f"rest a YES bid {c['edge']:.0%} below mid {mid:.2f}", resting=True)
+        p.taken.pop(m.get("title") or "", None)       # a quote is not a directional view
+        b = await _order(p, m, no, "no", "BUY", pn, c["shares"] * pn, "mm",
+                         f"rest a NO bid {c['edge']:.0%} below the NO mid {1 - mid:.2f}", resting=True)
+        p.taken.pop(m.get("title") or "", None)
+        if a.get("result") == "resting" or b.get("result") == "resting":
+            quoted += 1
+    p.log(f"quotes: {liquid} of {len(cands)} candidates had a spread of 2 points or less; "
+          f"{cancelled} stale quotes pulled, {quoted} markets quoted")
 
 
 # ------------------------------- risk rules -------------------------------- #
@@ -597,7 +668,23 @@ async def _review(p: Pass, pos: dict) -> None:
             p.decide(strategy=rule[0], market=row.get("title"), result="skipped", detail="no bid to sell into")
             continue
         m = {"title": row.get("title"), "venue_ref": {}}
-        await _order(p, m, row["token_id"], "yes", "SELL", book["bid"], 0.0, rule[0], rule[1])
+        await _order(p, m, row["token_id"], await _outcome_of(p, row["token_id"]), "SELL", book["bid"], 0.0,
+                     rule[0], rule[1])
+
+
+async def _outcome_of(p: Pass, token: str) -> str:
+    """Whether a held token is the YES or the NO side of its market."""
+    if token not in p.outcome_of:
+        side = "yes"
+        try:
+            m = await pm.get_market_by_token(token)
+            no = ((m.get("outcomes") or {}).get("no") or {}).get("token_id")
+            if no is not None and str(no) == str(token):
+                side = "no"
+        except Exception:
+            pass
+        p.outcome_of[token] = side
+    return p.outcome_of[token]
 
 
 def _day_pnl(d: dict, equity: float) -> float:
@@ -624,6 +711,9 @@ async def run_pass(raw_cfg: dict, ledger: Path) -> dict:
         p.equity = float((pos or {}).get("equity") or paper.bankroll())
         if pos:
             p.positions = {r["token_id"]: r for r in pos.get("positions") or []}
+            for r in p.positions.values():
+                if r.get("title") and r.get("size") and r.get("avg_cost"):
+                    p.cost_by_market[r["title"]] = p.cost_by_market.get(r["title"], 0.0) + float(r["size"]) * float(r["avg_cost"])
             p.log(f"ledger: cash ${pos['cash']:.2f}, equity ${pos['equity']:.2f}, "
                   f"{len(p.positions)} positions, {len(pos.get('open_orders') or [])} resting")
             d = paper.load()

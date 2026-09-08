@@ -251,3 +251,129 @@ def test_normalize_topics_and_legacy_topic():
     assert runner.normalize({"topics": "crypto, esports"})["topics"] == ["crypto", "esports"]
     assert runner.normalize({"topics": ["all", "crypto"]})["topic"] == "all markets"
     assert runner.normalize({"topics": ["crypto"], "keyword": "arsenal"})["topic"] == "crypto + arsenal"
+
+
+# --------------------------------------------------------------------------- #
+# fixes from the 2026-09-08 audit                                             #
+# --------------------------------------------------------------------------- #
+
+def seed(ledger, **fields):
+    token = runner.FORCED_LEDGER.set(ledger)
+    try:
+        d = paper.load()
+        for k, v in fields.items():
+            d[k] = v
+        paper.save(d)
+    finally:
+        runner.FORCED_LEDGER.reset(token)
+
+
+async def test_daily_halt_still_lets_stop_loss_exit(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=jump_series())
+    fake.install(monkeypatch)
+    # a NO position bought at 0.60 now marks 0.37: the stop loss must sell it even though the
+    # day is already past the loss limit; the fade piece (which wants to buy NO) must be halted
+    seed(ledger, cash=934.0, positions={NO: {"size": 10.0, "cost": 6.0, "title": TITLE}},
+         runner={"day": time.strftime("%Y-%m-%d", time.gmtime()), "day_start_equity": 1000.0})
+    c = cfg(["stoploss", "daily", "fade"]); c["vals"] = {"daily": {"usd": 50}}
+    out = await runner.run_pass(c, ledger)
+    assert out["halted"] and "daily loss limit" in out["halted"]
+    by = {d["strategy"]: d for d in out["decisions"]}
+    assert by["stoploss"]["side"] == "SELL" and by["stoploss"]["outcome"] == "NO" and by["stoploss"]["result"] == "filled"
+    assert by["fade"]["result"] == "skipped" and "daily loss limit" in by["fade"]["detail"]
+    assert NO not in json.loads(ledger.read_text())["positions"]
+
+
+async def test_exposure_cap_counts_what_is_already_held(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=jump_series())
+    fake.install(monkeypatch)
+    seed(ledger, cash=960.0, positions={YES: {"size": 50.0, "cost": 40.0, "title": TITLE}})
+    c = cfg(["fade", "expo"]); c["vals"] = {"expo": {"usd": 50}}
+    out = await runner.run_pass(c, ledger)
+    d = [x for x in out["decisions"] if x["strategy"] == "fade"][0]
+    assert d["result"] == "filled" and d["notional"] <= 10.01, d          # 50 cap minus 40 held
+
+
+async def test_quotes_are_refreshed_not_stacked(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    c = cfg(["mm"]); c["vals"] = {"mm": {"edge": 2, "shares": 20}}
+    await runner.run_pass(c, ledger)
+    await runner.run_pass(c, ledger)
+    led = json.loads(ledger.read_text())
+    assert len(led["open_orders"]) == 2, "two passes leave two quotes, not four"
+
+
+async def test_slippage_rule_fires_and_otherwise_widens_the_limit(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=jump_series())
+    fake.install(monkeypatch)
+
+    async def thin_then_deep(token_id):
+        if token_id == NO:
+            return {"best_bid": "0.36", "best_ask": "0.38", "bids": [{"price": "0.36", "size": "500"}],
+                    "asks": [{"price": "0.38", "size": "5"}, {"price": "0.41", "size": "500"}]}
+        return {"best_bid": "0.62", "best_ask": "0.64", "bids": [{"price": "0.62", "size": "500"}],
+                "asks": [{"price": "0.64", "size": "500"}]}
+    monkeypatch.setattr(pm, "get_orderbook", thin_then_deep)
+    c = cfg(["fade", "liquidity"]); c["vals"] = {"liquidity": {"slip": 2}}
+    out = await runner.run_pass(c, ledger)
+    d = [x for x in out["decisions"] if x["strategy"] == "fade"][0]
+    assert d["result"] == "skipped" and "slippage" in d["detail"], d
+
+    c["vals"] = {"liquidity": {"slip": 20}}
+    out = await runner.run_pass(c, ledger)
+    d = [x for x in out["decisions"] if x["strategy"] == "fade"][0]
+    assert d["result"] == "filled" and d["price"] > 0.38, "the limit was widened to cover the deeper level"
+
+
+async def test_two_pieces_cannot_take_both_sides_of_one_market(ledger, monkeypatch):
+    times, prices = jump_series()                        # up-jump: fade buys NO, momentum buys YES
+    fake = Fake(yes_book=(0.62, 0.64), no_book=(0.36, 0.38), series=(times, prices))
+    fake.install(monkeypatch)
+    c = cfg(["fade", "momentum"]); c["vals"] = {"momentum": {"move": 5, "hours": 6}}
+    out = await runner.run_pass(c, ledger)
+    by = {d["strategy"]: d for d in out["decisions"]}
+    assert by["fade"]["result"] == "filled" and by["fade"]["outcome"] == "NO"
+    assert by["momentum"]["result"] == "skipped" and "already bought NO" in by["momentum"]["detail"]
+
+
+async def test_review_sells_a_no_position_as_no(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.10, 0.12), no_book=(0.40, 0.42))
+    fake.install(monkeypatch)
+    seed(ledger, cash=994.0, positions={NO: {"size": 10.0, "cost": 6.0, "title": TITLE}})
+    out = await runner.run_pass(cfg(["stoploss"]), ledger)
+    d = [x for x in out["decisions"] if x["strategy"] == "stoploss"][0]
+    assert d["outcome"] == "NO" and d["side"] == "SELL" and d["result"] == "filled"
+
+
+def test_normalize_clamps_risk_numbers():
+    c = runner.normalize({"vals": {"stoploss": {"pct": 0}, "takeprofit": {"pct": -5}, "daily": {"usd": 0},
+                                   "liquidity": {"slip": 500}, "dispute": {"score": 999}, "mm": {"edge": 0}}})
+    assert c["stoploss"] == 0.01 and c["takeprofit"] == 0.01 and c["daily"] == 1
+    assert c["liquidity"] == 0.2 and c["dispute"] == 100 and c["mm"]["edge"] == 0.005
+
+
+async def test_resolved_positions_settle_at_the_payout(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    seed(ledger, cash=800.0, positions={YES: {"size": 100.0, "cost": 95.0, "title": TITLE},
+                                        NO: {"size": 100.0, "cost": 5.0, "title": TITLE}})
+
+    async def no_book(token_id):
+        raise RuntimeError("404 No orderbook exists for the requested token id")
+
+    async def resolved(token_id, full=False):
+        m = slim(); m["closed"] = True; m["accepting_orders"] = False
+        m["outcomes"]["yes"]["price"] = 1.0; m["outcomes"]["no"]["price"] = 0.0
+        return m
+    monkeypatch.setattr(pm, "get_orderbook", no_book)
+    monkeypatch.setattr(pm, "get_market_by_token", resolved)
+    token = runner.FORCED_LEDGER.set(ledger)
+    try:
+        pos = await paper.positions()
+    finally:
+        runner.FORCED_LEDGER.reset(token)
+    assert {r["side"]: r["payout"] for r in pos["resolved"]} == {"YES": 1.0, "NO": 0.0}
+    assert pos["positions"] == [] and abs(pos["cash"] - 900.0) < 1e-6      # 800 + 100 * 1 + 100 * 0
+    assert abs(pos["realized_pnl"] - ((1.0 - 0.95) * 100 + (0.0 - 0.05) * 100)) < 1e-6
+    assert pos["equity"] == 900.0

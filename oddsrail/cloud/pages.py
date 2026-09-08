@@ -51,16 +51,24 @@ server keeps no wallet keys and sends no real orders. <a href="https://oddsrail.
 """)
 
 
-def sent(email: str, dev_link: str | None) -> str:
-    dev = ""
+def sent(email: str, dev_link: str | None, delivered: bool = True) -> str:
     if dev_link:
-        dev = (f"<div class=\"box\"><p class=\"muted\">Development mode: no mail service is configured, "
-               f"so here is the link.</p><p><a href=\"{escape(dev_link)}\">{escape(dev_link)}</a></p></div>")
+        return page("Sign-in link", f"""
+<h1>Your sign-in link</h1>
+<p>No mail service is configured on this server (development mode), so here is the link for
+<b>{escape(email)}</b>:</p>
+<div class="box"><p><a href="{escape(dev_link)}">{escape(dev_link)}</a></p></div>
+""")
+    if not delivered:
+        return page("Sign-in is not available yet", f"""
+<h1>Sign-in email is not set up yet</h1>
+<p>This server cannot send email yet, so no link went to <b>{escape(email)}</b>. The maintainer is
+setting delivery up; try again later. Nothing was created.</p>
+""")
     return page("Check your email", f"""
 <h1>Check your email</h1>
 <p>We sent a sign-in link to <b>{escape(email)}</b>. Open it within 15 minutes and press
 <b>Continue</b> there; this page can be closed.</p>
-{dev}
 <p class="muted">Nothing arrived? Check spam, or go back to the sign-in page and try again.</p>
 """)
 

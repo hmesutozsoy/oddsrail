@@ -142,7 +142,10 @@ def build_app():
     @srv.custom_route("/healthz", methods=["GET"])
     async def healthz(request: Request):
         # CORS so the site can probe which hostname is live.
-        return JSONResponse({"ok": True, "version": S.VERSION, "hosted": True, "mail": mail.mode()},
+        age = round(time.time() - scheduler.LAST_TICK, 1) if scheduler.LAST_TICK else None
+        return JSONResponse({"ok": True, "version": S.VERSION, "hosted": True, "mail": mail.mode(),
+                             "scheduler_tick_age_s": age,
+                             "scheduler_ok": age is not None and age < 300},
                             headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"})
 
     # ---- the runner: a paper pass for a builder config, no account needed ---- #
@@ -212,7 +215,11 @@ def build_app():
                                 headers=cors(request))
         async with runner.lock_for(ledger):
             try:
-                out = await runner.run_pass(cfg, ledger)
+                out = await asyncio.wait_for(runner.run_pass(cfg, ledger), timeout=120.0)
+            except asyncio.TimeoutError:
+                return JSONResponse({"ok": False, "error": "the pass took longer than two minutes and was "
+                                     "abandoned; the venue is slow right now, try again"},
+                                    status_code=504, headers=cors(request))
             except Exception as e:
                 print(f"[oddsrail-cloud] run failed: {type(e).__name__}: {e}", flush=True)
                 return JSONResponse({"ok": False, "error": f"the pass failed: {type(e).__name__}"},
@@ -257,6 +264,12 @@ def build_app():
         if err or ledger is None:
             return JSONResponse({"ok": False, "error": err or "guest must be 16 to 64 hex characters"},
                                 status_code=400, headers=cors(request))
+        if not run_limiter.allow(client_ip(request)):
+            return JSONResponse({"ok": False, "error": "too many requests; try again in a while"},
+                                status_code=429, headers=cors(request))
+        if not ledger.exists():                  # nothing to reset, and no file for a stranger's id
+            return JSONResponse({"ok": True, "reset": False, "cash": paper.bankroll(),
+                                 "note": "no ledger existed for this id"}, headers=cors(request))
         token = arena.FORCED_LEDGER.set(ledger)
         try:
             out = paper.reset()
@@ -421,7 +434,8 @@ def build_app():
             print(f"[oddsrail-cloud] mail failure for {email}: {type(e).__name__}: {e}", flush=True)
             return HTMLResponse(pages.error("We could not send the email right now. Try again in a "
                                             "minute."), status_code=502)
-        return HTMLResponse(pages.sent(email, url if (dev and mode == "console") else None))
+        return HTMLResponse(pages.sent(email, url if (dev and mode == "console") else None,
+                                       delivered=(mode != "console")))
 
     @srv.custom_route("/login/verify", methods=["GET"])
     async def verify_get(request: Request):

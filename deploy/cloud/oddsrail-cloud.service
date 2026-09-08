@@ -20,6 +20,9 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/oddsrail-cloud
 StateDirectory=oddsrail-cloud
+MemoryMax=700M
+TasksMax=256
+TimeoutStopSec=25
 
 [Install]
 WantedBy=multi-user.target

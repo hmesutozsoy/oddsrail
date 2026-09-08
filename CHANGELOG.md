@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.15.0 (2026-09-08)
+
+Fixes from an eight-lens adversarial audit of the hosted runner, the
+builder and the operations around them.
+
+- Runner: the daily loss limit no longer blocks stop-loss and take-profit
+  exits; the exposure cap counts what is already held; two-sided quotes are
+  refreshed each pass instead of stacking and respect the positions cap;
+  the fill-quality rule walks the whole book, refuses real slippage and
+  sets the limit to the deepest level touched (never more than five points
+  through the book); two pieces cannot buy both sides of one market in a
+  pass; fades act only on jumps fresh by the clock and price fair value
+  from the series' own retrace; sells carry the position's real outcome;
+  every risk number is bounded.
+- Paper ledger: positions in resolved markets settle at the payout (1 or 0)
+  as a recorded fill instead of being valued at zero; a missing book
+  carries the last mark.
+- Hosted server: pass deadlines for requests (120 s) and scheduled runs
+  (180 s); a scheduler heartbeat on /healthz; hourly housekeeping (expired
+  tokens and links, guest ledgers idle for 30 days); /run/reset never
+  creates files for unknown ids and is rate limited; the connector sign-in
+  page no longer claims an email was sent when mail is not configured.
+- Deploy: nightly backups (sqlite plus ledgers, 14 kept), a watchdog timer
+  that restarts a dead app or a stale scheduler, resource caps on the unit.
+- Builder: hero and copy sell the Run path; the Connect panel is collapsed;
+  the always-on rules state honestly how cautions are handled; the starter
+  preset no longer switches on two-sided quoting; Run waits for the server
+  probe and a fixed Run bar appears on phones; expired sessions are
+  reported; Keep this agent is hidden until mail delivery is live;
+  accessibility labels on switches, inputs and tabs; Open Graph and
+  Twitter card tags with a share image on the home, builder and arena pages.
+- Server URL is now https://mcp.oddsrail.app.
+
 ## 0.14.0 (2026-09-07)
 
 - **Keep this agent.** Email sign-in on the builder's Run tab: the link

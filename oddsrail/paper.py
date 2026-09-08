@@ -232,12 +232,40 @@ async def _settle_resting(d: dict, pm) -> list:
     return filled_ids
 
 
+async def _settle_if_resolved(d: dict, pm, tid: str, pos: dict) -> dict | None:
+    """A position whose market has resolved pays 1 or 0 per share. Without
+    this, a winning position is worth nothing the moment its book vanishes,
+    which is the opposite of what happened."""
+    try:
+        m = await pm.get_market_by_token(tid)
+    except Exception:
+        return None
+    outs = (m or {}).get("outcomes") or {}
+    side = "no" if str(((outs.get("no") or {}).get("token_id"))) == str(tid) else "yes"
+    price = (outs.get(side) or {}).get("price")
+    status = str(m.get("uma_resolution_status") or "").lower()
+    closed = bool(m.get("closed")) or status.startswith("resolved")
+    if price is None or not closed:
+        return None
+    try:
+        price = float(price)
+    except (TypeError, ValueError):
+        return None
+    payout = 1.0 if price >= 0.99 else 0.0 if price <= 0.01 else None
+    if payout is None:
+        return None
+    size = float(pos["size"])
+    fill = _apply_fill(d, tid, "SELL", size, payout, pos.get("title"), "resolution")
+    return {"token_id": tid, "title": pos.get("title"), "side": side.upper(), "size": round(size, 6),
+            "payout": payout, "proceeds": round(size * payout, 4), "fill_id": fill["id"]}
+
+
 async def positions() -> dict:
     from . import polymarket as pm
     d = load()
     just_filled = await _settle_resting(d, pm)
-    rows, unreal, value = [], 0.0, 0.0
-    for tid, pos in d["positions"].items():
+    rows, unreal, value, resolved = [], 0.0, 0.0, []
+    for tid, pos in list(d["positions"].items()):
         mark = None
         try:
             ob = await pm.get_orderbook(tid)
@@ -248,6 +276,14 @@ async def positions() -> dict:
                 mark = float(bb)
         except Exception:
             pass
+        if mark is None:
+            settled = await _settle_if_resolved(d, pm, tid, pos)
+            if settled:
+                resolved.append(settled)
+                continue
+            mark = pos.get("last_mark")          # no book right now: carry the last one
+        else:
+            pos["last_mark"] = mark
         avg = pos["cost"] / pos["size"] if pos["size"] else 0.0
         u = (mark - avg) * pos["size"] if mark is not None else None
         v = mark * pos["size"] if mark is not None else None
@@ -263,7 +299,7 @@ async def positions() -> dict:
     return {"enabled": enabled(), "ledger": str(ledger_path()),
             "bankroll": d["bankroll"], "cash": round(d["cash"], 2),
             "positions": rows, "open_orders": d["open_orders"],
-            "just_filled_resting": just_filled,
+            "just_filled_resting": just_filled, "resolved": resolved,
             "realized_pnl": round(d["realized_pnl"], 4),
             "unrealized_pnl": round(unreal, 4),
             "equity": round(d["cash"] + value, 2),

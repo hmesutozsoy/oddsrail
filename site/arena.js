@@ -22,7 +22,7 @@
     $('paper-meta').textContent = rows.filter(function (r) { return !r.house; }).length + ' registered, computed ' + String(d.computed_at || '').replace('T', ' ').slice(0, 16) + ' UTC';
     $('paper-note').textContent = d.note || '';
     var tb = $('paper-tbl').querySelector('tbody'); tb.innerHTML = '';
-    if (!rows.length) tb.innerHTML = '<tr><td colspan="10">No agents registered yet. Be the first: the steps are below.</td></tr>';
+    if (!rows.filter(function (r) { return !r.house; }).length) { var tr0 = document.createElement('tr'); tr0.innerHTML = '<td colspan="10">No registered agents yet, only the house reference below. Be the first: press Run on the <a href="/build">builder</a>, keep the agent, and tick the board.</td>'; tb.appendChild(tr0); }
     rows.forEach(function (r) {
       var tr = document.createElement('tr'); if (r.house) tr.className = 'house';
       tr.innerHTML = '<td>' + (r.house ? 'ref' : (r.rank || '')) + '</td><th scope="row">' + esc(r.name) + '</th><td class="strat">' + esc(r.strategy) + '</td>' +
