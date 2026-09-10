@@ -334,3 +334,7 @@ details.connect[open] > summary b::before{content:"▾ "}
 .share button{background:#0b0e13;border:1px solid var(--line);color:var(--ink-soft);border-radius:6px;padding:3px 9px;font-size:11.5px;font-weight:600;cursor:pointer}
 .share button:hover{border-color:var(--amber);color:var(--ink)}
 .curve{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+table.cmp td small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+table.cmp tr.r-filled td:last-child{color:#6cc38a}
+table.cmp tr.r-skipped td:last-child{color:var(--muted)}
+table.cmp td.mono{font-family:var(--mono);white-space:nowrap}

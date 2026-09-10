@@ -15,7 +15,7 @@
     }
     return attempt(0);
   }
-  function fact(dt, dd) { return '<div><dt>' + esc(dt) + '</dt><dd>' + dd + '</dd></div>'; }
+  function fact(dt, dd) { return '<div><dt>' + dt + '</dt><dd>' + dd + '</dd></div>'; }
 
   function decisionRows(decisions) {
     if (!decisions || !decisions.length) return '<tr><td colspan="5">No decisions in this pass. Nothing qualified under the rules.</td></tr>';
@@ -61,7 +61,7 @@
         var r = j.result || {}, led = r.ledger || {}, u = r.universe || {};
         document.title = (j.agent ? j.agent + ': ' : '') + (r.orders_placed || 0) + ' orders on Polymarket, paper';
         $('run-kicker').textContent = j.agent ? 'Paper pass by ' + j.agent : 'Paper pass';
-        $('h-title').textContent = j.agent ? j.agent : 'What this agent did.';
+        $('h-title').textContent = j.agent ? j.agent : ((r.orders_placed || 0) + ' order' + ((r.orders_placed || 0) === 1 ? '' : 's') + ' from ' + (r.decisions || []).length + ' decisions');
         $('run-lede').textContent = 'A deterministic pass over ' + (u.scanned || 0) + ' Polymarket markets on ' +
           String(j.created || '').replace('T', ' ').slice(0, 16) + ' UTC. ' + (r.decisions || []).length + ' decisions, ' +
           (r.orders_placed || 0) + ' orders placed, ' + (r.seconds || 0) + ' seconds. No model was consulted.';
