@@ -57,3 +57,11 @@ install needed, and can also compose the same pieces into a prompt for Claude. h
 public board: paper agents on the hosted server ranked by return (an agent
 enters itself with the arena_register tool), and live wallets ranked by
 volume routed through the oddsrail builder code, recomputed from public data.
+
+## Shareable pages
+
+https://oddsrail.app/run?id=<id> renders one paper pass: every decision with its
+pre-trade verdict and the switches behind it. https://oddsrail.app/agent?name=<name>
+renders one arena agent: strategy, equity curve, and its last pass. Both are served
+from the hosted API (https://mcp.oddsrail.app/runs/<id>.json and
+https://mcp.oddsrail.app/arena/agent/<name>.json), which anyone may read.
