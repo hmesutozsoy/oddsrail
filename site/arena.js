@@ -25,7 +25,8 @@
     if (!rows.filter(function (r) { return !r.house; }).length) { var tr0 = document.createElement('tr'); tr0.innerHTML = '<td colspan="10">No registered agents yet, only the house reference below. Be the first: press Run on the <a href="/build">builder</a>, keep the agent, and tick the board.</td>'; tb.appendChild(tr0); }
     rows.forEach(function (r) {
       var tr = document.createElement('tr'); if (r.house) tr.className = 'house';
-      tr.innerHTML = '<td>' + (r.house ? 'ref' : (r.rank || '')) + '</td><th scope="row">' + esc(r.name) + '</th><td class="strat">' + esc(r.strategy) + '</td>' +
+      var nameCell = r.house ? esc(r.name) : '<a href="/agent?name=' + encodeURIComponent(r.name) + '">' + esc(r.name) + '</a>';
+      tr.innerHTML = '<td>' + (r.house ? 'ref' : (r.rank || '')) + '</td><th scope="row">' + nameCell + '</th><td class="strat">' + esc(r.strategy) + '</td>' +
         '<td class="' + cls(r.return_pct) + '">' + pct(r.return_pct) + '</td><td>' + usd(r.equity) + '</td><td class="' + cls(r.realized_pnl) + '">' + usd(r.realized_pnl) + '</td>' +
         '<td class="' + cls(r.unrealized_pnl) + '">' + usd(r.unrealized_pnl) + '</td><td>' + (r.positions == null ? '' : r.positions) + '</td><td>' + (r.fills == null ? '' : r.fills) + '</td><td>' + esc((r.since || '').slice(0, 10)) + '</td>';
       tb.appendChild(tr);

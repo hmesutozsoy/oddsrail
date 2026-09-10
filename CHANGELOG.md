@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.16.0 (2026-09-10)
+
+- **Shareable passes.** Every hosted pass gets a permalink: `/run?id=...`
+  on the site, served from `GET /runs/<id>.json`, showing the decisions,
+  the verdicts and the switches behind them, with a button to build the
+  same agent. Anonymous runs are kept 30 days; runs belonging to an
+  account are kept.
+- **A public page per agent** at `/agent?name=...`, from
+  `GET /arena/agent/<name>.json`: strategy, equity curve from the recorded
+  run history, the last pass in full, and a permalink to it. Names on the
+  arena board link to it.
+- The account API accepts the OAuth access token a connector already holds,
+  not only a website session, so the same account works from either side.
+- Housekeeping prunes expired anonymous runs.
+
 ## 0.15.0 (2026-09-08)
 
 Fixes from an eight-lens adversarial audit of the hosted runner, the

@@ -235,7 +235,12 @@
   }
   function flash(msg) { var keep = status.textContent; status.textContent = msg; setTimeout(function () { status.textContent = keep; }, 1400); }
 
-  var saved = load();
+  var fromLink = null;
+  try {
+    var m = (location.hash || '').match(/config=([^&]+)/);
+    if (m) { fromLink = JSON.parse(decodeURIComponent(m[1])); history.replaceState(null, '', location.pathname + location.search); }
+  } catch (e) {}
+  var saved = fromLink || load();
   if (saved) apply(saved); else preset('starter');
   regen();
   form.addEventListener('change', function (e) {
@@ -335,6 +340,9 @@
   function showRun(r) {
     $('run-status').textContent = (r.orders_placed || 0) + ' orders · ' + (r.decisions || []).length + ' decisions · ' + r.seconds + 's' + (r.halted ? ' · halted' : '') + ' · one tick';
     document.querySelector('.howto').open = false;
+    var sh = $('share-run');
+    if (r.permalink) { sh.hidden = false; sh.dataset.url = r.permalink; sh.querySelector('a').href = r.permalink; }
+    else { sh.hidden = true; }
     showLedger(r.ledger);
     var D = $('run-decisions'), ds = r.decisions || [];
     if (ds.length) {
@@ -381,6 +389,10 @@
   }
   runBtn.addEventListener('click', runPass);
   runMobile.addEventListener('click', runPass);
+  document.querySelector('#share-run button').addEventListener('click', function () {
+    var b = this;
+    navigator.clipboard.writeText($('share-run').dataset.url).then(function () { b.textContent = 'copied'; setTimeout(function () { b.textContent = 'copy link'; }, 1400); });
+  });
   $('ledger-reset').addEventListener('click', function () {
     api('/run/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest() }) })
       .then(function (r) { return r.json(); }).then(function () { $('run-status').textContent = 'ledger reset to $1,000'; $('run-decisions').hidden = true; $('run-steps').hidden = true; loadLedger(); })

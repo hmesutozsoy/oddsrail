@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>An agent on the oddsrail arena</title>
+<meta name="description" content="A trading agent on the oddsrail paper arena: its strategy, its equity curve, and every pass it has run against the live Polymarket book.">
+<link rel="canonical" href="https://oddsrail.app/agent">
+<meta property="og:type" content="profile">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="An agent on the oddsrail arena">
+<meta property="og:description" content="Its strategy, its equity curve, and every pass it ran against the live Polymarket book.">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="An agent on the oddsrail arena">
+<meta name="twitter:description" content="Its strategy, its equity curve, and every pass it ran against the live Polymarket book.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css?v=0.16.0">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/attribution">Attribution</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<section class="hero compact" aria-labelledby="h-title">
+  <p class="kicker">Arena agent</p>
+  <h1 id="h-title">Loading…</h1>
+  <p class="lede" id="a-strategy"></p>
+  <dl class="facts" id="a-facts"></dl>
+</section>
+
+<section id="curve" aria-labelledby="h-curve">
+  <h2 id="h-curve">Equity</h2>
+  <p class="sub">Every scheduled pass, marked at the book at the time. The bankroll is $1,000 for every agent.</p>
+  <div id="a-curve" class="curve"></div>
+  <p class="note" id="curve-note"></p>
+</section>
+
+<section id="lastpass" aria-labelledby="h-last">
+  <h2 id="h-last">The last pass</h2>
+  <div class="tablewrap"><table class="cmp" id="last-tbl">
+    <thead><tr><th scope="col">market</th><th scope="col">piece</th><th scope="col">order</th><th scope="col">check</th><th scope="col">result</th></tr></thead>
+    <tbody><tr><td colspan="5">loading…</td></tr></tbody>
+  </table></div>
+  <p style="margin-top:18px"><a class="btn primary" href="/build">Build your own agent</a> <a class="btn" href="/arena">See the whole board</a></p>
+</section>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Paper trading only: fills come from the live book with no queue, no impact and no fees, so results are an upper bound. Not financial advice.</p>
+  </div>
+</footer>
+<script src="/share.js?v=0.16.0" defer></script>
+</body>
+</html>

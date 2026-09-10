@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A paper pass on oddsrail</title>
+<meta name="description" content="One deterministic paper-trading pass against the live Polymarket book: every decision with its pre-trade verdict and reason.">
+<link rel="canonical" href="https://oddsrail.app/run">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="A paper pass on oddsrail">
+<meta property="og:description" content="Every decision an agent made against the live Polymarket book, with the pre-trade verdict and the reason for each.">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A paper pass on oddsrail">
+<meta name="twitter:description" content="Every decision an agent made against the live Polymarket book, with the pre-trade verdict and the reason for each.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css?v=0.16.0">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/attribution">Attribution</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<section class="hero compact" aria-labelledby="h-title">
+  <p class="kicker" id="run-kicker">Paper pass</p>
+  <h1 id="h-title">What this agent did.</h1>
+  <p class="lede" id="run-lede">Loading the pass.</p>
+  <dl class="facts" id="run-facts"></dl>
+</section>
+
+<section id="decisions" aria-labelledby="h-dec">
+  <h2 id="h-dec">Decisions</h2>
+  <p class="sub">Every order the pass considered, with the pre-trade check verdict and the reason it was placed or skipped. Nothing here is real money.</p>
+  <div class="tablewrap"><table class="cmp" id="dec-tbl">
+    <thead><tr><th scope="col">market</th><th scope="col">piece</th><th scope="col">order</th><th scope="col">check</th><th scope="col">result</th></tr></thead>
+    <tbody><tr><td colspan="5">loading…</td></tr></tbody>
+  </table></div>
+  <details id="steps-wrap"><summary>steps the runner took</summary><pre id="steps"></pre></details>
+</section>
+
+<section id="config" aria-labelledby="h-cfg">
+  <h2 id="h-cfg">The switches behind it</h2>
+  <p class="sub">This pass came from a configuration on the builder page. Open it with the same switches and press Run to get your own.</p>
+  <div id="cfg-chips" class="chipset"></div>
+  <p style="margin-top:18px"><a class="btn primary" id="rebuild" href="/build">Build your own agent</a> <a class="btn" href="/arena">See the board</a></p>
+</section>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Paper trading only: fills come from the live book with no queue, no impact and no fees, so results are an upper bound. Not financial advice.</p>
+  </div>
+</footer>
+<script src="/share.js?v=0.16.0" defer></script>
+</body>
+</html>

@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS arena (
     user_id TEXT PRIMARY KEY, name TEXT NOT NULL, name_lc TEXT UNIQUE NOT NULL,
     strategy TEXT NOT NULL DEFAULT '', created REAL NOT NULL, updated REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS magic_links_email ON magic_links(email, created);
+CREATE TABLE IF NOT EXISTS runs (
+    id TEXT PRIMARY KEY, created REAL NOT NULL, user_id TEXT, agent TEXT,
+    config TEXT NOT NULL, result TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS runs_agent ON runs(agent, created);
+CREATE TABLE IF NOT EXISTS agent_runs (
+    user_id TEXT NOT NULL, at REAL NOT NULL, equity REAL, orders INTEGER,
+    decisions INTEGER, ok INTEGER NOT NULL DEFAULT 1, run_id TEXT);
+CREATE INDEX IF NOT EXISTS agent_runs_user ON agent_runs(user_id, at);
 """
 
 
@@ -240,9 +248,48 @@ class DB:
             d = dict(r); d["config"] = json.loads(d["config"] or "{}"); out.append(d)
         return out
 
-    def agent_ran(self, user_id: str, result: dict) -> None:
+    def agent_ran(self, user_id: str, result: dict, run_id: str | None = None) -> None:
         self._exec("UPDATE agents SET last_run=?, last_result=?, runs=runs+1 WHERE user_id=?",
                    (time.time(), json.dumps(result), user_id))
+        self.put_agent_run(user_id, result, run_id)
+
+    def agent_by_name(self, name: str) -> dict | None:
+        r = self._one("SELECT * FROM agents WHERE lower(name)=?", (name.lower(),))
+        if r:
+            r["config"] = json.loads(r["config"] or "{}")
+            r["last_result"] = json.loads(r["last_result"]) if r.get("last_result") else None
+        return r
+
+    # -------------------------------- runs -------------------------------- #
+
+    def put_run(self, run_id: str, config: dict, result: dict,
+                user_id: str | None = None, agent: str | None = None) -> None:
+        self._exec("INSERT OR REPLACE INTO runs (id, created, user_id, agent, config, result) VALUES (?,?,?,?,?,?)",
+                   (run_id, time.time(), user_id, agent, json.dumps(config), json.dumps(result)))
+
+    def get_run(self, run_id: str) -> dict | None:
+        r = self._one("SELECT * FROM runs WHERE id=?", (run_id,))
+        if r:
+            r["config"] = json.loads(r["config"] or "{}")
+            r["result"] = json.loads(r["result"] or "{}")
+        return r
+
+    def agent_history(self, user_id: str, limit: int = 200) -> list[dict]:
+        with self._lock:
+            rows = self._c.execute("SELECT at, equity, orders, decisions, ok, run_id FROM agent_runs "
+                                   "WHERE user_id=? ORDER BY at DESC LIMIT ?", (user_id, limit)).fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+    def put_agent_run(self, user_id: str, res: dict, run_id: str | None = None) -> None:
+        self._exec("INSERT INTO agent_runs (user_id, at, equity, orders, decisions, ok, run_id) VALUES (?,?,?,?,?,?,?)",
+                   (user_id, time.time(), res.get("equity"), res.get("orders"), res.get("decisions"),
+                    1 if res.get("ok") else 0, run_id))
+
+    def prune_runs(self, keep_days: float = 30.0) -> int:
+        """Anonymous shared runs expire; runs belonging to an account stay."""
+        cur = self._exec("DELETE FROM runs WHERE user_id IS NULL AND created<?",
+                         (time.time() - keep_days * 86400,))
+        return cur.rowcount
 
     # ------------------------------- hygiene ------------------------------ #
 

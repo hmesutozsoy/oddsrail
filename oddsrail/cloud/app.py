@@ -22,6 +22,7 @@ from __future__ import annotations
 import collections
 import os
 import re
+import secrets
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -224,9 +225,19 @@ def build_app():
                 print(f"[oddsrail-cloud] run failed: {type(e).__name__}: {e}", flush=True)
                 return JSONResponse({"ok": False, "error": f"the pass failed: {type(e).__name__}"},
                                     status_code=500, headers=cors(request))
-        if user and prov.db.agent_get(user["id"]):
-            prov.db.agent_ran(user["id"], scheduler.summary(out))
+        agent_row = prov.db.agent_get(user["id"]) if user else None
+        run_id = secrets.token_urlsafe(9)
+        try:
+            prov.db.put_run(run_id, cfg, out, user_id=(user or {}).get("id"),
+                            agent=(agent_row or {}).get("name"))
+        except Exception as e:
+            print(f"[oddsrail-cloud] could not store run: {type(e).__name__}: {e}", flush=True)
+            run_id = None
+        if agent_row:
+            prov.db.agent_ran(user["id"], scheduler.summary(out), run_id)
         out["account"] = user["email"] if user else None
+        out["run_id"] = run_id
+        out["permalink"] = f"{site_url}/run?id={run_id}" if run_id else None
         return JSONResponse(out, headers=cors(request))
 
     @srv.custom_route("/run/ledger", methods=["GET", "OPTIONS"])
@@ -384,6 +395,48 @@ def build_app():
             return PlainTextResponse("", status_code=204, headers=cors(request))
         accounts.sign_out(bearer(request))
         return JSONResponse({"ok": True}, headers=cors(request))
+
+    @srv.custom_route("/runs/{run_id}.json", methods=["GET", "OPTIONS"])
+    async def run_by_id(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        rid = request.path_params.get("run_id", "")
+        row = prov.db.get_run(rid) if re.fullmatch(r"[A-Za-z0-9_-]{6,32}", rid or "") else None
+        if not row:
+            return JSONResponse({"ok": False, "error": "no such run; anonymous runs are kept 30 days"},
+                                status_code=404, headers={**cors(request), "Cache-Control": "no-store"})
+        out = row["result"]
+        out.pop("account", None)                       # a shared run names no one
+        return JSONResponse({"ok": True, "id": rid, "agent": row.get("agent"),
+                             "created": arena._iso(row["created"]), "config": row["config"], "result": out},
+                            headers={**cors(request), "Cache-Control": "public, max-age=300"})
+
+    @srv.custom_route("/arena/agent/{name}.json", methods=["GET", "OPTIONS"])
+    async def agent_page(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        from urllib.parse import unquote
+        name = unquote(str(request.path_params.get("name", "")))
+        entry = prov.db.arena_by_name(name) if name else None
+        if not entry:
+            return JSONResponse({"ok": False, "error": "no agent on the board by that name"},
+                                status_code=404, headers={**cors(request), "Cache-Control": "no-store"})
+        row = prov.db.agent_get(entry["user_id"]) or {}
+        board = await arena.Board(prov.db, ledgers, None)._mark(ledgers / f"{entry['user_id']}.json")
+        history = prov.db.agent_history(entry["user_id"])
+        recent = [r for r in (prov.db.get_run(h["run_id"]) for h in reversed(history) if h.get("run_id")) if r]
+        return JSONResponse({
+            "ok": True, "name": entry["name"], "strategy": entry["strategy"],
+            "since": arena._iso(entry["created"]), "schedule": row.get("schedule", "off"),
+            "runs": row.get("runs", 0), "config": row.get("config") or {},
+            "ledger": {k: (board or {}).get(k) for k in ("cash", "equity", "bankroll", "realized_pnl",
+                                                        "unrealized_pnl", "positions", "open_orders", "fills")},
+            "history": [{"at": arena._iso(h["at"]), "equity": h["equity"], "orders": h["orders"],
+                         "decisions": h["decisions"], "ok": bool(h["ok"]), "run": h["run_id"]} for h in history],
+            "last_pass": (recent[0]["result"] if recent else None),
+            "last_run_id": (recent[0]["id"] if recent else None),
+            "note": "paper trading against the live Polymarket book; no fees, no queue, an upper bound",
+        }, headers={**cors(request), "Cache-Control": "public, max-age=120"})
 
     @srv.custom_route("/arena/paper.json", methods=["GET"])
     async def arena_board(request: Request):

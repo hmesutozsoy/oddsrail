@@ -362,3 +362,40 @@ def test_keep_this_agent_claims_the_guest_ledger_and_schedules(cloud):
 
     assert httpx.post(base + "/logout", headers=auth).json()["ok"]
     assert httpx.get(base + "/me", headers=auth).json()["signed_in"] is False
+
+
+def test_run_permalink_and_public_agent_page(cloud):
+    base, data = cloud["base"], cloud["data"]
+    gid = "ef" * 16
+    r = httpx.post(base + "/run", json={"guest": gid, "config": {"on": {"report": True}, "topics": ["all"]}}, timeout=120)
+    assert r.status_code == 200
+    out = r.json()
+    assert out["run_id"] and out["permalink"].endswith(out["run_id"])
+
+    shared = httpx.get(base + f"/runs/{out['run_id']}.json")
+    assert shared.status_code == 200
+    j = shared.json()
+    assert j["ok"] and j["id"] == out["run_id"] and j["agent"] is None
+    assert j["config"]["topics"] == ["all"] and "decisions" in j["result"]
+    assert "account" not in j["result"], "a shared run names nobody"
+    assert httpx.get(base + "/runs/nope.json").status_code == 404
+    assert httpx.get(base + "/runs/" + "z" * 40 + ".json").status_code == 404
+
+    # a kept agent gets a public page with its run history. The OAuth access
+    # token a connector holds proves the same account as a website session.
+    session = sign_in(base, "curve@example.com")["token_response"].json()["access_token"]
+    auth = {"authorization": f"Bearer {session}"}
+    assert httpx.get(base + "/me", headers=auth).json()["email"] == "curve@example.com"
+    saved = httpx.post(base + "/agents", headers=auth, json={"name": "curve bot", "strategy": "reads the board",
+                                                             "config": {"on": {"report": True}}, "arena": True})
+    assert saved.status_code == 200 and saved.json().get("arena") is True, saved.text
+    httpx.post(base + "/run", headers=auth, json={"guest": gid, "config": {"on": {"report": True}}}, timeout=120)
+
+    page = httpx.get(base + "/arena/agent/CURVE%20BOT.json")
+    assert page.status_code == 200, page.text
+    a = page.json()
+    assert a["ok"] and a["name"] == "curve bot" and a["strategy"] == "reads the board"
+    assert a["runs"] == 1 and len(a["history"]) == 1 and a["history"][0]["equity"] == 1000.0
+    assert a["ledger"]["bankroll"] == 1000 and a["last_pass"]["ok"] is True
+    assert httpx.get(base + f"/runs/{a['last_run_id']}.json").json()["agent"] == "curve bot"
+    assert httpx.get(base + "/arena/agent/nobody.json").status_code == 404

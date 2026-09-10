@@ -59,6 +59,7 @@ def housekeeping(db: DB, guests: Path | None, now: float | None = None) -> dict:
     month go. Runs once an hour from the loop."""
     now = now or time.time()
     db.cleanup()
+    pruned = db.prune_runs()
     removed = 0
     if guests and guests.exists():
         for f in guests.glob("*.json"):
@@ -68,7 +69,7 @@ def housekeeping(db: DB, guests: Path | None, now: float | None = None) -> dict:
                     removed += 1
             except OSError:
                 pass
-    return {"guest_ledgers_removed": removed}
+    return {"guest_ledgers_removed": removed, "anonymous_runs_pruned": pruned}
 
 
 async def loop(db: DB, ledgers: Path, stop: asyncio.Event) -> None:

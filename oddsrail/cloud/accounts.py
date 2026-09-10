@@ -74,8 +74,8 @@ class Accounts:
     def user_for(self, bearer: str | None) -> dict | None:
         if not bearer:
             return None
-        s = self.db.get_session(_h(bearer))
-        return self.db.user(s["user_id"]) if s else None
+        row = self.db.get_session(_h(bearer)) or self.db.get_token(_h(bearer), "access")
+        return self.db.user(row["user_id"]) if row else None
 
     def sign_out(self, bearer: str | None) -> None:
         if bearer:
