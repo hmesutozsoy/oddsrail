@@ -207,6 +207,23 @@ def cancel(order_id: str) -> dict:
             "order_id": order_id}
 
 
+async def _fill_resting(d: dict, pm, o: dict) -> float:
+    """Fill a resting paper order against the depth that is really there.
+    Returns the size filled; the remainder keeps resting."""
+    from . import crossvenue as xv
+    ob = await pm.get_orderbook(o["token_id"])
+    levels = ob["asks"] if o["side"] == "BUY" else ob["bids"]
+    walk = xv.walk_book(_within_limit(levels, o["side"], o["price"]), o["size"])
+    filled = float(walk.get("filled_size") or 0)
+    if filled <= 1e-9:
+        return 0.0
+    # A resting order is the maker, so it trades at its own price; what the
+    # crossing side has on offer only limits HOW MUCH of it trades.
+    _apply_fill(d, o["token_id"], o["side"], filled, float(o["price"]),
+                o.get("title"), f"resting:{o['id']}")
+    return filled
+
+
 async def _settle_resting(d: dict, pm) -> list:
     """Fill any resting paper order the market has since crossed."""
     filled_ids = []
@@ -223,12 +240,18 @@ async def _settle_resting(d: dict, pm) -> list:
             crossed = True
         if crossed:
             try:
-                _apply_fill(d, o["token_id"], o["side"], o["size"], o["price"],
-                            o.get("title"), f"resting:{o['id']}")
+                filled = await _fill_resting(d, pm, o)
+                if filled <= 1e-9:
+                    continue                      # crossed on the top of book only, no depth
                 filled_ids.append(o["id"])
-                d["open_orders"].remove(o)
+                if filled >= float(o["size"]) - 1e-9:
+                    d["open_orders"].remove(o)
+                else:
+                    o["size"] = round(float(o["size"]) - filled, 6)   # partial: the rest keeps resting
             except ValueError:
                 pass  # cannot afford it any more; leave it resting
+            except Exception:
+                pass  # the book call failed; try again on the next read
     return filled_ids
 
 
@@ -237,10 +260,10 @@ async def _settle_if_resolved(d: dict, pm, tid: str, pos: dict) -> dict | None:
     this, a winning position is worth nothing the moment its book vanishes,
     which is the opposite of what happened."""
     try:
-        m = await pm.get_market_by_token(tid)
+        m = await pm.get_market_by_token(tid) or {}
     except Exception:
         return None
-    outs = (m or {}).get("outcomes") or {}
+    outs = m.get("outcomes") or {}
     side = "no" if str(((outs.get("no") or {}).get("token_id"))) == str(tid) else "yes"
     price = (outs.get(side) or {}).get("price")
     status = str(m.get("uma_resolution_status") or "").lower()

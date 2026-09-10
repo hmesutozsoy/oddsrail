@@ -129,6 +129,33 @@ def build_app():
     srv.add_tool(arena_unregister, name="arena_unregister",
                  description="Remove this account from the public arena board.",
                  annotations=S.TRADE, structured_output=False)
+    def _guard_reset_tool():
+        """paper_reset from inside a chat is the same wipe as the HTTP route."""
+        original = None
+        for t in ("paper_reset",):
+            try:
+                srv.remove_tool(t)
+            except Exception:
+                pass
+        def paper_reset() -> str:
+            uid = None
+            try:
+                uid = account_id()
+            except Exception:
+                pass
+            if uid and prov.db.arena_get(uid):
+                return S._j({"reset": False, "error": "this agent is on the public board, so its ledger "
+                             "cannot be reset. Call arena_unregister first, which also clears its history."})
+            return S._j(paper.reset())
+        srv.add_tool(paper_reset, name="paper_reset",
+                     description=("Reset this account's paper ledger to its starting bankroll "
+                                  "($1,000). Refused while the agent is on the public arena board, "
+                                  "because a board entry that can wipe its own record is worthless."),
+                     annotations=S.TRADE, structured_output=False)
+        return original
+
+    _guard_reset_tool()
+
     srv.add_tool(arena_status, name="arena_status",
                  description="Whether this account is on the arena board, and under which name.",
                  annotations=S.READ, structured_output=False)
@@ -278,6 +305,10 @@ def build_app():
         if not run_limiter.allow(client_ip(request)):
             return JSONResponse({"ok": False, "error": "too many requests; try again in a while"},
                                 status_code=429, headers=cors(request))
+        if _user and prov.db.arena_get(_user["id"]):
+            return JSONResponse({"ok": False, "error": "this agent is on the public board, so its ledger "
+                                 "cannot be reset. Take it off the board first, which also clears its "
+                                 "history."}, status_code=409, headers=cors(request))
         if not ledger.exists():                  # nothing to reset, and no file for a stranger's id
             return JSONResponse({"ok": True, "reset": False, "cash": paper.bankroll(),
                                  "note": "no ledger existed for this id"}, headers=cors(request))

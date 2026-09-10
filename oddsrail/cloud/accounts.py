@@ -78,5 +78,12 @@ class Accounts:
         return self.db.user(row["user_id"]) if row else None
 
     def sign_out(self, bearer: str | None) -> None:
-        if bearer:
-            self.db.revoke_session(_h(bearer))
+        """Revoke whichever credential this is: a website session, or the
+        OAuth pair behind a connector's access token."""
+        if not bearer:
+            return
+        h = _h(bearer)
+        self.db.revoke_session(h)
+        row = self.db.get_token(h, "access")
+        if row:
+            self.db.revoke_pair(row["pair"])

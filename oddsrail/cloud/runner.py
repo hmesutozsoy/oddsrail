@@ -126,7 +126,7 @@ def normalize(raw: dict) -> dict:
         "expo": clamp(val("expo", "usd", 50), 1, 100000),
         "dispute": int(clamp(val("dispute", "score", 30), 0, 100)),
         "liquidity": clamp(val("liquidity", "slip", 2), 0.1, 20) / 100.0,
-        "watch": clamp(val("watch", "sec", 20), 1, 8),
+        "watch": clamp(val("watch", "sec", 20), 1, 60),
     }
     if cfg["settle"]["lo"] >= cfg["settle"]["hi"]:
         cfg["settle"]["lo"] = min(cfg["settle"]["lo"], cfg["settle"]["hi"] - 0.01)

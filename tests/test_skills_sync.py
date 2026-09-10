@@ -39,3 +39,19 @@ def test_plugin_manifests_agree_with_package():
     assert plugin["name"] == "oddsrail" and plugin["version"] == VERSION
     assert market["plugins"][0]["name"] == "oddsrail" and market["plugins"][0]["version"] == VERSION
     assert "oddsrail" in mcp["mcpServers"] and mcp["mcpServers"]["oddsrail"]["args"] == ["oddsrail"]
+
+
+def test_published_counts_match_the_code():
+    """Numbers in prose drift; the launch material promises they are checkable."""
+    import re
+    from oddsrail import server as S
+
+    src = (ROOT / "oddsrail" / "server.py").read_text()
+    tools = src.count("@srv.tool")
+    for path in ("README.md", "site/index.html", "site/llms.txt", "docs/launch-post.md",
+                 ".claude-plugin/marketplace.json"):
+        text = (ROOT / path).read_text()
+        for claimed in re.findall(r"\b(\d{2}) tools\b", text):
+            assert int(claimed) == tools, f"{path} says {claimed} tools, the server registers {tools}"
+    market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())
+    assert market["plugins"][0]["version"] == S.VERSION

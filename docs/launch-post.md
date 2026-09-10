@@ -57,7 +57,7 @@ an agent believes a rejected order is resting), there is an undocumented $1
 minimum notional, and the SDK call that sounds like "my trades" returns the
 market's public tape. All three are encoded in the trading tools.
 
-**What it is.** 39 tools and 4 workflow prompts. Read tools need no keys.
+**What it is.** 41 tools and 4 workflow prompts. Read tools need no keys.
 Trading is non-custodial: you run the server, your keys sign on your machine,
 dry-run is the default and dry-run orders are papered against the live book
 so you can see simulated P&L. Operator guardrails (per-order and per-session
@@ -131,7 +131,7 @@ for the first three hours, and post Tuesday to Thursday between 14:00 and
 
 **Title:** oddsrail: MCP server for Polymarket + Kalshi, non-custodial, dry-run by default, with guardrails the agent can't change
 
-39 tools / 4 prompts. Read tools need no keys. Trading tools are dry-run by
+41 tools / 4 prompts. Read tools need no keys. Trading tools are dry-run by
 default and paper-trade against the live book so you get simulated P&L before
 you ever set `ODDSRAIL_DRY_RUN=0`. Operator guardrails (per-order and
 per-session notional caps, allowed markets) are enforced before any request.
@@ -141,7 +141,7 @@ The interesting part is what the venue APIs get wrong, and there is a keyless
 script that shows all six live: `python examples/footguns.py`.
 
 `pip install oddsrail` then `claude mcp add --transport stdio oddsrail -- oddsrail`.
-Verified Polymarket builder, MIT, 116 tests. Honest usage numbers are on the
+Verified Polymarket builder, MIT, 175 tests. Honest usage numbers are on the
 site's attribution ledger, and today the external count is zero.
 
 https://github.com/hmesutozsoy/oddsrail

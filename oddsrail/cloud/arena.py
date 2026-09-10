@@ -18,9 +18,18 @@ from .. import paper
 from .db import DB
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{2,23}$")
-RESERVED = {"house", "oddsrail", "admin", "maintainer"}
+# Substrings, not whole names: "house paper agent" and "oddsrail bot" both
+# read as official to someone glancing at the board.
+RESERVED = ("house", "oddsrail", "admin", "maintainer", "official", "staff", "support")
 STRATEGY_MAX = 140
 BOARD_TTL = 300.0
+
+# An entry is ranked only once it has actually traded for a while. Everything
+# else is listed but unranked, with the reason, so a board of one lucky idle
+# ledger cannot top a board of agents doing the work.
+MIN_FILLS = 10
+MIN_PASSES = 6
+MIN_AGE_H = 12.0
 
 # Set while the board marks one ledger, so the paper module reads that file
 # instead of the request's account.
@@ -36,8 +45,11 @@ def validate_name(name: str) -> str:
     if not NAME_RE.match(name):
         raise ArenaError("name must be 3 to 24 characters: letters, digits, spaces, dot, dash or underscore, "
                          "starting with a letter or digit")
-    if name.lower() in RESERVED:
-        raise ArenaError(f"{name!r} is reserved")
+    flat = re.sub(r"[^a-z0-9]", "", name.lower())
+    for word in RESERVED:
+        if word in flat:
+            raise ArenaError(f"{name!r} is reserved: a name cannot contain {word!r}, "
+                             "because it would read as an official entry")
     return name
 
 
@@ -105,25 +117,36 @@ class Board:
             FORCED_LEDGER.reset(token)
 
     async def _compute(self) -> dict:
-        rows = []
+        rows, now = [], time.time()
         for e in self.db.arena_list():
             p = await self._mark(self.ledgers / f"{e['user_id']}.json")
-            rows.append(self._row(e["name"], e["strategy"], e["created"], p, house=False))
+            row = self._row(e["name"], e["strategy"], e["created"], p, house=False)
+            agent = self.db.agent_get(e["user_id"]) or {}
+            row["passes"] = int(agent.get("runs") or 0)
+            row["qualifies"], row["why_unranked"] = _qualifies(row, e["created"], now)
+            rows.append(row)
         if self.house:
             p = await self._mark(self.house, readonly=True)
             if p:
-                rows.append(self._row("house paper agent", "reference quote-and-settle agent, hourly, "
-                                      "examples/paper_agent", None, p, house=True))
-        ranked = [r for r in rows if not r["house"] and r["equity"] is not None]
+                h = self._row("house paper agent", "reference quote-and-settle agent, hourly, "
+                              "examples/paper_agent", None, p, house=True)
+                h["qualifies"], h["why_unranked"] = False, "reference row, never ranked"
+                rows.append(h)
+        ranked = [r for r in rows if not r["house"] and r["qualifies"]]
         ranked.sort(key=lambda r: (-(r["return_pct"] or 0), r["since"] or ""))
         for i, r in enumerate(ranked, 1):
             r["rank"] = i
-        now = time.time()
+        unranked = [r for r in rows if not r["house"] and not r["qualifies"]]
+        unranked.sort(key=lambda r: -(r.get("fills") or 0))
         return {"division": "paper", "computed_at": _iso(now), "computed_at_ts": now,
-                "ttl_seconds": int(BOARD_TTL), "entries": ranked + [r for r in rows if r["house"]],
+                "ttl_seconds": int(BOARD_TTL),
+                "entries": ranked + unranked + [r for r in rows if r["house"]],
+                "qualification": {"fills": MIN_FILLS, "passes": MIN_PASSES, "hours": MIN_AGE_H},
                 "note": ("paper ledgers on the hosted oddsrail, marked at the current mid; no fees, "
-                         "no queue, no market impact, no payout at resolution. Return is equity "
-                         "over the starting bankroll. Nothing here is real money.")}
+                         "no queue, no market impact. Return is equity over the starting bankroll. "
+                         f"An entry is ranked once it has {MIN_FILLS} fills, {MIN_PASSES} passes and "
+                         f"{MIN_AGE_H:g} hours on the board; the rest are listed with the reason. "
+                         "Nothing here is real money.")}
 
     @staticmethod
     def _row(name: str, strategy: str, created: float | None, p: dict | None, house: bool) -> dict:
@@ -139,6 +162,23 @@ class Board:
                 "unrealized_pnl": p.get("unrealized_pnl"),
                 "positions": len(p.get("positions") or []), "open_orders": len(p.get("open_orders") or []),
                 "fills": p.get("fills")}
+
+
+def _qualifies(row: dict, created: float | None, now: float) -> tuple[bool, str | None]:
+    """Ranked, or listed with the reason it is not."""
+    if row.get("equity") is None:
+        return False, "no ledger to mark yet"
+    missing = []
+    fills = int(row.get("fills") or 0)
+    passes = int(row.get("passes") or 0)
+    hours = (now - float(created)) / 3600.0 if created else 0.0
+    if fills < MIN_FILLS:
+        missing.append(f"{fills} of {MIN_FILLS} fills")
+    if passes < MIN_PASSES:
+        missing.append(f"{passes} of {MIN_PASSES} passes")
+    if hours < MIN_AGE_H:
+        missing.append(f"{hours:.1f} of {MIN_AGE_H:g} hours on the board")
+    return (not missing), (", ".join(missing) if missing else None)
 
 
 def _iso(ts: float | None) -> str | None:

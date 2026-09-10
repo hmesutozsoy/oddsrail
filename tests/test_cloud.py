@@ -287,7 +287,9 @@ async def test_arena_register_and_public_board(cloud):
     assert board["division"] == "paper" and "computed_at_ts" not in board
     rows = [x for x in board["entries"] if not x["house"]]
     assert [x["name"] for x in rows] == ["dana fade bot"]
-    assert rows[0]["rank"] == 1 and rows[0]["equity"] == 1000.0 and rows[0]["return_pct"] == 0.0
+    # listed, but not ranked: a fresh entry has not traded yet
+    assert rows[0].get("rank") is None and rows[0]["qualifies"] is False
+    assert rows[0]["equity"] == 1000.0 and rows[0]["return_pct"] == 0.0
     assert rows[0]["fills"] == 0 and rows[0]["positions"] == 0
 
     async with mcp(base, d["access_token"]) as s:
@@ -352,7 +354,7 @@ def test_keep_this_agent_claims_the_guest_ledger_and_schedules(cloud):
     a = r.json()["agent"]
     assert a["name"] == "keeper bot" and a["schedule"] == "hourly" and a["config"] == {"on": {"mm": True}}
     board = httpx.get(base + "/arena/paper.json?refresh=1").json()
-    assert [e["name"] for e in board["entries"] if not e["house"]] == ["keeper bot"]
+    assert "keeper bot" in [e["name"] for e in board["entries"] if not e["house"]]
     me = httpx.get(base + "/me", headers=auth).json()
     assert me["agent"]["name"] == "keeper bot" and me["arena"] == "keeper bot"
 
@@ -399,3 +401,32 @@ def test_run_permalink_and_public_agent_page(cloud):
     assert a["ledger"]["bankroll"] == 1000 and a["last_pass"]["ok"] is True
     assert httpx.get(base + f"/runs/{a['last_run_id']}.json").json()["agent"] == "curve bot"
     assert httpx.get(base + "/arena/agent/nobody.json").status_code == 404
+
+
+def test_board_ranks_only_agents_that_have_traded(cloud):
+    base = cloud["base"]
+    session = sign_in(base, "idle@example.com")["token_response"].json()["access_token"]
+    auth = {"authorization": f"Bearer {session}"}
+    r = httpx.post(base + "/agents", headers=auth, json={"name": "idle bot", "arena": True,
+                                                          "config": {"on": {"report": True}}})
+    assert r.status_code == 200, r.text
+    board = httpx.get(base + "/arena/paper.json?refresh=1").json()
+    mine = [e for e in board["entries"] if e["name"] == "idle bot"][0]
+    assert mine.get("rank") is None and mine["qualifies"] is False and mine["why_unranked"]
+    assert board["qualification"]["fills"] >= 1 and board["qualification"]["passes"] >= 1
+
+    # and it cannot wipe its record while it is listed
+    gone = httpx.post(base + "/run/reset", headers=auth, json={"guest": "aa" * 16})
+    assert gone.status_code == 409 and "public board" in gone.json()["error"]
+    httpx.post(base + "/agents", headers=auth, json={"name": "idle bot", "arena": False})
+    assert httpx.post(base + "/run/reset", headers=auth, json={"guest": "aa" * 16}).status_code == 200
+
+
+def test_reserved_words_cannot_be_worn_as_a_name(cloud):
+    base = cloud["base"]
+    session = sign_in(base, "imposter@example.com")["token_response"].json()["access_token"]
+    auth = {"authorization": f"Bearer {session}"}
+    for name in ("house paper agent", "House Paper Agent", "oddsrail bot", "the-official-one", "ADMIN.bot"):
+        r = httpx.post(base + "/agents", headers=auth, json={"name": name, "arena": True})
+        assert r.status_code == 400 and "reserved" in r.json()["error"], name
+    assert httpx.post(base + "/agents", headers=auth, json={"name": "greenhouse gases", "arena": False}).status_code == 400

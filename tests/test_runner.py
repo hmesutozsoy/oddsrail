@@ -377,3 +377,82 @@ async def test_resolved_positions_settle_at_the_payout(ledger, monkeypatch):
     assert pos["positions"] == [] and abs(pos["cash"] - 900.0) < 1e-6      # 800 + 100 * 1 + 100 * 0
     assert abs(pos["realized_pnl"] - ((1.0 - 0.95) * 100 + (0.0 - 0.05) * 100)) < 1e-6
     assert pos["equity"] == 900.0
+
+
+async def test_settle_buys_the_near_certain_side_inside_the_band(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.93, 0.95), no_book=(0.05, 0.07), market=slim(yes_px=0.94))
+    fake.install(monkeypatch)
+
+    async def soon(hours=24.0, limit=15):
+        return [fake.market]
+    monkeypatch.setattr(pm, "closing_soon", soon)
+    out = await runner.run_pass(cfg(["settle"]), ledger)
+    d = [x for x in out["decisions"] if x["strategy"] == "settle"]
+    assert d and d[0]["outcome"] == "YES" and d[0]["result"] == "filled" and d[0]["price"] == 0.95
+    assert "near-certain" in d[0]["why"] and "Binance" in d[0]["why"]
+
+    # outside the band nothing is bought
+    fake2 = Fake(yes_book=(0.70, 0.72), no_book=(0.28, 0.30), market=slim(yes_px=0.71))
+    fake2.install(monkeypatch)
+    monkeypatch.setattr(pm, "closing_soon", soon)
+    out = await runner.run_pass(cfg(["settle"]), ledger)
+    assert not [x for x in out["decisions"] if x["strategy"] == "settle"]
+
+
+async def test_value_trades_only_where_the_market_disagrees_enough(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.40, 0.42), no_book=(0.58, 0.60))
+    fake.install(monkeypatch)
+    c = cfg(["value"])
+    c["vals"] = {"value": {"edge": 5, "kelly": 0.25, "views": f"{TITLE}: 0.75"}}
+    out = await runner.run_pass(c, ledger)
+    d = [x for x in out["decisions"] if x["strategy"] == "value"]
+    assert d and d[0]["outcome"] == "YES" and d[0]["result"] == "filled"
+    assert "0.75" in d[0]["why"] and "0.42" in d[0]["why"]
+
+    c["vals"]["value"]["views"] = f"{TITLE}: 0.44"          # only 2 points of edge
+    out = await runner.run_pass(c, ledger)
+    d = [x for x in out["decisions"] if x["strategy"] == "value"]
+    assert d and d[0]["result"] == "skipped" and "edge below" in d[0]["detail"]
+
+
+async def test_take_profit_sells_a_winner(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.90, 0.92), no_book=(0.08, 0.10))
+    fake.install(monkeypatch)
+    seed(ledger, cash=970.0, positions={YES: {"size": 50.0, "cost": 30.0, "title": TITLE}})  # entry 0.60, mark 0.91
+    c = cfg(["takeprofit"]); c["vals"] = {"takeprofit": {"pct": 40}}
+    out = await runner.run_pass(c, ledger)
+    d = [x for x in out["decisions"] if x["strategy"] == "takeprofit"][0]
+    assert d["side"] == "SELL" and d["result"] == "filled" and d["price"] == 0.90
+    led = json.loads(ledger.read_text())
+    assert YES not in led["positions"] and led["realized_pnl"] > 0
+
+
+async def test_a_resting_order_takes_only_the_depth_that_is_there(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    token = runner.FORCED_LEDGER.set(ledger)
+    try:
+        await paper.simulate_polymarket(YES, "BUY", 0.40, 100)      # rests, far below the ask
+
+        async def thin(token_id):                                    # one share offered inside the limit
+            return {"best_bid": "0.38", "best_ask": "0.39",
+                    "bids": [{"price": "0.38", "size": "500"}], "asks": [{"price": "0.39", "size": "1"}]}
+        monkeypatch.setattr(pm, "get_orderbook", thin)
+        pos = await paper.positions()
+        assert pos["positions"][0]["size"] == 1.0, "only the one share on offer filled"
+        assert pos["open_orders"][0]["size"] == 99.0, "the rest keeps resting"
+        assert abs(pos["cash"] - (1000 - 0.40)) < 1e-6, "the maker fills at its own price"
+    finally:
+        runner.FORCED_LEDGER.reset(token)
+
+
+async def test_the_kill_switch_clears_resting_paper_orders(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    monkeypatch.setenv("ODDSRAIL_PAPER_LEDGER", str(ledger))
+    from oddsrail import trading
+    await trading.place_order(YES, "BUY", 0.30, 10)                 # rests
+    assert len(json.loads(ledger.read_text())["open_orders"]) == 1
+    out = await trading.cancel_all_orders()
+    assert out["dry_run"] is True and out["paper_cancelled"] == 1
+    assert json.loads(ledger.read_text())["open_orders"] == []

@@ -8,6 +8,7 @@ site and the board can show it. Failures are recorded, never raised."""
 from __future__ import annotations
 
 import asyncio
+import secrets
 import time
 from pathlib import Path
 
@@ -31,17 +32,24 @@ def summary(out: dict) -> dict:
 
 async def run_agent(db: DB, ledgers: Path, agent: dict) -> dict:
     ledger = ledgers / f"{agent['user_id']}.json"
+    run_id = None
     async with runner.lock_for(ledger):
         try:
             out = await asyncio.wait_for(runner.run_pass(agent["config"], ledger), timeout=PASS_DEADLINE)
             res = summary(out)
+            try:                       # the hourly path leaves a permalink too
+                run_id = secrets.token_urlsafe(9)
+                db.put_run(run_id, agent["config"], out, user_id=agent["user_id"], agent=agent["name"])
+            except Exception as e:
+                print(f"[oddsrail-cloud] could not store scheduled run: {type(e).__name__}: {e}", flush=True)
+                run_id = None
         except asyncio.TimeoutError:
             res = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "ok": False,
                    "error": f"pass exceeded {PASS_DEADLINE:.0f}s and was abandoned"}
         except Exception as e:
             res = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "ok": False,
                    "error": f"{type(e).__name__}: {e}"}
-    db.agent_ran(agent["user_id"], res)
+    db.agent_ran(agent["user_id"], res, run_id)
     return res
 
 

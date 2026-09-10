@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.17.0 (2026-09-10)
+
+More fixes from the adversarial audit, verified by reproduction.
+
+- `check_order` no longer reads the word "fade" as the NO side. Fading a
+  drop means buying YES, so the flagship workflow was being blocked when an
+  operator described it in plain words.
+- The paper ledger no longer crashes when a token is delisted: a market
+  lookup that comes back empty is handled, so one dead position cannot take
+  down a whole ledger read or drop an agent off the board.
+- Resting paper orders fill only the depth that actually crosses them, at
+  the maker's own price, and keep resting for the remainder. They used to
+  fill their whole size on any touch.
+- `cancel_all_orders` clears resting paper orders in dry-run, which is the
+  only place orders exist there. The kill switch left them alive.
+- Signing out revokes a connector's OAuth token, not just a website session.
+- Scheduled hourly passes store a permalink like manual ones do.
+- The book-watch window respects the number you set, up to a minute.
+- Arena: an entry is ranked only after 10 fills, 6 passes and 12 hours; the
+  rest are listed with the reason. A registered agent cannot reset its own
+  ledger. Reserved words cannot be worn inside a name.
+- Tests are hermetic (an operator's own environment cannot turn them red),
+  the settle and value strategies and take profit have coverage, and a test
+  now keeps the published tool count honest.
+- Site: share cards on every page, the home page leads with the demo, and
+  the sitemap no longer advertises two parameterless share shells. The
+  registry entry advertises the hosted endpoint.
+
 ## 0.16.0 (2026-09-10)
 
 - **Shareable passes.** Every hosted pass gets a permalink: `/run?id=...`

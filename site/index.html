@@ -13,11 +13,15 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://oddsrail.app/">
 <meta property="og:site_name" content="oddsrail">
-<meta name="twitter:card" content="summary">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css?v=0.16.0b">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="oddsrail">
+<meta name="twitter:description" content="Build a paper-trading agent for Polymarket in ten seconds, no account. Open-source MCP server underneath, verified builder, 0 bps.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<link rel="stylesheet" href="/style.css?v=0.17.0b">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.16.0","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"oddsrail","url":"https://oddsrail.app/","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","softwareVersion":"0.17.0","description":"Open-source MCP server that lets AI agents read, cost, audit and trade Polymarket and Kalshi. Self-hosted, non-custodial, 0 bps.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"downloadUrl":"https://pypi.org/project/oddsrail/","installUrl":"https://pypi.org/project/oddsrail/","codeRepository":"https://github.com/hmesutozsoy/oddsrail","programmingLanguage":"Python","author":{"@type":"Person","name":"Mesut Ozsoy"},"keywords":"MCP server, Polymarket, Kalshi, prediction markets, AI agents, builder code"}
 </script>
 </head>
 <body>
@@ -47,6 +51,8 @@
   <p class="kicker">MCP server for Polymarket and Kalshi</p>
   <h1 id="h-title">The rail AI agents use to trade prediction markets.</h1>
   <p class="lede">Live books, costed fills, settlement audits and non-custodial order routing in one open-source MCP server your agent can call. Free to run. 0 bps on every trade. Keys never leave your machine.</p>
+
+  <p class="cta"><a class="btn primary" href="/build">Build one in ten seconds</a> <span class="muted">Switch on the pieces, press Run, and read what your agent did against the live book. Paper, no account, nothing to install.</span></p>
 
   <div class="install">
     <p class="cmd"><code>https://mcp.oddsrail.app/mcp</code><button type="button" data-copy="https://mcp.oddsrail.app/mcp">copy</button></p>
@@ -213,6 +219,6 @@ export KALSHI_KEY_ID=…             # only for Kalshi private
   </div>
 </footer>
 
-<script src="/app.js?v=0.16.0b" defer></script>
+<script src="/app.js?v=0.17.0b" defer></script>
 </body>
 </html>

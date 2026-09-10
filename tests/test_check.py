@@ -36,7 +36,9 @@ def test_intent_overlap_ignores_stopwords_and_finds_content_words():
 
 
 @pytest.mark.parametrize("text,want", [
-    ("buy NO on the fed cut", "no"), ("fade the favourite", "no"),
+    ("buy NO on the fed cut", "no"),
+    # "fade" names no side: fading a rally is NO, fading a drop is YES
+    ("fade the favourite", None), ("fade the down overshoot", None),
     ("buy yes bitcoin", "yes"), ("bitcoin above 72k", None), ("yes or no, either", None),
 ])
 def test_intent_outcome(text, want):

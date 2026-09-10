@@ -210,7 +210,7 @@ the product, and the code is attached and signed by the operator's own wallet.
 
 ## Status
 
-**Offline tests:** 143 tests covering the paths where a bug costs money: the
+**Offline tests:** 175 tests covering the paths where a bug costs money: the
 Kalshi yes/no→bid/ask translation, Kelly sizing, book walking, cross-venue
 pairing, signal edge cases, the dry-run safety net, and jurisdiction-failure
 handling (a geoblock must never read as an empty search result or a resting

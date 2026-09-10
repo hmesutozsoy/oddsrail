@@ -43,7 +43,10 @@ def intent_overlap(intent: str, *texts: str) -> float:
 def intent_outcome(intent: str) -> str | None:
     """'no' if the intent says NO, 'yes' if it says YES, else None."""
     s = (intent or "").lower()
-    has_no = re.search(r"\b(no|against|fade)\b", s) is not None
+    # "fade" is NOT a side: fading a rally means buying NO, fading a drop
+    # means buying YES. Inferring a side from it blocked the flagship
+    # workflow, so this function only reads words that name a side.
+    has_no = re.search(r"\b(no|against)\b", s) is not None
     has_yes = re.search(r"\byes\b", s) is not None
     if has_no and not has_yes:
         return "no"

@@ -338,3 +338,6 @@ table.cmp td small{display:block;color:var(--muted);font-size:12px;margin-top:3p
 table.cmp tr.r-filled td:last-child{color:#6cc38a}
 table.cmp tr.r-skipped td:last-child{color:var(--muted)}
 table.cmp td.mono{font-family:var(--mono);white-space:nowrap}
+.cta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 22px}
+.cta .btn{font-size:15px;padding:10px 18px}
+.cta .muted{font-size:14px;max-width:420px;line-height:1.5}

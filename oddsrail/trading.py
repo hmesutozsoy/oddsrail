@@ -298,8 +298,19 @@ async def order_status(order_id: str):
 async def cancel_all_orders():
     """Kill switch: pull every resting order on the operator's account."""
     if dry_run():
-        return {"dry_run": True,
-                "would_cancel": "ALL resting orders on the operator account"}
+        out = {"dry_run": True,
+               "would_cancel": "ALL resting orders on the operator account",
+               "note": "no live order was touched because this server is in dry-run"}
+        if paper.enabled():
+            # In dry-run the only orders that exist are paper ones, and a kill
+            # switch that leaves them resting is not a kill switch.
+            d = paper.load()
+            n = len(d["open_orders"])
+            d["open_orders"] = []
+            paper.save(d)
+            out["paper_cancelled"] = n
+            out["note"] = f"{n} resting PAPER order(s) cancelled; no live order exists in dry-run"
+        return out
     from .polymarket import dump
     try:
         client = await _client()
