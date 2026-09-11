@@ -47,6 +47,14 @@ _secure = None
 _LIVE_VALUES = ("0", "false", "no")
 
 
+# Every live-only reader says the same thing when there is no key, and it has
+# to name the thing that DOES have data in the default setup, or a review
+# prompt walks into three dead ends in a row.
+_NO_KEY_NOTE = ("no trading key configured, so there are no live orders, fills or positions on this "
+                "server. In dry-run (the default) the paper ledger is the portfolio: call "
+                "paper_positions for cash, positions, resting paper orders and P&L.")
+
+
 def dry_run() -> bool:
     if hosted.enabled():        # the shared server never posts a real order
         return True
@@ -155,7 +163,7 @@ async def place_order(token_id: str, side: str, price: float, size: float,
     if block:
         return {**block, "submitted": intent}
     if dry:
-        out = {"dry_run": True, "would_post": intent,
+        out = {"dry_run": True, "accepted": True, "would_post": intent,
                "note": hosted.LIVE_NOTE if hosted.enabled()
                else "set ODDSRAIL_DRY_RUN=0 to post real orders"}
         if paper.enabled():
@@ -164,6 +172,13 @@ async def place_order(token_id: str, side: str, price: float, size: float,
             except Exception as e:
                 out["paper"] = {"error": f"{type(e).__name__}: {e}",
                                 "note": "paper simulation failed; the intent above is still what would post"}
+            # A paper account that cannot fund the order did not accept it, and
+            # a top level that still reads like success is how an agent ends up
+            # believing in a position it does not have.
+            p = out.get("paper")
+            if isinstance(p, dict) and (p.get("refused") or p.get("error")):
+                out["accepted"] = False
+                out["note"] = p.get("refused") or p.get("error")
         return out
 
     from .polymarket import dump
@@ -259,9 +274,37 @@ async def cancel_order(order_id: str):
                 "still_resting": "unknown — call open_orders to confirm"}
 
 
+async def my_balance():
+    """The operator's Polymarket collateral, for sizing against what is
+    actually there rather than a number the agent was told."""
+    wallet = operator_wallet() or maintainer_wallets()
+    addr = wallet if isinstance(wallet, str) else None
+    if not addr and os.environ.get("POLYMARKET_PRIVATE_KEY"):
+        try:
+            client = await _client()
+            addr = getattr(client, "address", None) or getattr(client, "wallet_address", None)
+        except Exception:
+            addr = None
+    if not addr:
+        return {"note": "no wallet to read: set POLYMARKET_WALLET_ADDRESS (your proxy or deposit "
+                        "address) or POLYMARKET_PRIVATE_KEY. In dry-run the paper bankroll is the "
+                        "number to size against; see paper_positions.",
+                "paper_bankroll_usd": paper.bankroll() if paper.enabled() else None}
+    from .polymarket import portfolio_value
+    try:
+        value = await portfolio_value(addr)
+    except Exception as e:
+        return {"wallet": addr, "error": f"{type(e).__name__}: {e}",
+                "note": "the data API did not answer; try again before sizing against it"}
+    return {"wallet": addr, **value,
+            "note": "positions_value is what open positions are worth at current marks. "
+                    "Polymarket collateral is pUSD, 1:1 with USDC. This is the real "
+                    "account; the paper ledger is separate."}
+
+
 async def open_orders():
     if not os.environ.get("POLYMARKET_PRIVATE_KEY"):
-        return {"note": "no trading key configured; nothing to list"}
+        return {"note": _NO_KEY_NOTE}
     client = await _client()
     from .polymarket import dump
     page = await client.list_open_orders().first_page()
@@ -276,7 +319,7 @@ async def order_status(order_id: str):
     "filled" and "cancelled". get_order reports size_matched directly.
     """
     if not os.environ.get("POLYMARKET_PRIVATE_KEY"):
-        return {"note": "no trading key configured"}
+        return {"note": _NO_KEY_NOTE}
     from .polymarket import dump
     try:
         client = await _client()
@@ -331,7 +374,7 @@ async def my_fills(limit: int = 25):
     market's PUBLIC tape (other people's trades) — a verified footgun."""
     wallet = operator_wallet()
     if not wallet:
-        return {"note": "set POLYMARKET_WALLET_ADDRESS to see fills"}
+        return {"note": _NO_KEY_NOTE}
     import httpx
     async with httpx.AsyncClient(timeout=20.0) as h:
         r = await h.get("https://data-api.polymarket.com/activity",

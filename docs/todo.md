@@ -58,27 +58,18 @@ Ordered by what a first visitor or first developer hits soonest.
 
 1. ~~The `market_id` ambiguity.~~ Done in 0.17.1: every market-describing
    tool accepts a slug, a Gamma id or a CLOB token id.
-2. **Six footgun pages at `/notes/<slug>`.** The only content on the site with
-   real search demand is compressed into one list on the home page. Each note
-   is a page someone actually searches for at 2am.
-3. **`place_order` dry-run has no `accepted` field**, unlike every other path,
-   and a paper refusal hides under a top level that reads like success.
-4. **No Polymarket balance tool.** Kalshi has one, so an agent cannot size
-   against real collateral on the venue that matters.
-5. **`daily_review` returns nothing on a fresh install**, because its first
-   three steps all need a trading key. It should read the paper ledger.
-6. **Guardrail claim is wrong for two of four rules.** Session notional and
-   open-order caps are live only, while `server_info` implies dry-run
-   enforcement.
-7. **Stale marks never expire.** A position whose book vanishes keeps its last
-   mark forever, so equity never writes down a dead market.
-8. **Email normalisation.** `a+1@gmail.com` is a second account today, which
-   matters now that the board has an activity floor to game.
+2. ~~Six footgun pages at `/notes/<slug>`.~~ Done: https://oddsrail.app/notes/
+3. ~~`place_order` dry-run has no `accepted` field.~~ Done in 0.18.0.
+4. ~~No Polymarket balance tool.~~ Done in 0.18.0 (`my_balance`).
+5. ~~`daily_review` returns nothing on a fresh install.~~ Done in 0.18.0.
+6. ~~Guardrail claim is wrong for two of four rules.~~ Done in 0.18.0.
+7. ~~Stale marks never expire.~~ Done in 0.18.0 (twelve hours, then unvalued).
+8. ~~Email normalisation.~~ Done in 0.18.0.
 9. **Cloud tests measure 0% coverage** because they drive a subprocess. Move
    most of them onto an in-process ASGI client and keep one boot test.
-10. **CI gates only pytest.** Add the em-dash lint for prose, a JavaScript
-    syntax check for `site/*.js`, and a scheduled smoke test against the live
-    host.
+10. ~~CI gates only pytest.~~ Done in 0.18.0: a site workflow (parse, em
+    dashes, dead links, sitemap honesty) and a six-hourly smoke test of the
+    hosted server.
 
 ## Standing checks
 

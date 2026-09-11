@@ -13,7 +13,7 @@ claude plugin marketplace add hmesutozsoy/oddsrail && claude plugin install odds
 Also: `npx skills add hmesutozsoy/oddsrail`, and one-click links for Cursor and VS Code in the README.
 
 - Status: Verified Polymarket builder
-- Surface: 41 tools, 4 workflow prompts
+- Surface: 42 tools, 4 workflow prompts
 - Cost: 0 bps added to trades
 - Default: dry-run, with a paper ledger
 - License: MIT, self-hosted

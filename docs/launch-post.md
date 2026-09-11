@@ -57,7 +57,7 @@ an agent believes a rejected order is resting), there is an undocumented $1
 minimum notional, and the SDK call that sounds like "my trades" returns the
 market's public tape. All three are encoded in the trading tools.
 
-**What it is.** 41 tools and 4 workflow prompts. Read tools need no keys.
+**What it is.** 42 tools and 4 workflow prompts. Read tools need no keys.
 Trading is non-custodial: you run the server, your keys sign on your machine,
 dry-run is the default and dry-run orders are papered against the live book
 so you can see simulated P&L. Operator guardrails (per-order and per-session
@@ -97,7 +97,7 @@ Show HN: Oddsrail – build a paper-trading agent for Polymarket in 10 seconds, 
 
 Author here. Oddsrail started as an open-source MCP server that lets an AI
 agent read, cost, audit and trade Polymarket and Kalshi (pip install
-oddsrail, MIT, 41 tools). Nobody wants to install an MCP server to try an
+oddsrail, MIT, 42 tools). Nobody wants to install an MCP server to try an
 idea, so the page linked above runs the strategy for you.
 
 What happens when you press Run: the switches you ticked (fade overshoots,
@@ -131,7 +131,7 @@ for the first three hours, and post Tuesday to Thursday between 14:00 and
 
 **Title:** oddsrail: MCP server for Polymarket + Kalshi, non-custodial, dry-run by default, with guardrails the agent can't change
 
-41 tools / 4 prompts. Read tools need no keys. Trading tools are dry-run by
+42 tools / 4 prompts. Read tools need no keys. Trading tools are dry-run by
 default and paper-trade against the live book so you get simulated P&L before
 you ever set `ODDSRAIL_DRY_RUN=0`. Operator guardrails (per-order and
 per-session notional caps, allowed markets) are enforced before any request.

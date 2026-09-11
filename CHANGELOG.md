@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.18.0 (2026-09-11)
+
+- **`my_balance`**: the operator's real Polymarket collateral, so an agent
+  can size against the account rather than a number it assumed. Kalshi had
+  one; Polymarket did not. 42 tools.
+- A dry-run order now reports `accepted`, like every other path. A paper
+  account that could not fund the order used to return a top level that read
+  like success.
+- `daily_review` works on a fresh install: it starts with `server_info` and
+  routes to the paper ledger when the live tools have nothing to report, and
+  every no-key answer now names the tool that does have data.
+- The guardrail note says which rules apply in dry-run. Two of the four are
+  live-only by nature, and claiming otherwise gave false confidence.
+- A mark that cannot be refreshed for twelve hours stops counting toward
+  equity and is listed as stale, instead of being carried forever.
+- One inbox is one account: plus-addressing and gmail dots normalise, which
+  also closes the hole under the board's new activity rules.
+- **Six notes** at `/notes/`, one page per venue-API footgun, each with its
+  own title, description, structured data and share card, linked from the
+  home page, the navigation, the sitemap and llms.txt.
+- CI: the site is checked for parse errors, em dashes in prose, internal
+  links that go nowhere and a sitemap that lists missing pages. A scheduled
+  workflow smoke-tests the hosted server every six hours.
+
 ## 0.17.1 (2026-09-11)
 
 - A `market_id` from a search now works in the tools that describe a market.

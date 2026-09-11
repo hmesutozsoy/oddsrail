@@ -26,7 +26,7 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.17.1"
+VERSION = "0.18.0"
 
 HOSTED_INSTRUCTIONS = (
     "Hosted oddsrail: Polymarket market data, signals, deterministic order "
@@ -664,6 +664,20 @@ async def my_positions(limit: int = 50) -> str:
     except Exception as e:
         return _err(e, host="the Polymarket data API")
 
+@srv.tool(description="The operator's REAL Polymarket collateral: what open "
+                      "positions are worth at current marks, for the wallet "
+                      "this server trades with. Use this before position_size "
+                      "so the bankroll is the account's, not a number the "
+                      "agent assumed. In dry-run the paper bankroll is the "
+                      "one that matters; see paper_positions.",
+           annotations=READ, structured_output=False)
+async def my_balance() -> str:
+    try:
+        return _j(await trading.my_balance())
+    except Exception as e:
+        return _err(e, host="the Polymarket data API")
+
+
 
 @srv.tool(description="KILL SWITCH — cancel every resting Polymarket order on "
                       "the operator account at once. Use when exposure must "
@@ -948,13 +962,18 @@ Do not resubmit anything whose outcome is "unknown"; report it instead."""
 def daily_review() -> str:
     return """Review current prediction-market exposure.
 
-1. my_positions() — what is held, and at what marks.
-2. open_orders() — what is still resting; for anything stale, order_status()
+1. server_info() — first, so the rest of this review is read correctly. If
+   dry_run is true, the live tools below have nothing to report and the
+   paper ledger is the portfolio: use paper_positions() for steps 2 and 3
+   and skip step 6.
+2. my_positions() — what is held, and at what marks. my_balance() for the
+   collateral behind it.
+3. open_orders() — what is still resting; for anything stale, order_status()
    to see whether it partially filled.
-3. my_fills(limit=25) — what actually executed since the last review.
-4. closing_soon(hours=24) — positions or orders in markets about to resolve
+4. my_fills(limit=25) — what actually executed since the last review.
+5. closing_soon(hours=24) — positions or orders in markets about to resolve
    need a decision now.
-5. builder_stats() — confirm routed flow is being attributed.
+6. builder_stats() — confirm routed flow is being attributed.
 
 Flag: resting orders far from the current book, positions in markets with an
 open UMA dispute (dispute_risk), and anything resolving within 24h."""

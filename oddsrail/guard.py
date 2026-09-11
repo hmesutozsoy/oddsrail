@@ -20,6 +20,12 @@ Unset means unlimited. A refusal is a structured answer, never an exception,
 and it names the rule, the limit and the request so the agent can report
 rather than retry. The session counter lives in this process: restarting the
 server resets it, which is the operator's call to make.
+
+When each rule applies. MAX_ORDER_NOTIONAL and ALLOWED_MARKETS are checked on
+every order, dry-run included, so an agent meets the fence in rehearsal.
+MAX_SESSION_NOTIONAL counts only orders that actually went to the venue, and
+MAX_OPEN_ORDERS reads the live account, so both are live-only by nature: a
+rehearsal that consumed the session budget would be worse than useless.
 """
 
 from __future__ import annotations
@@ -64,8 +70,11 @@ def status() -> dict:
         "session_live_orders": _session_orders,
         "note": ("operator-set via ODDSRAIL_MAX_ORDER_NOTIONAL, "
                  "ODDSRAIL_MAX_SESSION_NOTIONAL, ODDSRAIL_MAX_OPEN_ORDERS, "
-                 "ODDSRAIL_ALLOWED_MARKETS; unset means unlimited. Enforced in "
-                 "dry-run too. The agent cannot change them."),
+                 "ODDSRAIL_ALLOWED_MARKETS; unset means unlimited. The per-order "
+                 "cap and the allowed-markets list are enforced on every order, "
+                 "dry-run included. The session cap counts only orders that went "
+                 "to the venue and the open-order cap reads the live account, so "
+                 "both apply to live trading only."),
     }
 
 

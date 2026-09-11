@@ -1,0 +1,51 @@
+name: smoke
+
+# The hosted server is the product for anyone who never installs anything, so
+# it gets checked on a schedule rather than only when someone happens to look.
+on:
+  schedule: [{cron: "17 */6 * * *"}]
+  workflow_dispatch:
+
+jobs:
+  hosted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Health, scheduler heartbeat and mail transport
+        run: |
+          out=$(curl -fsS --max-time 20 https://mcp.oddsrail.app/healthz)
+          echo "$out"
+          echo "$out" | grep -q '"ok":true'        || { echo "not ok"; exit 1; }
+          echo "$out" | grep -q '"scheduler_ok":true' || { echo "scheduler heartbeat is stale"; exit 1; }
+          echo "$out" | grep -q '"mail":"resend"'  || echo "::warning::mail is not configured; sign-in is dead"
+
+      - name: The MCP endpoint refuses an unauthenticated call, correctly
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST https://mcp.oddsrail.app/mcp \
+            -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}')
+          [ "$code" = "401" ] || { echo "expected 401, got $code"; exit 1; }
+
+      - name: OAuth discovery documents are present
+        run: |
+          curl -fsS --max-time 20 https://mcp.oddsrail.app/.well-known/oauth-authorization-server | grep -q '"issuer":"https://mcp.oddsrail.app"'
+          curl -fsS --max-time 20 https://mcp.oddsrail.app/.well-known/oauth-protected-resource/mcp | grep -q '"resource"'
+
+      - name: The arena board answers
+        run: curl -fsS --max-time 60 https://mcp.oddsrail.app/arena/paper.json | grep -q '"division":"paper"'
+
+      - name: A paper pass still runs end to end
+        run: |
+          guest=$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          out=$(curl -fsS --max-time 180 -X POST https://mcp.oddsrail.app/run \
+            -H 'content-type: application/json' -H 'origin: https://oddsrail.app' \
+            -d "{\"guest\":\"$guest\",\"config\":{\"topics\":[\"all\"],\"on\":{\"report\":true}}}")
+          echo "$out" | head -c 200
+          echo "$out" | grep -q '"ok":true' || { echo "the pass failed"; exit 1; }
+
+      - name: The site serves its key pages
+        run: |
+          for p in / /build /arena /notes/ /llms.txt /sitemap.xml; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://oddsrail.app$p")
+            [ "$code" = "200" ] || { echo "oddsrail.app$p -> $code"; exit 1; }
+          done

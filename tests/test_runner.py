@@ -456,3 +456,57 @@ async def test_the_kill_switch_clears_resting_paper_orders(ledger, monkeypatch):
     out = await trading.cancel_all_orders()
     assert out["dry_run"] is True and out["paper_cancelled"] == 1
     assert json.loads(ledger.read_text())["open_orders"] == []
+
+
+async def test_a_dry_run_order_says_whether_it_was_accepted(ledger, monkeypatch):
+    """Every other path returns `accepted`; the default path used to return
+    neither that nor `ok`, and a paper refusal hid under a success-looking top
+    level."""
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    monkeypatch.setenv("ODDSRAIL_PAPER_LEDGER", str(ledger))
+    monkeypatch.setenv("ODDSRAIL_PAPER_BANKROLL", "20")
+    from oddsrail import paper as P, trading
+    P.reset()
+
+    ok = await trading.place_order(YES, "BUY", 0.51, 10)            # $5.10 of a $20 bankroll
+    assert ok["dry_run"] is True and ok["accepted"] is True
+    assert ok["paper"]["filled_size"] == 10.0
+
+    broke = await trading.place_order(YES, "BUY", 0.51, 1000)       # far beyond the bankroll
+    assert broke["accepted"] is False, broke
+    assert "insufficient paper cash" in broke["note"]
+
+
+async def test_a_mark_that_cannot_be_refreshed_stops_counting(ledger, monkeypatch):
+    fake = Fake(yes_book=(0.49, 0.51), no_book=(0.49, 0.51))
+    fake.install(monkeypatch)
+    token = runner.FORCED_LEDGER.set(ledger)
+    try:
+        d = paper.load()
+        d["cash"] = 900.0
+        d["positions"][YES] = {"size": 100.0, "cost": 50.0, "title": TITLE,
+                               "last_mark": 0.50, "last_mark_at": time.time() - 3600}
+        paper.save(d)
+
+        async def gone(token_id):
+            raise RuntimeError("404 no orderbook")
+
+        async def not_resolved(token_id, full=False):
+            m = slim(); m["closed"] = False
+            return m
+        monkeypatch.setattr(pm, "get_orderbook", gone)
+        monkeypatch.setattr(pm, "get_market_by_token", not_resolved)
+
+        fresh = await paper.positions()                              # one hour old: still carried
+        assert fresh["positions"][0]["mark"] == 0.50 and fresh["equity"] == 950.0
+        assert fresh["positions"][0]["mark_age_hours"] == 1.0 and not fresh["stale"]
+
+        d = paper.load()
+        d["positions"][YES]["last_mark_at"] = time.time() - 40 * 3600
+        paper.save(d)
+        old = await paper.positions()                                # past the limit: not valued
+        assert old["positions"][0]["mark"] is None and old["equity"] == 900.0
+        assert len(old["stale"]) == 1 and "excluded from equity" in old["stale"][0]["note"]
+    finally:
+        runner.FORCED_LEDGER.reset(token)

@@ -499,7 +499,7 @@ the expertise, which a flat tool list cannot convey.
 - **`position_size(bankroll_usd, price, fair_value)`**: fractional-Kelly sizing,
   capped, refusing negative-edge bets, returning its own assumptions.
 
-## Tools (41)
+## Tools (42)
 
 - `search_markets`, `get_market`, `get_orderbook`, `price_history`,
   `get_positions`: read-only, no keys

@@ -28,6 +28,11 @@ import uuid
 from pathlib import Path
 
 
+# A position whose book has been gone this long is no longer valued: the last
+# mark stops counting toward equity and the row says why.
+STALE_MARK_H = 12.0
+
+
 def enabled() -> bool:
     return os.environ.get("ODDSRAIL_PAPER", "1").strip().lower() not in ("0", "false", "no")
 
@@ -287,7 +292,7 @@ async def positions() -> dict:
     from . import polymarket as pm
     d = load()
     just_filled = await _settle_resting(d, pm)
-    rows, unreal, value, resolved = [], 0.0, 0.0, []
+    rows, unreal, value, resolved, stale = [], 0.0, 0.0, [], []
     for tid, pos in list(d["positions"].items()):
         mark = None
         try:
@@ -299,14 +304,23 @@ async def positions() -> dict:
                 mark = float(bb)
         except Exception:
             pass
+        stale_for = None
         if mark is None:
             settled = await _settle_if_resolved(d, pm, tid, pos)
             if settled:
                 resolved.append(settled)
                 continue
-            mark = pos.get("last_mark")          # no book right now: carry the last one
+            # No book right now. Carry the last mark for a while, because a
+            # momentary gap should not write a position to zero, but do not
+            # carry it forever: a mark nobody can refresh is not a valuation.
+            mark = pos.get("last_mark")
+            age = time.time() - float(pos.get("last_mark_at") or 0)
+            stale_for = round(age / 3600.0, 1)
+            if mark is not None and age > STALE_MARK_H * 3600:
+                mark = None
         else:
             pos["last_mark"] = mark
+            pos["last_mark_at"] = time.time()
         avg = pos["cost"] / pos["size"] if pos["size"] else 0.0
         u = (mark - avg) * pos["size"] if mark is not None else None
         v = mark * pos["size"] if mark is not None else None
@@ -314,15 +328,23 @@ async def positions() -> dict:
             unreal += u
         if v is not None:
             value += v
-        rows.append({"token_id": tid, "title": pos.get("title"), "size": round(pos["size"], 6),
-                     "avg_cost": round(avg, 4), "mark": mark,
-                     "unrealized_pnl": round(u, 4) if u is not None else None,
-                     "value": round(v, 4) if v is not None else None})
+        row = {"token_id": tid, "title": pos.get("title"), "size": round(pos["size"], 6),
+               "avg_cost": round(avg, 4), "mark": mark,
+               "unrealized_pnl": round(u, 4) if u is not None else None,
+               "value": round(v, 4) if v is not None else None}
+        if stale_for is not None:
+            row["mark_age_hours"] = stale_for
+            row["note"] = (f"no order book for {stale_for}h; "
+                           + ("carrying the last mark" if mark is not None else
+                              f"older than {STALE_MARK_H:g}h, so this position is excluded from equity"))
+        rows.append(row)
+        if stale_for is not None and mark is None:
+            stale.append(row)
     save(d)
     return {"enabled": enabled(), "ledger": str(ledger_path()),
             "bankroll": d["bankroll"], "cash": round(d["cash"], 2),
             "positions": rows, "open_orders": d["open_orders"],
-            "just_filled_resting": just_filled, "resolved": resolved,
+            "just_filled_resting": just_filled, "resolved": resolved, "stale": stale,
             "realized_pnl": round(d["realized_pnl"], 4),
             "unrealized_pnl": round(unreal, 4),
             "equity": round(d["cash"] + value, 2),

@@ -84,10 +84,26 @@ class DB:
         return self._one("SELECT * FROM users WHERE id=?", (uid,))
 
     def user_by_email(self, email: str) -> dict | None:
-        return self._one("SELECT * FROM users WHERE email=?", (email,))
+        return self._one("SELECT * FROM users WHERE email=?", (self.normalize_email(email),))
+
+    @staticmethod
+    def normalize_email(email: str) -> str:
+        """One inbox, one account. Plus-addressing and (on the providers that
+        ignore them) dots would otherwise mint unlimited accounts, which
+        matters once the board has rules worth gaming."""
+        email = str(email or "").strip().lower()
+        if email.count("@") != 1:
+            return email
+        local, _, domain = email.partition("@")
+        local = local.split("+", 1)[0]
+        if domain in ("gmail.com", "googlemail.com"):
+            local = local.replace(".", "")
+            domain = "gmail.com"
+        return f"{local}@{domain}" if local else email
 
     def login_user(self, email: str) -> dict:
         """Find or create the account for a verified email; returns it."""
+        email = self.normalize_email(email)
         now = time.time()
         with self._lock:
             row = self._c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
@@ -131,7 +147,7 @@ class DB:
     def put_magic_link(self, token_hash: str, email: str, rid: str, ttl: float) -> None:
         now = time.time()
         self._exec("INSERT INTO magic_links (token_hash, email, req_id, created, expires) VALUES (?,?,?,?,?)",
-                   (token_hash, email, rid, now, now + ttl))
+                   (token_hash, self.normalize_email(email), rid, now, now + ttl))
 
     def get_magic_link(self, token_hash: str) -> dict | None:
         return self._one("SELECT * FROM magic_links WHERE token_hash=? AND used IS NULL AND expires>?",
@@ -145,8 +161,10 @@ class DB:
         return cur.rowcount == 1
 
     def recent_links(self, email: str, window: float) -> int:
+        """Counted per inbox, not per spelling, so the throttle cannot be
+        stepped around with plus-addressing."""
         r = self._one("SELECT COUNT(*) AS n FROM magic_links WHERE email=? AND created>?",
-                      (email, time.time() - window))
+                      (self.normalize_email(email), time.time() - window))
         return int(r["n"]) if r else 0
 
     # -------------------------- authorization codes ----------------------- #

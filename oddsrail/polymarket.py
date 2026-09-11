@@ -248,6 +248,17 @@ _PERIODS = {"day": "DAY", "daily": "DAY", "1d": "DAY", "24h": "DAY",
             "all": "ALL", "alltime": "ALL", "all_time": "ALL"}
 
 
+async def portfolio_value(address: str) -> dict:
+    """What this wallet's open Polymarket positions are worth right now."""
+    import httpx
+    async with httpx.AsyncClient(timeout=20.0) as c:
+        r = await c.get("https://data-api.polymarket.com/value", params={"user": address})
+        r.raise_for_status()
+        rows = r.json()
+    value = float(rows[0]["value"]) if isinstance(rows, list) and rows else 0.0
+    return {"positions_value_usd": round(value, 4), "source": "data-api.polymarket.com/value"}
+
+
 def normalize_period(p: str) -> str:
     return _PERIODS.get(str(p or "").strip().lower().replace("-", "_"), "WEEK")
 

@@ -1,0 +1,73 @@
+name: site
+
+on:
+  push:
+    paths: ["site/**", ".github/workflows/site.yml"]
+  pull_request:
+    paths: ["site/**"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "20"}
+
+      - name: JavaScript parses
+        run: |
+          for f in site/*.js; do node --check "$f" || exit 1; done
+          echo "all site scripts parse"
+
+      - name: No em dashes in published prose
+        run: |
+          # The rule: prose never carries an em dash. Code is exempt, and so
+          # is anything inside a <pre> or <code> block, which is why this
+          # strips those before looking.
+          fail=0
+          for f in site/*.html site/notes/*.html site/*.txt site/*.md README.md CHANGELOG.md docs/*.md; do
+            [ -f "$f" ] || continue
+            if perl -0777 -pe 's{<pre.*?</pre>}{}gs; s{<code.*?</code>}{}gs; s{```.*?```}{}gs' "$f" | grep -q "—"; then
+              echo "em dash in $f"; fail=1
+            fi
+          done
+          [ "$fail" = "0" ] && echo "no em dashes in prose"
+          exit $fail
+
+      - name: Every internal link resolves to a file
+        run: |
+          fail=0
+          for f in site/*.html site/notes/*.html; do
+            for href in $(grep -o 'href="/[^"#?]*"' "$f" | sed 's/href="//;s/"//'); do
+              case "$href" in
+                /) target=site/index.html ;;
+                */) target="site${href}index.html" ;;
+                *.*) target="site${href}" ;;
+                *) target="site${href}.html" ;;
+              esac
+              [ -e "$target" ] || { echo "$f links to $href but $target does not exist"; fail=1; }
+            done
+          done
+          [ "$fail" = "0" ] && echo "internal links resolve"
+          exit $fail
+
+      - name: Sitemap lists only pages that exist
+        run: |
+          fail=0
+          for loc in $(grep -o '<loc>[^<]*</loc>' site/sitemap.xml | sed 's/<[^>]*>//g'); do
+            path="${loc#https://oddsrail.app}"
+            case "$path" in
+              /) target=site/index.html ;;
+              */) target="site${path}index.html" ;;
+              *.*) target="site${path}" ;;
+              *) target="site${path}.html" ;;
+            esac
+            [ -e "$target" ] || { echo "sitemap lists $loc but $target does not exist"; fail=1; }
+          done
+          [ "$fail" = "0" ] && echo "sitemap is honest"
+          exit $fail

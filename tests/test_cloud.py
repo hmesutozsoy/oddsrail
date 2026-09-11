@@ -89,7 +89,8 @@ def register(base: str, name: str = "claude-test") -> dict:
     return {"meta": meta, "client": r.json()}
 
 
-def sign_in(base: str, email: str, reg: dict | None = None, wrong_verifier: bool = False) -> dict:
+def sign_in(base: str, email: str, reg: dict | None = None, wrong_verifier: bool = False,
+            shown: str | None = None) -> dict:
     """Authorize -> magic link -> confirm -> code -> tokens, asserting each hop."""
     reg = reg or register(base)
     meta, client = reg["meta"], reg["client"]
@@ -116,7 +117,9 @@ def sign_in(base: str, email: str, reg: dict | None = None, wrong_verifier: bool
     # A link scanner's GET must not sign anyone in: it only renders Continue.
     for _ in range(2):
         peek = httpx.get(link)
-        assert peek.status_code == 200 and "Continue" in peek.text and email in peek.text
+        # the page shows the inbox that will receive it, which is the
+        # normalized address when the caller typed a plus-tagged one
+        assert peek.status_code == 200 and "Continue" in peek.text and (shown or email) in peek.text
 
     done = httpx.post(base + "/login/verify", data={"t": token}, follow_redirects=False)
     assert done.status_code == 303, done.text
@@ -430,3 +433,21 @@ def test_reserved_words_cannot_be_worn_as_a_name(cloud):
         r = httpx.post(base + "/agents", headers=auth, json={"name": name, "arena": True})
         assert r.status_code == 400 and "reserved" in r.json()["error"], name
     assert httpx.post(base + "/agents", headers=auth, json={"name": "greenhouse gases", "arena": False}).status_code == 400
+
+
+def test_one_inbox_is_one_account(cloud):
+    from oddsrail.cloud.db import DB
+    n = DB.normalize_email
+    assert n("A.B+arena@Gmail.com") == "ab@gmail.com"
+    assert n("a.b@googlemail.com") == "ab@gmail.com"
+    assert n("First+tag@fastmail.com") == "first@fastmail.com"
+    assert n("dots.kept@outlook.com") == "dots.kept@outlook.com"     # only gmail ignores dots
+    assert n("not-an-email") == "not-an-email"
+
+    base = cloud["base"]
+    first = sign_in(base, "farm@example.com")["token_response"].json()["access_token"]
+    second = sign_in(base, "farm+second@example.com",
+                     shown="farm@example.com")["token_response"].json()["access_token"]
+    a = httpx.get(base + "/me", headers={"authorization": f"Bearer {first}"}).json()
+    b = httpx.get(base + "/me", headers={"authorization": f"Bearer {second}"}).json()
+    assert a["email"] == b["email"] == "farm@example.com", "plus-addressing is the same account"
