@@ -65,3 +65,14 @@ pre-trade verdict and the switches behind it. https://oddsrail.app/agent?name=<n
 renders one arena agent: strategy, equity curve, and its last pass. Both are served
 from the hosted API (https://mcp.oddsrail.app/runs/<id>.json and
 https://mcp.oddsrail.app/arena/agent/<name>.json), which anyone may read.
+
+## Notes on the venue APIs
+
+Six things Polymarket's and Kalshi's APIs do that quietly cost money, each
+found live and each reproducible with no keys. Index: https://oddsrail.app/notes/
+- https://oddsrail.app/notes/polymarket-orderbook-is-worst-first
+- https://oddsrail.app/notes/kalshi-has-no-ask-side
+- https://oddsrail.app/notes/prediction-market-geoblock-looks-healthy-until-the-order
+- https://oddsrail.app/notes/a-rejected-order-is-a-return-value-not-an-exception
+- https://oddsrail.app/notes/the-sdk-call-that-sounds-like-your-trades-returns-everyones
+- https://oddsrail.app/notes/a-price-gap-across-venues-is-not-an-edge

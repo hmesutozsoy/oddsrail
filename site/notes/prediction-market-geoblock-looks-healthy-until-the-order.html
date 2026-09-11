@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A geoblocked machine reads fine and fails only at the order | oddsrail notes</title>
+<meta name="description" content="Polymarket and Kalshi enforce jurisdiction at order placement, not at connection. Every public read answers normally, so a restricted server looks perfectly healthy until the first trade.">
+<meta name="keywords" content="polymarket geoblock, polymarket restricted jurisdiction, kalshi geoblock, 403 order placement">
+<link rel="canonical" href="https://oddsrail.app/notes/prediction-market-geoblock-looks-healthy-until-the-order">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="A geoblocked machine reads fine and fails only at the order">
+<meta property="og:description" content="Polymarket and Kalshi enforce jurisdiction at order placement, not at connection. Every public read answers normally, so a restricted server looks perfectly healthy until the first trade.">
+<meta property="og:url" content="https://oddsrail.app/notes/prediction-market-geoblock-looks-healthy-until-the-order">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A geoblocked machine reads fine and fails only at the order">
+<meta name="twitter:description" content="Polymarket and Kalshi enforce jurisdiction at order placement, not at connection. Every public read answers normally, so a restricted server looks perfectly healthy until the first trade.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"A geoblocked machine reads fine and fails only at the order","description":"Polymarket and Kalshi enforce jurisdiction at order placement, not at connection. Every public read answers normally, so a restricted server looks perfectly healthy until the first trade.","url":"https://oddsrail.app/notes/prediction-market-geoblock-looks-healthy-until-the-order","author":{"@type":"Organization","name":"oddsrail"},"publisher":{"@type":"Organization","name":"oddsrail"},"image":"https://oddsrail.app/og.png"}</script>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css?v=0.17.1">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/notes/">Notes</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<article class="note">
+<section class="hero compact">
+  <p class="kicker"><a href="/notes/">Notes</a> on the venue APIs</p>
+  <h1>A geoblocked machine reads fine and fails only at the order</h1>
+  <p class="lede">Polymarket and Kalshi enforce jurisdiction at order placement, not at connection. Every public read answers normally, so a restricted server looks perfectly healthy until the first trade.</p>
+</section>
+<section class="prose">
+<p>Restrictions on both venues are enforced where the order is placed, not where the connection is made. Market data, order books, price history and resolution text all answer normally from a restricted machine. The first thing that fails is the trade.</p>
+<p>For an agent that means the usual health check is worthless: everything it can test passes, and the failure arrives at the one call that is not idempotent.</p>
+<h2>The four failure shapes, which are not the same thing</h2>
+<ul>
+<li><b>Jurisdiction.</b> An HTTP 403 or 451 at order placement. Retrying will never help, and an agent that treats it as transient will loop.</li>
+<li><b>Network filter.</b> Some ISPs return an HTML interstitial with a 200 status to a JSON endpoint. A parser that assumes JSON sees a decode error and reports "the venue is down".</li>
+<li><b>Local TLS.</b> A Python install with no CA bundle raises <code>CERTIFICATE_VERIFY_FAILED</code> on the websocket. That is a machine problem, not a venue problem, and the fix is <code>SSL_CERT_FILE=$(python -m certifi)</code>.</li>
+<li><b>Timeout wrapped by the SDK.</b> A read timeout can surface as a generic transport error. "Nothing was sent" is not a safe thing to tell an agent after a timeout on a trade.</li>
+</ul>
+<h2>The advisory endpoint is advisory</h2>
+<p>Polymarket publishes <code>polymarket.com/api/geoblock</code>, and it is genuinely useful for a preflight. It is also IP-based and accepts unvalidated overrides, so <code>?country=ZZ</code> answers <code>blocked: false</code>. "Not blocked" means "absent from a list", not "permitted", and the terms bind on residence and citizenship rather than on where your packets leave from.</p>
+<h2>What oddsrail does</h2>
+<p>It runs the preflight and reports the verdict as advisory, never as a gate, and it classifies every failure into one of those shapes with a hint that tells the agent what to do next: stop and tell the operator, fix the local CA bundle, or check whether the order rests before retrying. <code>server_info</code> shows the verdict and venue reachability before the first order of a session.</p>
+<p class="note">Found by driving the venues live, then encoded so an agent never rediscovers it. Reproduce every one of these with no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
+<p style="margin-top:22px"><a class="btn primary" href="/build">Try an agent that knows all six</a> <a class="btn" href="/notes/">All notes</a></p>
+</section>
+</article>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
+  </div>
+</footer>
+</body>
+</html>

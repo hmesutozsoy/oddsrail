@@ -32,6 +32,7 @@
     <nav aria-label="Sections">
       <a href="/build">Build</a>
       <a href="/arena">Arena</a>
+      <a href="/notes/">Notes</a>
       <a href="#compare">Compare</a>
       <a href="#lessons">Lessons</a>
       <a href="#tools">Tools</a>
@@ -124,14 +125,14 @@
 
 <section id="lessons" aria-labelledby="h-lessons">
   <h2 id="h-lessons">Built from the things the raw API gets wrong</h2>
-  <p class="sub">Each of these was found by driving the venues live, then encoded so an agent never has to rediscover it. Reproduce all six yourself, no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
+  <p class="sub">Each of these was found by driving the venues live, then encoded so an agent never has to rediscover it. Each one has <a href="/notes/">its own note</a>. Reproduce all six yourself, no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
   <ol class="lessons">
-    <li><h3>The book arrives worst-first</h3><p>Polymarket's raw orderbook lists bids ascending and asks descending, so <code>bids[0]</code> is the worst level. Every model's prior says index 0 is best. oddsrail normalises both venues to best-first and walks the book to quote what a size actually costs.</p></li>
-    <li><h3>Rejections don't raise</h3><p>The exchange models a rejected order as a return value, not an exception. Reported carelessly, a rejection reads to an agent as a resting order. oddsrail branches on it: <code>accepted: false</code>, nothing attributed, and an unrecognised response shape is never reported as posted.</p></li>
-    <li><h3>Geoblocks look healthy until the order</h3><p>Restricted jurisdictions are enforced at order placement. Public reads answer normally, so everything works right up to the trade. oddsrail classifies every failure shape (jurisdiction, network filter, ISP interstitial, a missing local CA bundle) and gives the agent an actionable hint instead of a retry loop.</p></li>
-    <li><h3>"Account trades" returns everyone's</h3><p>The SDK call that sounds like your fills returns the market's public tape. oddsrail reads the operator's activity feed by wallet, with transaction hashes.</p></li>
-    <li><h3>Kalshi has no yes/no side</h3><p>Everything is quoted from the YES book as bid and ask; prices are dollar strings, not cents. Getting the translation backwards silently takes the opposite position. oddsrail lets the agent say <code>outcome=no, action=buy</code> and translates it, tested exhaustively rather than by example.</p></li>
-    <li><h3>A price gap is not an edge</h3><p>Identical wording on two venues does not mean identical settlement. oddsrail pairs candidates by similarity and close date, then audits resolution sources, UMA status and structure before anyone calls it arbitrage.</p></li>
+    <li><h3><a href="/notes/polymarket-orderbook-is-worst-first">The book arrives worst-first</a></h3><p>Polymarket's raw orderbook lists bids ascending and asks descending, so <code>bids[0]</code> is the worst level. Every model's prior says index 0 is best. oddsrail normalises both venues to best-first and walks the book to quote what a size actually costs.</p></li>
+    <li><h3><a href="/notes/a-rejected-order-is-a-return-value-not-an-exception">Rejections don't raise</a></h3><p>The exchange models a rejected order as a return value, not an exception. Reported carelessly, a rejection reads to an agent as a resting order. oddsrail branches on it: <code>accepted: false</code>, nothing attributed, and an unrecognised response shape is never reported as posted.</p></li>
+    <li><h3><a href="/notes/prediction-market-geoblock-looks-healthy-until-the-order">Geoblocks look healthy until the order</a></h3><p>Restricted jurisdictions are enforced at order placement. Public reads answer normally, so everything works right up to the trade. oddsrail classifies every failure shape (jurisdiction, network filter, ISP interstitial, a missing local CA bundle) and gives the agent an actionable hint instead of a retry loop.</p></li>
+    <li><h3><a href="/notes/the-sdk-call-that-sounds-like-your-trades-returns-everyones">"Account trades" returns everyone's</a></h3><p>The SDK call that sounds like your fills returns the market's public tape. oddsrail reads the operator's activity feed by wallet, with transaction hashes.</p></li>
+    <li><h3><a href="/notes/kalshi-has-no-ask-side">Kalshi has no yes/no side</a></h3><p>Everything is quoted from the YES book as bid and ask; prices are dollar strings, not cents. Getting the translation backwards silently takes the opposite position. oddsrail lets the agent say <code>outcome=no, action=buy</code> and translates it, tested exhaustively rather than by example.</p></li>
+    <li><h3><a href="/notes/a-price-gap-across-venues-is-not-an-edge">A price gap is not an edge</a></h3><p>Identical wording on two venues does not mean identical settlement. oddsrail pairs candidates by similarity and close date, then audits resolution sources, UMA status and structure before anyone calls it arbitrage.</p></li>
   </ol>
 </section>
 

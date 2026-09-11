@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The call that sounds like your trades returns everyone's | oddsrail notes</title>
+<meta name="description" content="list_account_trades returns the market's public tape, not your fills. Read your own activity by wallet instead.">
+<meta name="keywords" content="polymarket my trades, list_account_trades, polymarket fills api, polymarket activity by wallet">
+<link rel="canonical" href="https://oddsrail.app/notes/the-sdk-call-that-sounds-like-your-trades-returns-everyones">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="The call that sounds like your trades returns everyone's">
+<meta property="og:description" content="list_account_trades returns the market's public tape, not your fills. Read your own activity by wallet instead.">
+<meta property="og:url" content="https://oddsrail.app/notes/the-sdk-call-that-sounds-like-your-trades-returns-everyones">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The call that sounds like your trades returns everyone's">
+<meta name="twitter:description" content="list_account_trades returns the market's public tape, not your fills. Read your own activity by wallet instead.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"The call that sounds like your trades returns everyone"s","description":"list_account_trades returns the market"s public tape, not your fills. Read your own activity by wallet instead.","url":"https://oddsrail.app/notes/the-sdk-call-that-sounds-like-your-trades-returns-everyones","author":{"@type":"Organization","name":"oddsrail"},"publisher":{"@type":"Organization","name":"oddsrail"},"image":"https://oddsrail.app/og.png"}</script>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css?v=0.17.1">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/notes/">Notes</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<article class="note">
+<section class="hero compact">
+  <p class="kicker"><a href="/notes/">Notes</a> on the venue APIs</p>
+  <h1>The call that sounds like your trades returns everyone's</h1>
+  <p class="lede">list_account_trades returns the market's public tape, not your fills. Read your own activity by wallet instead.</p>
+</section>
+<section class="prose">
+<p>There is a call whose name promises your account's trades and whose response is the market's public tape. Nothing errors. The data is real. It is just not yours.</p>
+<p>An agent that builds a position from it will count strangers' fills as its own, and every number downstream, average cost, realised profit, exposure, is wrong in a way that looks entirely reasonable.</p>
+<h2>The correct source</h2>
+<p>Read the activity feed for your wallet address. That returns your fills, with transaction hashes you can check on Polygon, which is also what makes a paper trail auditable by someone who does not trust you.</p>
+<h2>The general lesson</h2>
+<p>On venue APIs, a name is not a contract. Two calls that differ by one word can differ by "the whole market" versus "you". When the answer will drive money, verify what a call returns by checking a value you already know: place one small order and find it in the response before you trust the shape.</p>
+<h2>What oddsrail does</h2>
+<p><code>my_fills</code> and <code>my_positions</code> read the operator's own activity by wallet and carry transaction hashes. The public tape is available too, under a name that says so.</p>
+<p class="note">Found by driving the venues live, then encoded so an agent never rediscovers it. Reproduce every one of these with no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
+<p style="margin-top:22px"><a class="btn primary" href="/build">Try an agent that knows all six</a> <a class="btn" href="/notes/">All notes</a></p>
+</section>
+</article>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
+  </div>
+</footer>
+</body>
+</html>

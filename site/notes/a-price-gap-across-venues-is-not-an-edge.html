@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A price gap across two venues is not an edge | oddsrail notes</title>
+<meta name="description" content="Identical wording on Polymarket and Kalshi does not mean identical settlement. Most cross-venue gaps are a settlement difference, not free money.">
+<meta name="keywords" content="polymarket kalshi arbitrage, cross venue prediction market, settlement risk, resolution criteria">
+<link rel="canonical" href="https://oddsrail.app/notes/a-price-gap-across-venues-is-not-an-edge">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="A price gap across two venues is not an edge">
+<meta property="og:description" content="Identical wording on Polymarket and Kalshi does not mean identical settlement. Most cross-venue gaps are a settlement difference, not free money.">
+<meta property="og:url" content="https://oddsrail.app/notes/a-price-gap-across-venues-is-not-an-edge">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A price gap across two venues is not an edge">
+<meta name="twitter:description" content="Identical wording on Polymarket and Kalshi does not mean identical settlement. Most cross-venue gaps are a settlement difference, not free money.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"A price gap across two venues is not an edge","description":"Identical wording on Polymarket and Kalshi does not mean identical settlement. Most cross-venue gaps are a settlement difference, not free money.","url":"https://oddsrail.app/notes/a-price-gap-across-venues-is-not-an-edge","author":{"@type":"Organization","name":"oddsrail"},"publisher":{"@type":"Organization","name":"oddsrail"},"image":"https://oddsrail.app/og.png"}</script>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css?v=0.17.1">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/notes/">Notes</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<article class="note">
+<section class="hero compact">
+  <p class="kicker"><a href="/notes/">Notes</a> on the venue APIs</p>
+  <h1>A price gap across two venues is not an edge</h1>
+  <p class="lede">Identical wording on Polymarket and Kalshi does not mean identical settlement. Most cross-venue gaps are a settlement difference, not free money.</p>
+</section>
+<section class="prose">
+<p>Two markets on two venues, same wording, twelve points apart. It looks like arbitrage and it usually is not, because the price is not paying for the same event.</p>
+<h2>What actually differs</h2>
+<ul>
+<li><b>Resolution source.</b> One settles on an official announcement, the other on a named data provider. In the window between them, both can be right and pay opposite ways.</li>
+<li><b>Close time.</b> An hour of difference is an hour in which the outcome can change.</li>
+<li><b>Criteria text.</b> The description is the contract on Polymarket. "Confirmed by" and "in the opinion of" are where disputes come from.</li>
+<li><b>Structure.</b> A multi-outcome market with negative risk does not behave like a plain binary, and the same words can hide it.</li>
+<li><b>Dispute status.</b> A market with an open UMA dispute has a price that already reflects a fight about what happened.</li>
+</ul>
+<h2>Naive matching makes it worse</h2>
+<p>Match on title similarity alone and you will pair unrelated markets and report a seventy point gap that is pure fiction. The honest answer to "find me cross-venue arbitrage" is usually "nothing qualifies", and a tool that never returns that answer is telling you what you want to hear.</p>
+<h2>What oddsrail does</h2>
+<p><code>compare_venues</code> requires title similarity above a threshold and close dates within a week, and it usually returns nothing. <code>settlement_audit</code> then compares close times, resolution sources, dispute status and structure on live data and returns ok, caution or block with reasons. Only after a block-free audit is a difference worth calling an edge.</p>
+<p class="note">Found by driving the venues live, then encoded so an agent never rediscovers it. Reproduce every one of these with no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
+<p style="margin-top:22px"><a class="btn primary" href="/build">Try an agent that knows all six</a> <a class="btn" href="/notes/">All notes</a></p>
+</section>
+</article>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
+  </div>
+</footer>
+</body>
+</html>

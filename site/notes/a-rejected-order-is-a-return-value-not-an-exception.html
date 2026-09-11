@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A rejected order is a return value, not an exception | oddsrail notes</title>
+<meta name="description" content="The exchange models a rejected order as an ok:false response. Reported carelessly, a rejection reads to an agent as a resting order.">
+<meta name="keywords" content="polymarket order rejected, clob place order ok false, polymarket minimum order size">
+<link rel="canonical" href="https://oddsrail.app/notes/a-rejected-order-is-a-return-value-not-an-exception">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="A rejected order is a return value, not an exception">
+<meta property="og:description" content="The exchange models a rejected order as an ok:false response. Reported carelessly, a rejection reads to an agent as a resting order.">
+<meta property="og:url" content="https://oddsrail.app/notes/a-rejected-order-is-a-return-value-not-an-exception">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A rejected order is a return value, not an exception">
+<meta name="twitter:description" content="The exchange models a rejected order as an ok:false response. Reported carelessly, a rejection reads to an agent as a resting order.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"A rejected order is a return value, not an exception","description":"The exchange models a rejected order as an ok:false response. Reported carelessly, a rejection reads to an agent as a resting order.","url":"https://oddsrail.app/notes/a-rejected-order-is-a-return-value-not-an-exception","author":{"@type":"Organization","name":"oddsrail"},"publisher":{"@type":"Organization","name":"oddsrail"},"image":"https://oddsrail.app/og.png"}</script>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css?v=0.17.1">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/notes/">Notes</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<article class="note">
+<section class="hero compact">
+  <p class="kicker"><a href="/notes/">Notes</a> on the venue APIs</p>
+  <h1>A rejected order is a return value, not an exception</h1>
+  <p class="lede">The exchange models a rejected order as an ok:false response. Reported carelessly, a rejection reads to an agent as a resting order.</p>
+</section>
+<section class="prose">
+<p>Place an order that the exchange refuses and nothing raises. You get a response object whose <code>ok</code> field is false, alongside a reason. Code written in the usual shape:</p>
+<pre><code>try:
+    resp = await client.place_limit_order(...)
+    return {"placed": True, "response": resp}     # wrong
+except Exception as e:
+    return {"placed": False, "error": str(e)}</code></pre>
+<p>reports every rejection as a successful placement. An agent then believes it has exposure it does not have, and the mistake compounds: it will not retry, it will size the next trade against a position that is not there, and its own risk rules see a phantom.</p>
+<h2>The related trap: an undocumented minimum</h2>
+<p>Marketable orders have a <b>one dollar minimum notional</b> that is not in the documentation. Price times size below that is rejected, which is exactly the size an agent picks when it is being careful on its first trade.</p>
+<h2>The rule that makes this safe</h2>
+<p>Branch on the response, and treat an unrecognised shape as unknown rather than as success. After a timeout, an order may or may not rest: the only correct move is to read open orders before retrying, never to resubmit blindly, because a doubled position is the expensive failure.</p>
+<h2>What oddsrail does</h2>
+<p><code>place_order</code> returns <code>accepted</code> explicitly, never infers success from the absence of an exception, and on a timeout returns a result that says the order is unconfirmed and names the tool to call next. <code>check_order</code> runs before placement and catches the $1 minimum, the wrong side, the wrong market and a price through the book, deterministically and with no model involved.</p>
+<p class="note">Found by driving the venues live, then encoded so an agent never rediscovers it. Reproduce every one of these with no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
+<p style="margin-top:22px"><a class="btn primary" href="/build">Try an agent that knows all six</a> <a class="btn" href="/notes/">All notes</a></p>
+</section>
+</article>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
+  </div>
+</footer>
+</body>
+</html>

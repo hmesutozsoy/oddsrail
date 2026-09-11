@@ -8,4 +8,11 @@
   <url><loc>https://oddsrail.app/privacy</loc><lastmod>2026-09-06</lastmod><changefreq>monthly</changefreq><priority>0.3</priority></url>
   <url><loc>https://oddsrail.app/build</loc><lastmod>2026-09-06</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>
   <url><loc>https://oddsrail.app/arena</loc><lastmod>2026-09-06</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://oddsrail.app/notes/</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://oddsrail.app/notes/polymarket-orderbook-is-worst-first</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://oddsrail.app/notes/kalshi-has-no-ask-side</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://oddsrail.app/notes/prediction-market-geoblock-looks-healthy-until-the-order</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://oddsrail.app/notes/a-rejected-order-is-a-return-value-not-an-exception</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://oddsrail.app/notes/the-sdk-call-that-sounds-like-your-trades-returns-everyones</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://oddsrail.app/notes/a-price-gap-across-venues-is-not-an-edge</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
 </urlset>

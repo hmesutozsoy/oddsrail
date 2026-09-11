@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kalshi has no ask side: two bid ladders, and a NO bid is a YES ask | oddsrail notes</title>
+<meta name="description" content="Kalshi's order book publishes YES bids and NO bids, both ascending, as dollar strings. Getting the translation backwards silently takes the opposite position.">
+<meta name="keywords" content="kalshi orderbook, kalshi yes no, kalshi api bid ask, kalshi dollar strings">
+<link rel="canonical" href="https://oddsrail.app/notes/kalshi-has-no-ask-side">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="Kalshi has no ask side: two bid ladders, and a NO bid is a YES ask">
+<meta property="og:description" content="Kalshi's order book publishes YES bids and NO bids, both ascending, as dollar strings. Getting the translation backwards silently takes the opposite position.">
+<meta property="og:url" content="https://oddsrail.app/notes/kalshi-has-no-ask-side">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kalshi has no ask side: two bid ladders, and a NO bid is a YES ask">
+<meta name="twitter:description" content="Kalshi's order book publishes YES bids and NO bids, both ascending, as dollar strings. Getting the translation backwards silently takes the opposite position.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Kalshi has no ask side: two bid ladders, and a NO bid is a YES ask","description":"Kalshi"s order book publishes YES bids and NO bids, both ascending, as dollar strings. Getting the translation backwards silently takes the opposite position.","url":"https://oddsrail.app/notes/kalshi-has-no-ask-side","author":{"@type":"Organization","name":"oddsrail"},"publisher":{"@type":"Organization","name":"oddsrail"},"image":"https://oddsrail.app/og.png"}</script>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css?v=0.17.1">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/notes/">Notes</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<article class="note">
+<section class="hero compact">
+  <p class="kicker"><a href="/notes/">Notes</a> on the venue APIs</p>
+  <h1>Kalshi has no ask side: two bid ladders, and a NO bid is a YES ask</h1>
+  <p class="lede">Kalshi's order book publishes YES bids and NO bids, both ascending, as dollar strings. Getting the translation backwards silently takes the opposite position.</p>
+</section>
+<section class="prose">
+<p>Kalshi's book has no asks in it. <code>GET /trade-api/v2/markets/&lt;ticker&gt;/orderbook</code> returns two arrays, <code>yes</code> and <code>no</code>, and both are <b>bid</b> ladders, ascending, so the best price in each is the last element.</p>
+<h2>The translation</h2>
+<p>A YES contract and a NO contract on the same market are worth one dollar together. So somebody bidding 0.25 for NO is, by definition, offering YES at 0.75:</p>
+<pre><code>best_yes_ask = 1 - best_no_bid
+best_no_ask  = 1 - best_yes_bid</code></pre>
+<p>Get that backwards and you do not get an error. You get a position on the side you did not want, at a price that looks plausible, and you find out at settlement.</p>
+<h2>The second trap in the same response</h2>
+<p>Prices are <b>dollar strings</b>, not integer cents. The fields carry a <code>_dollars</code> suffix and look like <code>"0.5600"</code>; sizes are fixed-point strings too. Integer cents were removed in March 2026, so any code that multiplies by 100 out of habit is now wrong by two orders of magnitude. Parse with <code>Decimal</code>, not <code>float</code>, if you care about the last cent.</p>
+<h2>What oddsrail does</h2>
+<p>It presents one book per market, best-first, with a real bid and a real ask on each side, and lets the agent say what it means:</p>
+<pre><code>kalshi_place_order(ticker="...", outcome="no", action="buy", price=0.25, count=10)</code></pre>
+<p>The YES-book translation happens inside, in <code>Decimal</code>, and is unit-tested exhaustively rather than by example. One more thing worth knowing before you build on this: Kalshi's Developer Agreement limits API use to a member's own trading, so a hosted multi-tenant service routing other people's Kalshi orders is not permitted. Bring your own key and run it yourself.</p>
+<p class="note">Found by driving the venues live, then encoded so an agent never rediscovers it. Reproduce every one of these with no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
+<p style="margin-top:22px"><a class="btn primary" href="/build">Try an agent that knows all six</a> <a class="btn" href="/notes/">All notes</a></p>
+</section>
+</article>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
+  </div>
+</footer>
+</body>
+</html>

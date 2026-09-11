@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Polymarket's order book arrives worst-first | oddsrail notes</title>
+<meta name="description" content="bids[0] is the worst bid, not the best. Why the raw CLOB book is ordered the way it is, what it costs you, and how to normalise and walk it.">
+<meta name="keywords" content="polymarket orderbook, bids[0], best bid, clob book order, walk the book">
+<link rel="canonical" href="https://oddsrail.app/notes/polymarket-orderbook-is-worst-first">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="oddsrail">
+<meta property="og:title" content="Polymarket's order book arrives worst-first">
+<meta property="og:description" content="bids[0] is the worst bid, not the best. Why the raw CLOB book is ordered the way it is, what it costs you, and how to normalise and walk it.">
+<meta property="og:url" content="https://oddsrail.app/notes/polymarket-orderbook-is-worst-first">
+<meta property="og:image" content="https://oddsrail.app/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Polymarket's order book arrives worst-first">
+<meta name="twitter:description" content="bids[0] is the worst bid, not the best. Why the raw CLOB book is ordered the way it is, what it costs you, and how to normalise and walk it.">
+<meta name="twitter:image" content="https://oddsrail.app/og.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Polymarket"s order book arrives worst-first","description":"bids[0] is the worst bid, not the best. Why the raw CLOB book is ordered the way it is, what it costs you, and how to normalise and walk it.","url":"https://oddsrail.app/notes/polymarket-orderbook-is-worst-first","author":{"@type":"Organization","name":"oddsrail"},"publisher":{"@type":"Organization","name":"oddsrail"},"image":"https://oddsrail.app/og.png"}</script>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css?v=0.17.1">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
+    <nav aria-label="Sections">
+      <a href="/">Home</a>
+      <a href="/build">Build</a>
+      <a href="/arena">Arena</a>
+      <a href="/notes/">Notes</a>
+      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+<article class="note">
+<section class="hero compact">
+  <p class="kicker"><a href="/notes/">Notes</a> on the venue APIs</p>
+  <h1>Polymarket's order book arrives worst-first</h1>
+  <p class="lede">bids[0] is the worst bid, not the best. Why the raw CLOB book is ordered the way it is, what it costs you, and how to normalise and walk it.</p>
+</section>
+<section class="prose">
+<p>Ask Polymarket's CLOB for a book and you get something that looks obvious and is not:</p>
+<pre><code>curl -s "https://clob.polymarket.com/book?token_id=&lt;token&gt;" | jq '.bids[0], .asks[0]'</code></pre>
+<p><code>bids[0]</code> is the <b>worst</b> bid on the book, and <code>asks[0]</code> is the worst ask. The ladders are sorted away from the touch: bids ascend toward the best, asks descend toward it. The best levels are at the <b>end</b> of each array.</p>
+<h2>Why it bites</h2>
+<p>Every prior a language model has says index zero is the top of book. An agent that reads <code>bids[0].price</code> as the best bid will quote a price that is often several cents away from the market, and will size against depth that is not where it thinks it is. The error is silent: the numbers are real prices from a real book, just the wrong end of it.</p>
+<h2>What the correct read looks like</h2>
+<p>Take the last element of each ladder for the touch, and walk from the touch inward when you need more than the top level:</p>
+<pre><code>book = requests.get(url, params={"token_id": token}).json()
+best_bid = float(book["bids"][-1]["price"])   # not [0]
+best_ask = float(book["asks"][-1]["price"])   # not [0]</code></pre>
+<p>A size question is a different question again. "What does 200 shares cost" is not the best ask times 200; it is a walk down the ladder until the size is filled, and the average is what you actually pay.</p>
+<h2>What oddsrail does</h2>
+<p>Both venues are normalised to best-first, and <code>quote_cost</code> walks the book for a real size and returns the average price, the slippage against the touch, and whether the book can fill it at all. The agent never sees a raw ladder and never has to remember which way it points.</p>
+<pre><code>pip install oddsrail
+python examples/footguns.py     # section 1 prints the raw book next to the normalised one</code></pre>
+<p class="note">Found by driving the venues live, then encoded so an agent never rediscovers it. Reproduce every one of these with no keys: <code>pip install oddsrail &amp;&amp; python examples/footguns.py</code> (<a href="https://github.com/hmesutozsoy/oddsrail/blob/main/examples/footguns.py">source</a>).</p>
+<p style="margin-top:22px"><a class="btn primary" href="/build">Try an agent that knows all six</a> <a class="btn" href="/notes/">All notes</a></p>
+</section>
+</article>
+</main>
+
+<footer class="bottom">
+  <div class="wrap">
+    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
+  </div>
+</footer>
+</body>
+</html>
