@@ -26,7 +26,7 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.17.0"
+VERSION = "0.17.1"
 
 HOSTED_INSTRUCTIONS = (
     "Hosted oddsrail: Polymarket market data, signals, deterministic order "
@@ -156,7 +156,11 @@ async def search_markets(query: str = "", limit: int = 10) -> str:
                     host="the Polymarket API")
 
 
-@srv.tool(description="Get one market's details by slug (or id).",
+@srv.tool(description="Get one market's details. Accepts the market slug, "
+                      "the Gamma market id, or either of its CLOB token ids "
+                      "(the market_id that find_markets and search_markets "
+                      "return), so a token id from a search can be passed "
+                      "straight in.",
            annotations=READ, structured_output=False)
 async def get_market(id_or_slug: str) -> str:
     try:
@@ -224,7 +228,9 @@ async def overshoot_signal(token_id: str, hours: float = 6.0,
 
 @srv.tool(description="PREMIUM SIGNAL — dispute-risk triage. Scores 0-100 how "
                       "likely a market's resolution gets contested (UMA "
-                      "dispute risk) with transparent reasons.",
+                      "dispute risk) with transparent reasons. Takes the "
+                      "market slug, the Gamma id, or a CLOB token id (the "
+                      "market_id a search returns).",
            annotations=READ, structured_output=False)
 async def dispute_risk(id_or_slug: str) -> str:
     try:
@@ -780,7 +786,9 @@ async def redeemable_positions(limit: int = 200) -> str:
 @srv.tool(description="READ BEFORE TRUSTING A PRICE: the full resolution "
                       "contract for a market — what exactly resolves YES, who "
                       "resolves it, from which sources. venue is 'polymarket' "
-                      "(pass slug or id) or 'kalshi' (pass ticker).",
+                      "(pass the slug, the Gamma id, or the market_id a "
+                      "search returned, which is a CLOB token id) or 'kalshi' "
+                      "(pass the ticker).",
            annotations=READ, structured_output=False)
 async def resolution_criteria(venue: str, market_id: str) -> str:
     v = str(venue or "").lower()
@@ -788,7 +796,8 @@ async def resolution_criteria(venue: str, market_id: str) -> str:
         try:
             return _j(await pm.resolution_criteria(market_id))
         except Exception as e:
-            return _err(e, "pass the market's slug or id",
+            return _err(e, "pass the market's slug, its Gamma id, or the "
+                           "market_id from find_markets (a CLOB token id)",
                         host="the Polymarket API")
     if v == "kalshi":
         try:
@@ -831,8 +840,10 @@ async def closing_soon(hours: float = 24.0, limit: int = 10,
                       "LIVE data (no pre-curated pair list). Compares close "
                       "times, resolution sources, UMA dispute status and market "
                       "structure, and returns ok / caution / block with "
-                      "reasons. Run this before treating any cross-venue price "
-                      "difference as an edge.",
+                      "reasons. polymarket_id takes the slug, the Gamma id or "
+                      "the market_id a search returned (a CLOB token id); "
+                      "kalshi_ticker takes the ticker. Run this before "
+                      "treating any cross-venue price difference as an edge.",
            annotations=READ, structured_output=False)
 async def settlement_audit(polymarket_id: str, kalshi_ticker: str,
                            notional_usd: float = 0.0) -> str:

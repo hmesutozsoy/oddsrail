@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from oddsrail import audit, crossvenue as xv, signals, trading
+from oddsrail import audit, crossvenue as xv, polymarket as pm, signals, trading
 from oddsrail.kalshi import _to_yes_book, matches
 
 
@@ -258,3 +258,46 @@ def test_settlement_audit_flags_an_open_uma_dispute():
          "settlement_sources": [{"name": "AP"}]})
     assert r["verdict"] == "block"
     assert any(f["check"] == "uma_status" for f in r["findings"])
+
+
+# --------------------------------------------------------------------------- #
+# a market_id from a search has to work in the tools that describe a market    #
+# --------------------------------------------------------------------------- #
+
+TOKEN = "95503986764657003620409154523093844460282239616669021937353776826098275510158"
+
+
+def test_looks_like_token_id_separates_the_three_shapes():
+    assert pm.looks_like_token_id(TOKEN)
+    assert not pm.looks_like_token_id("will-bitcoin-be-above-80000-on-september-30")
+    assert not pm.looks_like_token_id("516729")            # a Gamma market id
+    assert not pm.looks_like_token_id("") and not pm.looks_like_token_id(None)
+
+
+async def test_get_market_accepts_the_token_id_a_search_returned(monkeypatch):
+    """find_markets hands back the YES token id; resolution_criteria and
+    dispute_risk must accept that same value or a two-tool chain breaks."""
+    calls = []
+
+    async def by_token(token_id, full=False):
+        calls.append(("token", token_id, full))
+        return {"question": "Will it?", "slug": "will-it", "resolution": {"source": "Binance"},
+                "state": {"end_date": "2026-12-31T00:00:00Z"}, "description": "rules"}
+
+    async def public():
+        raise AssertionError("a token id must not reach the slug lookup")
+
+    monkeypatch.setattr(pm, "get_market_by_token", by_token)
+    monkeypatch.setattr(pm, "public", public)
+
+    rc = await pm.resolution_criteria(TOKEN)
+    assert rc["question"] == "Will it?" and rc["resolution_source"] == "Binance"
+    assert calls == [("token", TOKEN, True)]
+
+
+async def test_a_token_id_with_no_market_says_so(monkeypatch):
+    async def none(token_id, full=False):
+        return None
+    monkeypatch.setattr(pm, "get_market_by_token", none)
+    with pytest.raises(ValueError, match="no Polymarket market holds the token id"):
+        await pm.get_market(TOKEN)

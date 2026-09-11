@@ -132,7 +132,26 @@ async def markets_by_tag(tag_id: int, limit: int = 40):
     return ms[:limit]
 
 
+def looks_like_token_id(value) -> bool:
+    """A CLOB token id is a very long decimal integer (a uint256 in decimal).
+    Market ids are short, and slugs are not all digits, so the three cannot be
+    confused."""
+    s = str(value or "")
+    return s.isdigit() and len(s) >= 20
+
+
 async def get_market(id_or_slug: str, full: bool = False):
+    """A market by slug, by Gamma id, or by one of its CLOB token ids.
+
+    Every search tool hands an agent a `market_id` that is the YES token id,
+    so the tools that describe a market have to accept that same value or a
+    two-tool chain breaks on the handover.
+    """
+    if looks_like_token_id(id_or_slug):
+        m = await get_market_by_token(id_or_slug, full=full)
+        if m is None:
+            raise ValueError(f"no Polymarket market holds the token id {id_or_slug}")
+        return m
     c = await public()
     try:
         m = await c.get_market(slug=id_or_slug)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.1 (2026-09-11)
+
+- A `market_id` from a search now works in the tools that describe a market.
+  `find_markets` and `search_markets` hand back a CLOB token id, while
+  `resolution_criteria`, `dispute_risk`, `settlement_audit` and `get_market`
+  used to accept only a slug or a Gamma id, so chaining two tools failed with
+  "invalid integer" from the venue. All of them now take any of the three,
+  and say so in their descriptions.
+
 ## 0.17.0 (2026-09-10)
 
 More fixes from the adversarial audit, verified by reproduction.

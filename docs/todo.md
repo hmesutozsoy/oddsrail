@@ -56,9 +56,8 @@ Ordered by leverage. Nothing here needs code.
 
 Ordered by what a first visitor or first developer hits soonest.
 
-1. **The `market_id` ambiguity.** `find_markets` returns a token id, but
-   `resolution_criteria`, `settlement_audit` and `dispute_risk` want a slug.
-   Any agent chaining two tools trips on this. Accept either everywhere.
+1. ~~The `market_id` ambiguity.~~ Done in 0.17.1: every market-describing
+   tool accepts a slug, a Gamma id or a CLOB token id.
 2. **Six footgun pages at `/notes/<slug>`.** The only content on the site with
    real search demand is compressed into one list on the home page. Each note
    is a page someone actually searches for at 2am.
