@@ -31,7 +31,6 @@ oddsrail speaks the Model Context Protocol over stdio, so any MCP client (Claude
 
 ## Attribution ledger
 
-- https://oddsrail.app/attribution: every wallet carrying the code, per week, maintainer subtracted. Same data as the `attribution_ledger` tool.
 
 ## Links
 

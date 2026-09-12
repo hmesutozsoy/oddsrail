@@ -5,7 +5,7 @@
       "name": "house (maintainer's market-making bot)",
       "wallet": "0x69cd073d80d640b10818b0513e7237ac8688d48d",
       "strategy": "merge-arb quoting on Polymarket, self-hosted; shown for reference, never ranked",
-      "url": "https://oddsrail.app/attribution",
+      "url": "https://github.com/hmesutozsoy/oddsrail",
       "house": true,
       "since": "2026-08-28"
     }
