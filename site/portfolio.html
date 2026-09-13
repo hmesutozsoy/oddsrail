@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#18191b">
+<title>Portfolio · OddsRail</title>
+<meta name="description" content="Review your Polymarket positions and public activity alongside your OddsRail strategy drafts.">
+<link rel="canonical" href="https://oddsrail.app/portfolio">
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="/product.css?v=20260912-3">
+<link rel="stylesheet" href="/portfolio.css?v=20260912-3">
+<script src="/wallet.js?v=20260912-3" defer></script>
+<script src="/shell.js?v=20260912-3" defer></script>
+<script src="/portfolio.js?v=20260912-3" defer></script>
+</head>
+<body class="product" data-page="portfolio">
+<div data-shell></div>
+<main id="main-content" class="app-main portfolio-main">
+  <div class="page-heading portfolio-heading">
+    <div><p class="eyebrow">YOUR ACCOUNT AT A GLANCE</p><h1>Portfolio</h1><p class="page-description">Your positions, activity and strategies in one place.</p></div>
+    <div class="portfolio-heading-actions"><button class="pill secondary" id="portfolio-refresh" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg>Refresh</button><button class="pill" id="portfolio-connect" type="button">Connect wallet <span aria-hidden="true">↗</span></button></div>
+  </div>
+  <p id="portfolio-action-status" class="portfolio-action-status muted" role="status" aria-live="polite"></p>
+  <section class="portfolio-overview" aria-label="Portfolio summary">
+    <article class="panel portfolio-metric primary-metric"><div class="metric-heading"><h2>Portfolio</h2><span class="metric-tag" id="portfolio-total-tag">Not connected</span></div><p class="metric-value" id="portfolio-total">&mdash;</p><p class="metric-note" id="portfolio-total-note">Connect to view available account data.</p></article>
+    <article class="panel portfolio-metric"><div class="metric-heading"><h2>Cash</h2></div><p class="metric-value" id="portfolio-cash">&mdash;</p><p class="metric-note" id="portfolio-cash-note">Available balance has not been verified.</p></article>
+    <article class="panel portfolio-metric"><div class="metric-heading"><h2>Holdings value</h2></div><p class="metric-value" id="portfolio-holdings">&mdash;</p><p class="metric-note" id="portfolio-holdings-note">Current value of reported positions.</p></article>
+  </section>
+  <div class="portfolio-account">
+    <div class="account-identity"><span class="account-indicator" id="account-indicator" aria-hidden="true"></span><span id="portfolio-account-label">No wallet connected</span><code id="portfolio-address" hidden></code></div>
+    <span class="portfolio-updated" id="portfolio-updated"></span>
+  </div>
+  <p id="portfolio-scope-note" class="portfolio-scope-note muted">Connect a wallet to look up its public Polymarket account. Connecting does not authorize trading.</p>
+
+  <section class="portfolio-workspace" aria-label="Account details">
+    <div class="portfolio-tabs" role="tablist" aria-label="Portfolio sections">
+      <button id="tab-positions" role="tab" aria-selected="true" aria-controls="panel-positions" tabindex="0" data-portfolio-tab="positions" type="button">Positions <span id="positions-count" hidden></span></button>
+      <button id="tab-agents" role="tab" aria-selected="false" aria-controls="panel-agents" tabindex="-1" data-portfolio-tab="agents" type="button">Agents <span id="agents-count" hidden></span></button>
+      <button id="tab-history" role="tab" aria-selected="false" aria-controls="panel-history" tabindex="-1" data-portfolio-tab="history" type="button">History</button>
+    </div>
+    <section id="panel-positions" role="tabpanel" aria-labelledby="tab-positions" tabindex="0">
+      <div class="portfolio-section-heading"><div><h2>Your positions</h2><p class="muted">Single-market positions reported for this account.</p></div><a class="portfolio-text-link" href="/">Explore markets <span aria-hidden="true">↗</span></a></div>
+      <div id="positions-state" class="portfolio-empty" role="status"><span class="empty-portfolio-symbol" aria-hidden="true">↗</span><h3>See what you hold.</h3><p>Connect a wallet to find its public Polymarket positions.</p></div>
+      <div id="positions-table-wrap" class="portfolio-table-wrap" hidden><table class="portfolio-table positions-table"><caption class="sr-only">Reported Polymarket positions</caption><thead><tr><th scope="col">Market</th><th scope="col">Outcome</th><th scope="col">Shares</th><th scope="col">Average</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">Return</th></tr></thead><tbody id="positions-body"></tbody></table></div>
+      <p id="positions-note" class="portfolio-data-note muted"></p>
+    </section>
+    <section id="panel-agents" role="tabpanel" aria-labelledby="tab-agents" tabindex="0" hidden>
+      <div class="portfolio-section-heading"><div><h2>Browser drafts</h2><p class="muted">Saved on this browser, independently of the connected wallet.</p></div><a class="pill secondary small" href="/build">Create agent <span aria-hidden="true">↗</span></a></div>
+      <div id="agents-state" class="portfolio-empty" role="status" hidden></div>
+      <div id="portfolio-drafts" class="portfolio-drafts"></div>
+      <p class="portfolio-data-note muted">These drafts are not active agents. They are not verified as owned by this wallet. Hosted live agent activation is not available yet.</p>
+    </section>
+    <section id="panel-history" role="tabpanel" aria-labelledby="tab-history" tabindex="0" hidden>
+      <div class="portfolio-section-heading"><div><h2>Account activity</h2><p class="muted">Recent public activity for the resolved Polymarket account.</p></div><span class="history-timezone muted" id="history-timezone"></span></div>
+      <div id="history-state" class="portfolio-empty" role="status"><span class="empty-portfolio-symbol" aria-hidden="true">↗</span><h3>Your activity, together.</h3><p>Connect a wallet to look up its public account activity.</p></div>
+      <div id="history-table-wrap" class="portfolio-table-wrap" hidden><table class="portfolio-table history-table"><caption class="sr-only">Public Polymarket account activity</caption><thead><tr><th scope="col">Activity</th><th scope="col">Market</th><th scope="col">Amount</th><th scope="col">Shares</th><th scope="col">Price</th><th scope="col">Time</th></tr></thead><tbody id="history-body"></tbody></table></div>
+      <p id="history-note" class="portfolio-data-note muted"></p>
+    </section>
+  </section>
+  <p class="portfolio-footnote muted">Public records can be delayed or incomplete. Position values are market estimates, not guaranteed proceeds from selling. Activity shown here may include trades made outside OddsRail.</p>
+</main>
+</body>
+</html>

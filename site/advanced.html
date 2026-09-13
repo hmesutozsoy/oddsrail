@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>External agent setup · OddsRail</title>
+<meta name="description" content="Bring your OddsRail strategy to your own MCP client. Connect locally, copy the exact configuration, and review before authorizing.">
+<link rel="canonical" href="https://oddsrail.app/advanced">
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="/product.css?v=20260912-3">
+<link rel="stylesheet" href="/builder.css?v=20260912-2">
+<link rel="stylesheet" href="/external.css?v=20260912-2">
+<script src="/wallet.js?v=20260912-3" defer></script><script src="/shell.js?v=20260912-3" defer></script>
+<script src="/advanced.js?v=20260912-2" defer></script>
+</head>
+<body class="product" data-page="build">
+<div data-shell></div>
+<main id="main-content" class="app-main builder-main external-main">
+  <div class="page-heading">
+    <div><p class="eyebrow">YOUR AGENT. YOUR ENVIRONMENT.</p><h1>Take your strategy with you.</h1><p class="muted">Connect OddsRail to your own agent. Start with a review.</p></div>
+    <a class="pill secondary" href="/build">Back to builder</a>
+  </div>
+  <div class="builder-layout">
+    <div class="external-steps">
+      <section class="panel" aria-labelledby="install-title">
+        <div class="section-heading"><h2 id="install-title"><span class="external-step" aria-hidden="true">1</span> Connect locally</h2><span class="status-chip">Self-hosted MCP</span></div>
+        <p class="muted">Install OddsRail on the machine running your MCP client.</p>
+        <div class="command-row"><code id="install-command">pip install oddsrail</code><button class="pill secondary small" type="button" data-copy="install-command" aria-label="Copy install command">Copy</button></div>
+        <p class="muted small">For Claude Code, add the local server:</p>
+        <div class="command-row"><code id="connect-command">claude mcp add --transport stdio oddsrail -- oddsrail</code><button class="pill secondary small" type="button" data-copy="connect-command" aria-label="Copy Claude Code command">Copy</button></div>
+        <details class="external-details"><summary>Another MCP client</summary><p class="muted small">Add a local stdio server using this command and argument list. Your client's settings format may differ.</p><div class="command-row"><code id="stdio-config">{"command":"oddsrail","args":[]}</code><button class="pill secondary small" type="button" data-copy="stdio-config" aria-label="Copy MCP command configuration">Copy</button></div></details>
+      </section>
+
+      <section class="panel" aria-labelledby="brief-title">
+        <div class="section-heading"><h2 id="brief-title"><span class="external-step" aria-hidden="true">2</span> Share the brief</h2><span class="status-chip">Review only</span></div>
+        <p class="muted">The prompt carries your exact settings and asks the agent to verify markets, explain the strategy and review local controls.</p>
+        <p id="config-source" class="muted small" role="status"></p>
+        <div id="setup-empty" class="notice" hidden>Choose your strategy and limits in the <a href="/build">guided builder</a>, then select “My own agent” to bring them here.</div>
+        <p id="setup-error" class="form-error" role="alert"></p>
+        <div id="brief-content" hidden>
+          <label class="field" for="agent-prompt">Prompt for your agent<textarea id="agent-prompt" class="input external-code" rows="12" readonly spellcheck="false"></textarea></label>
+          <div class="external-actions"><button class="pill" id="copy-prompt" type="button" data-copy="agent-prompt">Copy prompt <span aria-hidden="true">↗</span></button><button class="pill secondary" type="button" data-copy="agent-config">Copy config</button><button class="pill secondary" id="download-config" type="button">Download JSON</button></div>
+          <details class="external-details"><summary>Exact configuration</summary><p class="muted small">Strategy values and selected outcome IDs are preserved. This export is marked for review and does not authorize trading.</p><label class="field" for="agent-config"><span class="sr-only">Configuration JSON</span><textarea id="agent-config" class="input external-code" rows="10" readonly spellcheck="false"></textarea></label></details>
+          <details id="notes-section" class="external-details" hidden><summary>Your notes</summary><p id="agent-notes" class="muted external-notes"></p><p class="muted small">Included as reference. Notes do not change the selected strategy rules.</p></details>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="review-title">
+        <div class="section-heading"><h2 id="review-title"><span class="external-step" aria-hidden="true">3</span> Review the local setup</h2></div>
+        <p class="muted">Your agent starts by checking <code>server_info</code>. Keep the initial session read-only and review its findings before any separate trading authorization.</p>
+        <p class="muted small">The brief is a specification. Your local operator must configure and verify enforced limits, account eligibility and order reconciliation before unattended execution. Model access comes from your own agent provider.</p>
+        <a class="external-docs" href="https://github.com/hmesutozsoy/oddsrail#environment-variables" target="_blank" rel="noopener noreferrer">Live setup and operator controls <span aria-hidden="true">↗</span></a>
+      </section>
+    </div>
+    <aside class="panel agent-summary external-summary" aria-label="Configuration summary">
+      <div class="section-heading"><span class="eyebrow">YOUR STRATEGY BRIEF</span><span class="status-chip">Draft</span></div>
+      <h2 id="summary-title">Ready for your agent</h2>
+      <div id="summary-strategies" class="summary-chips"></div>
+      <div id="summary-values" class="summary-values"></div>
+      <p class="muted small">Your configuration stays in this browser until you copy or download it.</p>
+    </aside>
+  </div>
+  <p id="copy-status" class="muted small" role="status" aria-live="polite"></p>
+</main>
+</body>
+</html>

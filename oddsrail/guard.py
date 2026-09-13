@@ -81,6 +81,7 @@ def status() -> dict:
 def _refusal(rule: str, limit, requested, dry: bool, detail: str = "") -> dict:
     return {
         "dry_run": dry, "accepted": False, "blocked_by": "guardrail",
+        "execution_state": "not_submitted",
         "rule": rule, "limit": limit, "requested": requested,
         "note": (f"refused by an operator-set guardrail ({rule}). {detail}"
                  "Nothing was sent. The agent cannot change this limit; "
@@ -88,12 +89,21 @@ def _refusal(rule: str, limit, requested, dry: bool, detail: str = "") -> dict:
     }
 
 
+def unverified_open_orders(limit: int) -> dict:
+    """Refuse a live order when the configured account cap cannot be checked."""
+    return {**_refusal("max_open_orders", limit, None, False,
+                      "The complete live open-order count could not be verified. "),
+            "reason": "open_orders_unavailable"}
+
+
 def check_order(venue: str, market_id: str, notional_usd: float,
                 dry: bool, open_orders_now: int | None = None) -> dict | None:
     """Return a refusal dict if any guardrail blocks this order, else None.
 
     open_orders_now is supplied by the caller only in live mode (it costs a
-    venue call); None skips that check.
+    venue call); None skips that check during the initial local checks. Live
+    callers with a configured cap must fetch the complete count before
+    submission, or return unverified_open_orders if that fetch fails.
     """
     allowed = allowed_markets()
     if allowed is not None and str(market_id) not in allowed:

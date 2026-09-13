@@ -1,454 +1,187 @@
 (function () {
   'use strict';
-  var $ = function (id) { return document.getElementById(id); };
-
-  // The hosted server's address. The final hostname needs a DNS record the
-  // maintainer controls; until it resolves, the page shows the temporary one
-  // so the connector can be added today and the prompt names a live URL.
-  var HOSTS = ['https://mcp.oddsrail.app', 'https://151-241-155-39.sslip.io'];
-  var HOST = HOSTS[0], MAIL = null;
-  function probe(i) {
-    if (i >= HOSTS.length) return Promise.resolve(null);
-    return fetch(HOSTS[i] + '/healthz', { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) return probe(i + 1); return r.json().then(function (j) { MAIL = j.mail || null; return HOSTS[i]; }); })
-      .catch(function () { return probe(i + 1); });
-  }
-
-  // Every fragment: id, group, label, tag, blurb, params (k, label, def, unit,
-  // text for a free-text field), and render(cfg, values) -> prompt lines.
-  var FRAGMENTS = [
-    // ------------------------------ strategies ------------------------------
-    { id: 'fade', group: 'strategies', label: 'Fade overshoots', tag: 'mean reversion',
-      blurb: 'Trade against fresh panic jumps the market has historically reverted.',
-      params: [{ k: 'jump', label: 'jump ≥', def: 8, unit: 'pts' }, { k: 'hours', label: 'lookback', def: 6, unit: 'h' }],
-      render: function (c, v) { return [
-        'Strategy: fade overshoots.',
-        '- For each candidate market call overshoot_signal(token_id, hours=' + v.hours + ', threshold=' + (v.jump / 100) + ').',
-        '- Act only when it reports a fresh jump of at least ' + v.jump + ' probability points AND the market\'s own history shows reversion after jumps of that size. No signal, no trade.',
-        '- Trade against the jump: if YES jumped up, buy NO (or sell YES if held); if YES jumped down, buy YES.',
-        '- Fair value is the pre-jump price. Size with position_size(bankroll_usd=' + c.bankroll + ', price=<entry>, fair_value=<pre-jump price>) and use no more than the quarter-Kelly figure it returns.',
-        '- Exit when the price has retraced half the jump, or at the risk rules below.' ]; } },
-    { id: 'settle', group: 'strategies', label: 'Buy near-certain resolutions', tag: 'carry',
-      blurb: 'Markets priced 0.90 to 0.97 with an objective resolution source, held to resolution.',
-      params: [{ k: 'lo', label: 'price ≥', def: 0.9 }, { k: 'hi', label: 'price ≤', def: 0.97 }],
-      render: function (c, v) { return [
-        'Strategy: buy near-certain resolutions.',
-        '- Use closing_soon(hours=72, venues="polymarket") and find_markets to list markets whose likely side trades between ' + v.lo + ' and ' + v.hi + '.',
-        '- For each, call resolution_criteria(venue="polymarket", market_id=<slug or id>) and dispute_risk(<slug or id>). Require a named, objective resolution source and a dispute_risk score of 20 or lower. Read the criteria and state in one sentence why the likely side resolves YES.',
-        '- Buy the likely side at the ask only if the remaining upside (1 - price) exceeds 2.5% and quote_cost shows the size fills inside the limit.',
-        '- Hold to resolution. Note for paper: the ledger marks at the mid and does not pay out at resolution, so judge this strategy by the mark, not by cash.' ]; } },
-    { id: 'value', group: 'strategies', label: 'Trade my own probability', tag: 'view',
-      blurb: 'You supply the view; the agent trades only where the market disagrees enough.',
-      params: [{ k: 'edge', label: 'edge ≥', def: 5, unit: 'pts' }, { k: 'kelly', label: 'kelly ×', def: 0.25 }],
-      text: { k: 'views', label: 'my views, one per line as "market: probability"', def: 'Will Bitcoin be above 80,000 on the last day of the month: 0.35' },
-      render: function (c, v) { return [
-        'Strategy: trade my stated probabilities.',
-        'My views (market: my probability):',
-        (v.views || '').split('\n').filter(function (l) { return l.trim(); }).map(function (l) { return '  ' + l.trim(); }).join('\n') || '  (none given)',
-        '- Find each market with find_markets, confirm it is the same event by reading resolution_criteria, and compare the market price with my probability.',
-        '- Trade only when the gap is at least ' + v.edge + ' probability points in my favour: buy YES when my probability is higher than the ask, buy NO when it is lower than the bid.',
-        '- Size with position_size(bankroll_usd=' + c.bankroll + ', price=<entry>, fair_value=<my probability>, max_fraction_of_kelly=' + v.kelly + ').' ]; } },
-    { id: 'momentum', group: 'strategies', label: 'Follow the move', tag: 'momentum',
-      blurb: 'Buy what has moved with rising volume; give back half and you are out.',
-      params: [{ k: 'move', label: 'move ≥', def: 10, unit: 'pts' }, { k: 'hours', label: 'over', def: 6, unit: 'h' }],
-      render: function (c, v) { return [
-        'Strategy: follow the move.',
-        '- For each candidate call price_history(token_id, hours=' + v.hours + '). Require a move of at least ' + v.move + ' probability points in one direction with 24h volume above the universe minimum.',
-        '- Buy the side that moved, at the ask, only if the spread is 3 points or less.',
-        '- Exit when the price gives back half of the move measured from entry, or at the risk rules below.' ]; } },
-    { id: 'mm', group: 'strategies', label: 'Two-sided quotes', tag: 'market making', warn: true,
-      blurb: 'Rest a bid on YES and a bid on NO below the mid and collect the spread. Read the warning.',
-      params: [{ k: 'edge', label: 'below mid', def: 2, unit: 'pts' }, { k: 'shares', label: 'size', def: 20, unit: 'sh' }],
-      render: function (c, v) { return [
-        'Strategy: two-sided quotes.',
-        '- Pick liquid markets (spread of 2 points or less, 24h volume above the minimum). Read get_orderbook.',
-        '- Rest a BUY on YES at (mid - ' + v.edge + ' points) and a BUY on NO at ((1 - mid) - ' + v.edge + ' points), ' + v.shares + ' shares each, with post_only=True so neither order crosses.',
-        '- When both sides fill you hold a YES and a NO share pair worth exactly $1 at resolution. On a self-hosted server with a relayer key you can merge_positions to get the dollar back now; on the hosted server just hold.',
-        '- Warning written by the maintainer: our own market-making engine lost about 4.5 cents per share on markout live at this size, after looking fine on paper. Paper fills here assume no queue and no adverse selection. Treat paper results from this fragment as an upper bound and never take it live without the merge path and small size.' ]; } },
-
-    // ------------------------------ risk rules ------------------------------
-    { id: 'stoploss', group: 'risk', label: 'Stop loss', tag: 'review rule', params: [{ k: 'pct', label: 'below entry', def: 25, unit: '%' }],
-      blurb: 'Checked at each review, not resting on the book.',
-      render: function (c, v) { return ['- Stop loss: at each review, if a position\'s mark is ' + v.pct + '% or more below its average entry price, sell the whole position at the current bid with place_order (side SELL, price = best bid). Polymarket has no stop orders, so this only triggers when you review.']; } },
-    { id: 'takeprofit', group: 'risk', label: 'Take profit', tag: 'review rule', params: [{ k: 'pct', label: 'above entry', def: 40, unit: '%' }],
-      render: function (c, v) { return ['- Take profit: at each review, if a position\'s mark is ' + v.pct + '% or more above its average entry, sell it at the bid.']; } },
-    { id: 'daily', group: 'risk', label: 'Daily loss limit', tag: 'kill switch', params: [{ k: 'usd', label: 'stop at', def: 50, unit: '$', pre: true }],
-      render: function (c, v) { return ['- Daily loss limit: if realized plus unrealized P&L for today (paper_positions) is worse than -$' + v.usd + ', place no new orders for the rest of the day and say so.']; } },
-    { id: 'noadd', group: 'risk', label: 'Never add to a loser', tag: 'discipline',
-      render: function () { return ['- Never add to a position whose mark is below its average entry.']; } },
-    { id: 'expo', group: 'risk', label: 'Max exposure per market', tag: 'cap', params: [{ k: 'usd', label: 'cost ≤', def: 50, unit: '$', pre: true }],
-      render: function (c, v) { return ['- Max exposure per market: $' + v.usd + ' of cost across all positions in the same market.']; } },
-
-    // ------------------------------- hygiene --------------------------------
-    { id: 'dispute', group: 'hygiene', label: 'Skip dispute-prone resolutions', tag: 'resolution', params: [{ k: 'score', label: 'score ≤', def: 30 }],
-      render: function (c, v) { return ['- Before any order call resolution_criteria(venue="polymarket", market_id=<market slug or id>) and dispute_risk(<market slug or id>); both take the market, not the token id (get_market gives the slug). Skip it if no resolution source is named or the score is above ' + v.score + '.']; } },
-    { id: 'liquidity', group: 'hygiene', label: 'Refuse bad fills', tag: 'execution', params: [{ k: 'slip', label: 'slippage ≤', def: 2, unit: '%' }],
-      render: function (c, v) { return ['- Call quote_cost for the exact size before ordering. Skip if the walked average price is more than ' + v.slip + '% worse than the best price, or if the book cannot fill the size inside the limit.']; } },
-    { id: 'watch', group: 'hygiene', label: 'Watch the book first', tag: 'execution', params: [{ k: 'sec', label: 'for', def: 20, unit: 's' }],
-      render: function (c, v) { return ['- After choosing a market, call watch_book(token_id, seconds=' + v.sec + ') and only proceed if the book did not move against the plan while you watched.']; } },
-
-    // -------------------------------- extras --------------------------------
-    { id: 'report', group: 'extras', label: 'Report as a table', tag: 'output', checked: true,
-      render: function () { return [
-        'Reporting: when the pass is done, show one table with a row per decision: market, side, price, size, check_order verdict, what happened (paper fill, resting, skipped and why). Then paper_positions as cash, equity, realized and unrealized P&L. If nothing qualified, say so plainly instead of forcing a trade.' ]; } },
-    { id: 'arena', group: 'extras', label: 'Enter the paper arena', tag: 'hosted only', params: [{ k: 'name', label: 'as', def: 'my-agent', text: true }],
-      render: function (c, v) { return ['Arena: if arena_status shows this account is not registered, call arena_register(name="' + (v.name || 'my-agent') + '", strategy="<one line describing this prompt>") once, so the paper ledger appears on oddsrail.app/arena.']; } }
+  const $ = id => document.getElementById(id);
+  const form = $('setup-form');
+  const API = window.ODDSRAIL_API || 'https://mcp.oddsrail.app';
+  const DRAFTS = 'oddsrail-drafts-v2';
+  const login = location.hash.match(/^#session=([A-Za-z0-9_-]{20,})$/);
+  if(login){try{localStorage.setItem('oddsrail-session',login[1]);history.replaceState(null,'',location.pathname+location.search);location.replace('/agents');return;}catch(e){history.replaceState(null,'',location.pathname+location.search);}}
+  const strategies = [
+    {id:'mm', name:'Quote both sides', icon:'⇄', text:'Place a buy quote on each outcome, with the share size you choose.', params:[['shares','Shares per outcome',20,5,500,1],['edge','Price distance (cents)',2,.5,20,.5]]},
+    {id:'fade', name:'Fade sharp moves', icon:'↘', text:'Find recent jumps with a history of reverting.', params:[['jump','Minimum price move (cents)',8,1,90,1],['hours','Lookback (hours)',6,1,24,1]]},
+    {id:'settle', name:'High-probability outcomes', icon:'◎', text:'Buy likely outcomes inside your price range.', params:[['lo','Minimum price ($ per share)',.9,.5,.96,.01],['hi','Maximum price ($ per share)',.96,.51,.969,.001]]},
+    {id:'value', name:'Trade my forecast', icon:'◈', text:'Trade gaps between your probability and the market.', params:[['edge','Minimum price edge (cents)',5,.5,50,.5],['kelly','Kelly fraction',.25,.05,1,.05]]},
+    {id:'momentum', name:'Follow momentum', icon:'↗', text:'Follow price moves above your volume floor.', params:[['move','Minimum price move (cents)',10,1,90,1],['hours','Lookback (hours)',6,1,24,1]]}
   ];
-  var GROUPS = ['strategies', 'risk', 'hygiene', 'extras'];
-
-  var PRESETS = {
-    starter: { topics: ['all'], keyword: '', minvol: 20000, on: { settle: 1, momentum: 1, stoploss: 1, liquidity: 1, report: 1 } },
-    fade:   { topics: ['crypto', 'politics', 'geopolitics'], keyword: '', on: { fade: 1, stoploss: 1, daily: 1, dispute: 1, liquidity: 1, report: 1 } },
-    settle: { topics: ['all'], keyword: '', minvol: 5000, on: { settle: 1, noadd: 1, expo: 1, dispute: 1, liquidity: 1, report: 1 }, vals: { dispute: { score: 20 } } },
-    quote:  { topics: ['soccer', 'esports', 'tennis'], keyword: '', minvol: 50000, on: { mm: 1, expo: 1, daily: 1, liquidity: 1, watch: 1, report: 1 } },
-    view:   { topics: [], keyword: '', on: { value: 1, stoploss: 1, dispute: 1, liquidity: 1, report: 1 } },
-    clear:  { topics: ['all'], keyword: '', on: { report: 1 } }
-  };
-
-  // ------------------------------ form rendering ------------------------------
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function paramHtml(f, p) {
-    var inp = '<input type="' + (p.text ? 'text' : 'number') + '" name="' + f.id + '_' + p.k + '" value="' + esc(p.def) + '"' + (p.text ? '' : ' step="any"') + ' aria-label="' + esc(f.label + ': ' + p.label + (p.unit ? ' (' + p.unit + ')' : '')) + '">';
-    var unit = p.unit ? '<em>' + esc(p.unit) + '</em>' : '';
-    return '<label class="chip"><span>' + esc(p.label) + '</span>' + (p.pre ? unit + inp : inp + unit) + '</label>';
+  const risks = [
+    ['stoploss','Stop loss','pct',25,1,95,'%',true],
+    ['takeprofit','Take profit','pct',40,1,500,'%',false],
+    ['daily','Daily loss entry limit','usd',30,1,100000,'$',true],
+    ['expo','Exposure per market','usd',100,1,100000,'$',true],
+    ['noadd','Never add to a losing position',null,null,null,null,'',true],
+    ['dispute','Maximum dispute-risk score','score',20,0,100,'/ 100',true],
+    ['liquidity','Maximum price slippage','slip',2,.1,20,'%',true],
+    ['watch','Recheck book after waiting','sec',20,1,60,'sec',false]
+  ];
+  const capitals = [['bankroll','Allocated capital ($)',1000,10,100000,1],['perorder','Maximum per order ($)',25,1,500,1],['maxpos','Maximum open positions',5,1,50,1],['minvol','Minimum 24h volume ($)',20000,0,1e12,1],['closing','Avoid markets closing within (hours)',2,0,8760,.5]];
+  const categories = [['all','All markets'],['crypto','Crypto'],['politics','Politics'],['geopolitics','Geopolitics'],['economy','Economy'],['business','Business'],['soccer','Football'],['esports','Esports'],['tennis','Tennis'],['us-sports','US sports'],['motorsport','Motorsport']];
+  function el(tag, text, cls) { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; }
+  function field(name, label, value, min, max, step) {
+    const l = el('label', label, 'field'); const i = el('input'); Object.assign(i, {type:'number',name,value,min,max,step:step || 'any',required:true,className:'input'}); l.append(i); return l;
   }
-  function itemHtml(f) {
-    var h = '<div class="item' + (f.checked ? ' on' : '') + '" data-id="' + f.id + '">' +
-      '<div class="item-h"><label class="sw"><input type="checkbox" name="f_' + f.id + '"' + (f.checked ? ' checked' : '') + ' aria-label="' + esc(f.label) + '"><span></span></label>' +
-      '<div class="item-t"><div class="item-n"><b>' + esc(f.label) + '</b>' + (f.tag ? '<span class="tag' + (f.warn ? ' warn' : '') + '">' + esc(f.tag) + '</span>' : '') + '</div>' +
-      (f.blurb ? '<small>' + esc(f.blurb) + '</small>' : '') + '</div>';
-    if (f.params) h += '<div class="params">' + f.params.map(function (p) { return paramHtml(f, p); }).join('') + '</div>';
-    h += '</div>';
-    if (f.text) h += '<label class="views"><span>' + esc(f.text.label) + '</span><textarea name="' + f.id + '_' + f.text.k + '" rows="2">' + esc(f.text.def) + '</textarea></label>';
-    return h + '</div>';
-  }
-  GROUPS.forEach(function (g) {
-    $(g).innerHTML = FRAGMENTS.filter(function (f) { return f.group === g; }).map(itemHtml).join('');
+  const input = name => form.elements.namedItem(name);
+  const checked = name => !!input(name).checked;
+  strategies.forEach(s => {
+    const card=el('div',undefined,'strategy-option');
+    const label=el('label',undefined,'strategy-card'), checkbox=el('input');
+    Object.assign(checkbox,{type:'checkbox',name:'on_'+s.id,checked:s.id==='mm'});
+    checkbox.setAttribute('aria-controls','strategy-settings-'+s.id);
+    const title=el('strong',s.name);title.id='strategy-title-'+s.id;
+    const copy=el('span');copy.append(el('span',s.icon,'strategy-glyph'),title,el('small',s.text));label.append(checkbox,copy);
+    const params=el('div',undefined,'strategy-controls');params.dataset.params=s.id;params.id='strategy-settings-'+s.id;
+    params.setAttribute('role','group');params.setAttribute('aria-labelledby',title.id);
+    const grid=el('div',undefined,'field-grid');
+    s.params.forEach(a=>grid.append(field(s.id+'_'+a[0],...a.slice(1))));
+    window.OddsRailStrategyVisuals?.attach(params,s.id);
+    params.append(grid);
+    if(s.id==='mm'){
+      const example=el('p','','muted small');example.id='quote-example';params.append(example);
+      params.append(el('p','Share size applies to each outcome. Price distance sets how far below the midpoint to bid. Dollar limits can reduce the order size.','muted small'));
+    }
+    if(s.id==='value'){
+      const fieldLabel=el('label','Your forecasts: market title, then probability','field'), text=el('textarea');
+      Object.assign(text,{name:'value_views',rows:3,maxLength:2000,className:'input',placeholder:'Market title: 0.65'});
+      fieldLabel.append(text);params.append(fieldLabel,el('p','Use a probability between 0 and 1. The agent must resolve the market before trading.','muted small'));
+    }
+    card.append(label,params);$('strategy-choices').append(card);
   });
-
-  var form = $('bform');
-  var CATS = ['all', 'crypto', 'politics', 'geopolitics', 'economy', 'business', 'soccer', 'esports', 'tennis', 'us-sports', 'motorsport'];
-  var CAT_QUERIES = { crypto: 'bitcoin, ethereum, crypto', politics: 'election, congress, trump', geopolitics: 'ceasefire, invasion, sanctions', economy: 'fed rates, cpi, jobs report', business: 'earnings, ipo, stock', soccer: 'premier league, la liga, champions league', esports: 'counter-strike, league of legends', tennis: 'us open, atp, wta', 'us-sports': 'nfl, nba, mlb', motorsport: 'f1, grand prix' };
-  function read() {
-    var fd = new FormData(form), c = { mode: fd.get('mode') || 'paper', on: {}, vals: {}, topics: [] };
-    CATS.forEach(function (k) { if (fd.get('t_' + k) === k) c.topics.push(k); });
-    ['keyword', 'minvol', 'bankroll', 'perorder', 'maxpos', 'closing'].forEach(function (k) { c[k] = fd.get(k); });
-    FRAGMENTS.forEach(function (f) {
-      c.on[f.id] = fd.get('f_' + f.id) === 'on';
-      var v = {};
-      (f.params || []).forEach(function (p) { v[p.k] = fd.get(f.id + '_' + p.k); });
-      if (f.text) v[f.text.k] = fd.get(f.id + '_' + f.text.k);
-      c.vals[f.id] = v;
-    });
+  capitals.forEach(a=>$('capital-fields').append(field(...a)));
+  categories.forEach(([id,name])=>{const l=el('label'),i=el('input'); Object.assign(i,{name:'topic_'+id,type:'checkbox',checked:id==='all'}); l.append(i,document.createTextNode(name));$('category-choices').append(l);});
+  risks.forEach(([id,name,key,value,min,max,unit,on])=>{
+    const row=el('div',undefined,'risk-row'),i=el('input');Object.assign(i,{type:'checkbox',name:'on_'+id,id:'risk-'+id,checked:on});const label=el('label',name);label.htmlFor=i.id;row.append(i,label);
+    if(key){const box=el('div',undefined,'risk-value'),v=el('input');Object.assign(v,{type:'number',name:id+'_'+key,value,min,max,step:'any',required:true,className:'input'});v.setAttribute('aria-label',name+' ('+unit+')');box.append(v,el('span',unit));row.append(box);} $('risk-fields').append(row);
+  });
+  let stage=0, selected=[], busy=false, searchRevision=0;
+  const url=new URL(location.href);
+  let draftId=url.searchParams.get('draft') || crypto.randomUUID();
+  if(!/^[a-zA-Z0-9-]{1,64}$/.test(draftId))draftId=crypto.randomUUID();
+  function loadDrafts(){try{const d=JSON.parse(localStorage.getItem(DRAFTS)||'[]');return Array.isArray(d)?d.filter(x=>x&&typeof x.id==='string'&&x.config&&typeof x.config==='object'&&!Array.isArray(x.config)):[];}catch(e){return [];}}
+  function read(){
+    const c={schema_version:2,mode:'draft',market_mode:input('market_mode').value,market_ids:[],on:{report:true},vals:{},topics:[],keyword:input('keyword').value.trim()};
+    capitals.forEach(([id])=>c[id]=Number(input(id).value));
+    strategies.forEach(s=>{c.on[s.id]=checked('on_'+s.id);c.vals[s.id]={};s.params.forEach(([id])=>c.vals[s.id][id]=Number(input(s.id+'_'+id).value));});
+    c.vals.value.views=input('value_views').value.trim();
+    risks.forEach(([id,,key])=>{c.on[id]=checked('on_'+id);c.vals[id]=key?{[key]:Number(input(id+'_'+key).value)}:{};});
+    categories.forEach(([id])=>{if(checked('topic_'+id))c.topics.push(id);});
+    if(c.market_mode==='specific')c.market_ids=[...new Set(selected.flatMap(m=>m.outcomes.map(o=>o.token_id)))];
     return c;
   }
-  function apply(c) {
-    if (!c) return;
-    form.querySelectorAll('[name]').forEach(function (el) {
-      var n = el.name;
-      if (n === 'mode') { el.checked = (el.value === (c.mode || 'paper')); return; }
-      if (n.slice(0, 2) === 'f_') { el.checked = !!(c.on && c.on[n.slice(2)]); return; }
-      if (n.slice(0, 2) === 't_') { el.checked = (c.topics || ['all']).indexOf(n.slice(2)) !== -1; return; }
-      if (n === 'keyword') { el.value = c.keyword || (c.topic && c.topics ? '' : (c.topic || '')); return; }
-      if (c[n] !== undefined && c[n] !== null) { el.value = c[n]; return; }
-      var m = n.match(/^([a-z]+)_(.+)$/);
-      if (m && c.vals && c.vals[m[1]] && c.vals[m[1]][m[2]] !== undefined && c.vals[m[1]][m[2]] !== null) el.value = c.vals[m[1]][m[2]];
-    });
+  function restore(d){
+    const c=d.config;if(!c||typeof c!=='object')return;
+    input('name').value=d.name||'My agent';input('description').value=d.description||'';input('runner').value=d.runner==='external'?'external':'hosted';
+    capitals.forEach(([id])=>{if(c[id]!==undefined)input(id).value=c[id];});
+    [...strategies.map(s=>s.id),...risks.map(r=>r[0])].forEach(id=>{input('on_'+id).checked=!!(c.on&&c.on[id]);Object.entries((c.vals||{})[id]||{}).forEach(([k,v])=>{const node=input(id+'_'+k);if(node)node.value=v;});});
+    categories.forEach(([id])=>input('topic_'+id).checked=(Array.isArray(c.topics)?c.topics:['all']).includes(id));input('keyword').value=c.keyword||'';
+    selected=Array.isArray(d.markets)?d.markets.filter(m=>m&&typeof m.title==='string'&&Array.isArray(m.outcomes)&&m.outcomes.every(o=>o&&typeof o.token_id==='string')):[];
+    input('market_mode').value=c.market_mode==='specific'?'specific':'universe';
   }
-  function preset(name) {
-    var p = PRESETS[name]; if (!p) return;
-    var c = read();
-    FRAGMENTS.forEach(function (f) { c.on[f.id] = !!(p.on && p.on[f.id]); });
-    if (p.topics) c.topics = p.topics.slice();
-    ['keyword', 'minvol', 'bankroll', 'perorder', 'maxpos', 'closing'].forEach(function (k) { if (p[k] !== undefined) c[k] = p[k]; });
-    if (p.vals) Object.keys(p.vals).forEach(function (id) { Object.keys(p.vals[id]).forEach(function (k) { c.vals[id][k] = p.vals[id][k]; }); });
-    apply(c);
+  const saved=loadDrafts().find(d=>d.id===draftId);if(saved)restore(saved);
+  function validate(){
+    const c=read();if(!input('name').value.trim())return 'Give your agent a name.';
+    if(!strategies.some(s=>c.on[s.id]))return 'Select at least one strategy.';
+    const invalid=[...form.querySelectorAll('input[type=number]')].find(n=>!n.disabled&&!n.validity.valid);
+    if(invalid){const label=invalid.closest('label');return 'Check '+(invalid.getAttribute('aria-label')||(label?label.textContent:'numeric settings'))+'.';}
+    if(c.market_mode==='specific'&&!c.market_ids.length)return 'Add at least one specific market.';
+    if(c.market_ids.length>20)return 'Select at most 20 outcomes.';
+    if(c.market_mode==='universe'&&!c.topics.length&&!c.keyword)return 'Choose a category or enter a market keyword.';
+    if(c.perorder>c.bankroll)return 'The order limit cannot exceed allocated capital.';
+    if(c.on.expo&&c.perorder>c.vals.expo.usd)return 'The order limit cannot exceed per-market exposure.';
+    if(c.on.settle&&c.vals.settle.lo>=c.vals.settle.hi)return 'The minimum entry price must be below the maximum.';
+    if(c.on.value&&!c.vals.value.views)return 'Add your forecast in the strategy parameters.';
+    return '';
   }
-
-  // ------------------------------- composition --------------------------------
-  function compose(c) {
-    var paper = c.mode === 'paper';
-    var L = [];
-    L.push('You are trading prediction markets through the oddsrail MCP server. Use its tools, in the order given, and never invent a market, a price or a fill.');
-    L.push(paper
-      ? 'Mode: hosted PAPER trading. Orders are simulated against the live book into my paper ledger; nothing real is sent. Start by calling server_info and confirming hosted is true.'
-      : 'Mode: LIVE, self-hosted. Start by calling server_info. Stop and tell me if dry_run is not false, if trading_key_configured is not true, or if guardrails shows no per-order cap. Real money: when in doubt, do not trade.');
-    L.push('');
-    L.push('UNIVERSE');
-    var cats = (c.topics || []).filter(function (t) { return t !== 'all'; });
-    var queries = cats.map(function (t) { return CAT_QUERIES[t] || t; }).concat(c.keyword ? [c.keyword] : []);
-    var where = (c.topics || []).indexOf('all') !== -1 || (!cats.length && !c.keyword) ? 'the whole venue, most traded first' : cats.join(', ') + (c.keyword ? ' plus the keyword ' + c.keyword : '');
-    L.push('- Markets: ' + where + '. Use find_markets(query, venues="polymarket")' + (queries.length ? ' with queries such as: ' + queries.join('; ') : ' with an empty query for the most traded open markets, then closing_soon') + '. On Polymarket, market_id is the token id of the YES or NO side.');
-    L.push('- Skip markets with less than $' + c.minvol + ' of 24h volume' + (+c.closing > 0 ? ', and markets closing within ' + c.closing + ' hours' : '') + '.');
-    L.push('- Bankroll for this agent: $' + c.bankroll + '. Never spend more than $' + c.perorder + ' on one order, never hold more than ' + c.maxpos + ' open positions.');
-    L.push('- Prices are implied probabilities in (0,1); size is in shares; the exchange refuses marketable orders under $1.');
-    L.push('');
-    L.push('IF THE ODDSRAIL TOOLS ARE NOT AVAILABLE');
-    L.push(paper
-      ? '- Do not search for a substitute and do not simulate. Say: "the oddsrail connector is not enabled in this chat" and tell me to add ' + HOST + '/mcp as a custom connector (Settings, Connectors) and switch it on in this chat\'s tools menu.'
-      : '- Do not search for a substitute and do not simulate. Say: "the oddsrail server is not connected" and tell me to add it: pip install oddsrail, then claude mcp add --transport stdio oddsrail -- oddsrail.');
-    L.push('');
-    var strat = FRAGMENTS.filter(function (f) { return f.group === 'strategies' && c.on[f.id]; });
-    if (!strat.length) L.push('STRATEGY\n- (no strategy switched on: do a read-only pass, list the qualifying markets with prices and liquidity, and place nothing)\n');
-    strat.forEach(function (f) { L.push('STRATEGY'); L = L.concat(f.render(c, c.vals[f.id])); L.push(''); });
-    L.push('BEFORE EVERY ORDER (not optional)');
-    L.push('1. quote_cost(venue="polymarket", market_id, side, size) for the exact size.');
-    L.push('2. check_order(venue="polymarket", market_id, side, price, size, intent="<my words for this trade>", outcome="yes" or "no"). Pass my intent verbatim.');
-    L.push('3. Verdict ok: place_order. Verdict caution: stop and show me the checks before doing anything. Verdict block: do not place it, and do not retry with different numbers.');
-    L.push('4. Never resubmit an order whose result is unknown; call paper_positions' + (paper ? '' : ' or open_orders') + ' first.');
-    L.push('');
-    var risk = FRAGMENTS.filter(function (f) { return f.group === 'risk' && c.on[f.id]; });
-    var hyg = FRAGMENTS.filter(function (f) { return f.group === 'hygiene' && c.on[f.id]; });
-    if (risk.length) { L.push('RISK RULES'); risk.forEach(function (f) { L = L.concat(f.render(c, c.vals[f.id])); }); L.push(''); }
-    if (hyg.length) { L.push('MARKET HYGIENE'); hyg.forEach(function (f) { L = L.concat(f.render(c, c.vals[f.id])); }); L.push(''); }
-    FRAGMENTS.filter(function (f) { return f.group === 'extras' && c.on[f.id]; }).forEach(function (f) {
-      if (f.id === 'arena' && !paper) return;
-      L = L.concat(f.render(c, c.vals[f.id])); L.push('');
-    });
-    L.push('Do one full pass now: review existing positions against the rules first, then look for new entries. Ask before anything the rules do not cover.');
-    return L.join('\n');
+  const money = n => '$'+Number(n).toLocaleString('en-US',{maximumFractionDigits:2});
+  function scopeLabel(c){return c.market_mode==='specific'?selected.length+' selected market'+(selected.length===1?'':'s'):c.topics.map(id=>(categories.find(x=>x[0]===id)||[id,id])[1]).concat(c.keyword?[c.keyword]:[]).join(', ')||'Choose markets';}
+  function sync(){
+    const c=read();
+    strategies.forEach(s=>{const p=form.querySelector('[data-params='+s.id+']');p.hidden=!c.on[s.id];p.querySelectorAll('input,textarea').forEach(n=>n.disabled=!c.on[s.id]);});
+    risks.forEach(([id,,key])=>{if(key)input(id+'_'+key).disabled=!c.on[id];});
+    $('specific-fields').hidden=c.market_mode!=='specific';$('universe-fields').hidden=c.market_mode==='specific';
+    $('summary-name').textContent=input('name').value.trim()||'Untitled agent';$('summary-strategies').replaceChildren(...strategies.filter(s=>c.on[s.id]).map(s=>el('span',s.name)));
+    $('summary-market').textContent=scopeLabel(c);$('summary-order').textContent=money(c.perorder);$('summary-exposure').textContent=c.on.expo?money(c.vals.expo.usd):'Not set';$('summary-daily').textContent=c.on.daily?money(c.vals.daily.usd):'Not set';
+    $('external-runner').hidden=input('runner').value!=='external';
+    $('summary-quote').hidden=!c.on.mm;
+    $('summary-shares').textContent=c.vals.mm.shares+' per outcome';
+    $('quote-example').textContent='Example: at a 50¢ midpoint, each '+c.vals.mm.shares+'-share bid is priced at '+Number(50-c.vals.mm.edge).toFixed(1)+'¢.';
   }
-
-  // --------------------------------- wiring -----------------------------------
-  var out = $('out'), status = $('status'), TOOLS = ['server_info', 'find_markets', 'closing_soon', 'get_market', 'get_orderbook', 'price_history', 'overshoot_signal', 'dispute_risk', 'resolution_criteria', 'quote_cost', 'watch_book', 'position_size', 'check_order', 'place_order', 'paper_positions', 'open_orders', 'merge_positions', 'arena_status', 'arena_register'];
-  function save(c) { try { localStorage.setItem('oddsrail-build', JSON.stringify(c)); } catch (e) {} }
-  function load() { try { return JSON.parse(localStorage.getItem('oddsrail-build') || 'null'); } catch (e) { return null; } }
-  function refreshUi(c) {
-    form.querySelectorAll('#connect .brows').forEach(function (b) { b.hidden = (b.dataset.mode !== c.mode); });
-    FRAGMENTS.forEach(function (f) { var el = form.querySelector('.item[data-id="' + f.id + '"]'); if (el) el.classList.toggle('on', !!c.on[f.id]); });
-    GROUPS.forEach(function (g) {
-      var n = FRAGMENTS.filter(function (f) { return f.group === g && c.on[f.id]; }).length;
-      var t = form.querySelector('.tab[data-tab="' + g + '"] i'); if (t) { t.textContent = n; t.classList.toggle('z', !n); }
-    });
-    var arena = form.querySelector('.item[data-id="arena"]'); if (arena) arena.classList.toggle('na', c.mode !== 'paper');
+  function show(next){stage=next;document.querySelectorAll('[data-stage]').forEach(s=>s.hidden=Number(s.dataset.stage)!==stage);document.querySelectorAll('.setup-steps button').forEach(b=>{if(Number(b.dataset.step)===stage)b.setAttribute('aria-current','step');else b.removeAttribute('aria-current');});$('setup-error').textContent='';}
+  async function request(path,opts){
+    const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),25000);
+    try{const r=await fetch(API+path,{...opts,signal:controller.signal});let j;try{j=await r.json();}catch(e){throw Error('This feature needs the updated OddsRail service. Try again after the service is available.');}if(!r.ok||!j.ok)throw Error(j.error||'The service could not complete this request.');return j;}finally{clearTimeout(timeout);}
   }
-  function setLink() { $('open').href = 'https://claude.ai/new?q=' + encodeURIComponent(out.value); }
-  function tags() {
-    var used = TOOLS.filter(function (t) { return out.value.indexOf(t) !== -1; });
-    $('tools').innerHTML = used.map(function (t) { return '<span>' + t + '</span>'; }).join('');
+  function json(body){return {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)};}
+  function review(n){
+    const c=read(), lines=[];
+    if(c.market_mode==='specific'){lines.push('Only selected markets: '+selected.map(m=>m.title).join('; ')+'. Both listed outcomes are allowed.');}else lines.push('Scan '+scopeLabel(c)+'.');
+    if(n.on.mm)lines.push('Quote up to '+n.mm.shares+' shares per side, '+(n.mm.edge*100).toFixed(1)+'¢ below the midpoint, subject to shared limits.');
+    if(n.on.fade)lines.push('Fade jumps of at least '+(n.fade.jump*100).toFixed(1)+'¢ over '+n.fade.hours+' hours when historical reversion qualifies.');
+    if(n.on.settle)lines.push('Consider likely outcomes priced from '+(n.settle.lo*100).toFixed(1)+'% to '+(n.settle.hi*100).toFixed(1)+'%, subject to resolution and upside checks.');
+    if(n.on.value)lines.push('Use your forecast text: '+n.value.views+'. Require '+(n.value.edge*100).toFixed(1)+'¢ of price edge and '+n.value.kelly+' Kelly sizing.');
+    if(n.on.momentum)lines.push('Follow moves of at least '+(n.momentum.move*100).toFixed(1)+'¢ over '+n.momentum.hours+' hours.');
+    lines.push('Allocate '+money(n.bankroll)+'; cap each order at '+money(n.perorder)+' with at most '+n.maxpos+' open positions.');
+    if(n.on.expo)lines.push('Limit cost exposure per market to '+money(n.expo)+'.');
+    if(n.on.daily)lines.push('Stop new entries after a detected daily loss of '+money(n.daily)+'. This does not guarantee a maximum loss.');
+    if(n.on.stoploss)lines.push('At each pass, attempt to exit positions down '+(n.stoploss*100).toFixed(1)+'% from entry.');
+    if(n.on.takeprofit)lines.push('At each pass, attempt to exit positions up '+(n.takeprofit*100).toFixed(1)+'% from entry.');
+    if(n.on.noadd)lines.push('Do not add to losing positions.');
+    if(n.on.dispute)lines.push('Skip dispute-risk scores above '+n.dispute+'.');
+    if(n.on.liquidity)lines.push('Limit relative price slippage to '+(n.liquidity*100).toFixed(1)+'%.');
+    if(n.on.watch)lines.push('Wait '+n.watch+' seconds and recheck the book before an entry.');
+    lines.push('Require '+money(n.minvol)+' of 24h volume and skip markets closing within '+n.closing_h+' hours.');
+    lines.push('Apply limits across selected strategies. This configuration stays a draft until live trading is authorized and a runner is ready.');
+    $('review-list').replaceChildren(...lines.map(t=>el('li',t)));
+    if(c.market_mode==='specific'){const detail=el('details');detail.append(el('summary','Exact allowed outcomes'));selected.forEach(m=>{detail.append(el('p',m.title,'small'));m.outcomes.forEach(o=>detail.append(el('p',o.label+': '+o.token_id,'token-id')));});$('review-list').parentNode.querySelectorAll('details').forEach(d=>d.remove());$('review-list').parentNode.append(detail);}else{$('review-list').parentNode.querySelectorAll('details').forEach(d=>d.remove());}
+    const notes=input('description').value.trim();$('review-notes').hidden=!notes;$('review-notes').textContent='Draft notes, not executable instructions: '+notes;
+    $('advanced-link').href='/advanced#config='+encodeURIComponent(JSON.stringify({config:c,notes:input('description').value.trim()}));
   }
-  function regen() {
-    var c = read(); save(c); refreshUi(c);
-    out.value = compose(c); setLink(); tags();
-    var on = FRAGMENTS.filter(function (f) { return c.on[f.id]; }).length;
-    status.textContent = on + ' on · ' + out.value.length + ' ch · ' + (c.mode === 'paper' ? 'paper' : 'live');
+  async function next(target){
+    if(busy)return;
+    if(target<stage){show(target);return;}
+    if(target===1){if(!input('name').value.trim()||!strategies.some(s=>checked('on_'+s.id))){$('setup-error').textContent='Name your agent and select a strategy.';return;}show(1);return;}
+    if(target===2){const error=validate();if(error){$('setup-error').textContent=error;return;}busy=true;$('review-button').disabled=true;$('review-button').textContent='Checking settings…';
+      try{const c=read(),res=await request('/config/validate',json({config:c}));if(JSON.stringify(c)!==JSON.stringify(read()))throw Error('Settings changed during validation. Review again.');review(res.normalized);show(2);}catch(e){$('setup-error').textContent=e.message;}finally{busy=false;$('review-button').disabled=false;$('review-button').textContent='Review configuration →';}
+    }else show(target);
   }
-  function flash(msg) { var keep = status.textContent; status.textContent = msg; setTimeout(function () { status.textContent = keep; }, 1400); }
-
-  var fromLink = null;
-  try {
-    var m = (location.hash || '').match(/config=([^&]+)/);
-    if (m) { fromLink = JSON.parse(decodeURIComponent(m[1])); history.replaceState(null, '', location.pathname + location.search); }
-  } catch (e) {}
-  var saved = fromLink || load();
-  if (saved) apply(saved); else preset('starter');
-  regen();
-  form.addEventListener('change', function (e) {
-    var t = e.target; if (!t.name || t.name.slice(0, 2) !== 't_') return;
-    var all = form.querySelector('input[name=t_all]');
-    if (t === all && all.checked) form.querySelectorAll('#cats input').forEach(function (i) { if (i !== all) i.checked = false; });
-    else if (t !== all && t.checked) all.checked = false;
-    if (!form.querySelector('#cats input:checked') && !form.querySelector('input[name=keyword]').value) all.checked = true;
-    regen();
+  function save(){
+    try{const ds=loadDrafts(),d={id:draftId,name:input('name').value.trim()||'Untitled agent',description:input('description').value,config:read(),markets:selected,runner:input('runner').value,updated_at:new Date().toISOString(),status:'draft'};const index=ds.findIndex(x=>x.id===draftId);if(index<0)ds.push(d);else ds[index]=d;localStorage.setItem(DRAFTS,JSON.stringify(ds));$('draft-status').textContent='Draft saved in this browser. No agent is trading.';history.replaceState(null,'','/build?draft='+encodeURIComponent(draftId));return true;}catch(e){$('draft-status').textContent='This browser could not save the draft. Allow site storage and try again.';return false;}
+  }
+  $('save-draft').addEventListener('click',save);$('save-final').addEventListener('click',()=>{if(save())location.href='/portfolio?tab=agents';});
+  function renderSelected(){
+    $('selected-markets').replaceChildren();if(!selected.length){$('selected-markets').append(el('p','No markets selected yet.','muted small'));return;}
+    selected.forEach((m,index)=>{const row=el('div',undefined,'selected-market'),copy=el('div');copy.append(el('h3',m.title),el('small',m.outcomes.map(o=>o.label).join(' + ')));const b=el('button','Remove','pill secondary small');b.type='button';b.setAttribute('aria-label','Remove '+m.title);b.onclick=()=>{selected.splice(index,1);renderSelected();sync();};row.append(copy,b);$('selected-markets').append(row);});
+  }
+  async function findMarket(value){
+    const q=value.trim();if(!q){$('market-status').textContent='Enter a market name or Polymarket URL.';return;}
+    const revision=++searchRevision;$('market-status').textContent='Finding markets…';$('market-results').replaceChildren();$('find-market').disabled=true;
+    try{const isLink=/^(https?:|www\.|polymarket\.com\/)/i.test(q);const res=await request('/markets/'+(isLink?'resolve':'search')+'?q='+encodeURIComponent(q));if(revision!==searchRevision)return;
+      $('market-status').textContent=res.markets.length?'Choose the markets your agent may trade.':'No matching markets. Try a different search.';
+      res.markets.forEach(m=>{const row=el('div',undefined,'market-result'),copy=el('div');copy.append(el('h3',m.title),el('small',m.outcomes.map(o=>o.label+(o.price==null?'':' '+Math.round(o.price*100)+'%')).join(' · ')));const b=el('button','Add','pill secondary small');b.type='button';b.setAttribute('aria-label','Add '+m.title);
+        const already=()=>selected.some(s=>s.outcomes.some(o=>m.outcomes.some(t=>t.token_id===o.token_id)));
+        if(m.closed||m.accepting_orders===false){b.disabled=true;b.textContent='Closed';}else if(already()){b.disabled=true;b.textContent='Added';}
+        b.onclick=()=>{if(already())return;const count=new Set([...selected.flatMap(s=>s.outcomes.map(o=>o.token_id)),...m.outcomes.map(o=>o.token_id)]).size;if(count>20){$('market-status').textContent='Maximum 20 outcomes. Remove a market first.';return;}selected.push(m);b.disabled=true;b.textContent='Added';renderSelected();sync();};row.append(copy,b);$('market-results').append(row);
+      });
+    }catch(e){if(revision===searchRevision)$('market-status').textContent=e.message;}finally{if(revision===searchRevision)$('find-market').disabled=false;}
+  }
+  $('find-market').onclick=()=>findMarket($('market-search').value);$('market-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findMarket(e.target.value);}});
+  window.OddsRailWallet?.subscribe(state => {
+    $('wallet-state').textContent = state.address ? state.address.slice(0,6)+'…'+state.address.slice(-4) : 'Not connected';
+    const account = state.portfolio?.account;
+    $('trading-account-state').textContent = account?.status === 'resolved' && account.trading_address ? account.trading_address.slice(0,6)+'…'+account.trading_address.slice(-4)+' (read only)' : 'Not identified';
   });
-  probe(0).then(function (live) {
-    var url = (live || HOSTS[0]) + '/mcp';
-    HOST = live || HOSTS[0];
-    ready = !!live;
-    setRunButtons(live ? '▶ Run paper pass' : 'server unreachable', !live);
-    if (live && MAIL === 'console') {
-      $('keep').hidden = true;
-      var note = document.createElement('span'); note.className = 'muted'; note.id = 'mail-note';
-      note.textContent = 'Accounts open once sign-in email is live on the server; until then the ledger stays in this browser.';
-      $('keep').parentNode.insertBefore(note, $('keep').nextSibling);
-    }
-    $('runbar').hidden = false;
-    if (!live) $('run-note').textContent = 'The hosted server did not answer from here. It may be a network block on your side; try again in a minute.';
-    var inp = document.querySelector('#connect input[value$="/mcp"]');
-    if (inp) { inp.value = url; inp.nextElementSibling.dataset.copy = url; }
-    var note = document.getElementById('host-note');
-    if (note) note.textContent = !live ? 'The hosted server did not answer from here; check oddsrail.app for status.'
-      : live !== HOSTS[0] ? 'Temporary address while mcp.oddsrail.app is being set up; connectors added with it keep working until then.' : '';
-    regen();
-  });
-  form.addEventListener('change', regen);
-  form.addEventListener('input', function (e) { if (e.target.type === 'text' || e.target.type === 'number' || e.target.tagName === 'TEXTAREA') regen(); });
-  form.querySelectorAll('.tab').forEach(function (t) {
-    t.addEventListener('click', function () {
-      form.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('on', x === t); x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
-      form.querySelectorAll('.pane').forEach(function (p) { p.classList.toggle('on', p.dataset.pane === t.dataset.tab); });
-    });
-  });
-  form.querySelectorAll('[data-preset]').forEach(function (b) {
-    b.addEventListener('click', function () { preset(b.dataset.preset); regen(); form.querySelector('.tab[data-tab="strategies"]').click(); });
-  });
-  $('regen').addEventListener('click', regen);
-  $('copy').addEventListener('click', function () { navigator.clipboard.writeText(out.value).then(function () { flash('copied'); }); });
-  $('copy2').addEventListener('click', function () { navigator.clipboard.writeText(out.value).then(function () { $('copy2').textContent = 'Copied'; setTimeout(function () { $('copy2').textContent = 'Copy prompt'; }, 1400); }); });
-  form.querySelectorAll('[data-copy]').forEach(function (b) {
-    b.addEventListener('click', function () { navigator.clipboard.writeText(b.dataset.copy).then(function () { b.textContent = 'copied'; setTimeout(function () { b.textContent = 'copy'; }, 1400); }); });
-  });
-  $('copycfg').addEventListener('click', function () { navigator.clipboard.writeText(JSON.stringify(read(), null, 1)).then(function () { flash('config copied'); }); });
-  out.addEventListener('input', function () { setLink(); tags(); status.textContent = out.value.length + ' ch · edited'; });
-
-  // ------------------------------ the Run tab --------------------------------
-  document.querySelectorAll('.pv-tabs .tab').forEach(function (t) {
-    t.addEventListener('click', function () {
-      document.querySelectorAll('.pv-tabs .tab').forEach(function (x) { x.classList.toggle('on', x === t); });
-      document.querySelectorAll('.ppane').forEach(function (p) { p.classList.toggle('on', p.dataset.ppane === t.dataset.ptab); });
-    });
-  });
-  function session() { try { return localStorage.getItem('oddsrail-session') || ''; } catch (e) { return ''; } }
-  function setSession(t) { try { if (t) localStorage.setItem('oddsrail-session', t); else localStorage.removeItem('oddsrail-session'); } catch (e) {} }
-  function api(path, opts) {
-    opts = opts || {}; opts.headers = opts.headers || {};
-    if (session()) opts.headers['authorization'] = 'Bearer ' + session();
-    return fetch(HOST + path, opts);
-  }
-  (function pickUpSession() {
-    var m = (location.hash || '').match(/session=([A-Za-z0-9_-]{20,})/);
-    if (m) { setSession(m[1]); history.replaceState(null, '', location.pathname + location.search); }
-  })();
-  function guest() {
-    var g = null;
-    try { g = localStorage.getItem('oddsrail-guest'); } catch (e) {}
-    if (!g || !/^[a-f0-9]{32}$/.test(g)) {
-      var b = new Uint8Array(16); (window.crypto || window.msCrypto).getRandomValues(b);
-      g = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
-      try { localStorage.setItem('oddsrail-guest', g); } catch (e) {}
-    }
-    return g;
-  }
-  function usd(v) { if (v == null || isNaN(+v)) return ''; v = +v; var s = v < 0 ? '-' : ''; v = Math.abs(v); return s + '$' + v.toFixed(2); }
-  function signed(v) { if (v == null || isNaN(+v)) return ''; return (v > 0 ? '+' : '') + usd(v).replace('$-', '-$'); }
-  function cls(v) { return v > 0 ? 'pos' : v < 0 ? 'neg' : ''; }
-  function tile(label, value, klass) { return '<div class="tile' + (klass ? ' ' + klass : '') + '"><span>' + label + '</span><b>' + value + '</b></div>'; }
-  function showLedger(l) {
-    if (!l) return;
-    var pnl = (+l.realized_pnl || 0) + (+l.unrealized_pnl || 0);
-    var pos = l.positions || [];
-    $('run-tiles').innerHTML = tile('equity', usd(l.equity)) + tile('cash', usd(l.cash)) + tile('P&L', signed(pnl), cls(pnl)) +
-      tile('positions', pos.length) + tile('resting', (l.open_orders || []).length) + tile('fills', l.fills == null ? '' : l.fills);
-    $('run-tiles').hidden = false;
-    var P = $('run-positions');
-    if (pos.length) {
-      P.innerHTML = '<table class="cmp mini"><thead><tr><th>position</th><th>size</th><th>avg</th><th>mark</th><th>P&L</th></tr></thead><tbody>' +
-        pos.map(function (p) { return '<tr><td class="strat">' + esc(p.title || p.token_id) + '</td><td>' + (+p.size).toFixed(2) + '</td><td>' + (p.avg_cost == null ? '' : (+p.avg_cost).toFixed(3)) + '</td><td>' + (p.mark == null ? '' : (+p.mark).toFixed(3)) + '</td><td class="' + cls(p.unrealized_pnl) + '">' + signed(p.unrealized_pnl) + '</td></tr>'; }).join('') + '</tbody></table>';
-      P.hidden = false;
-    } else { P.hidden = true; }
-  }
-  function showRun(r) {
-    $('run-status').textContent = (r.orders_placed || 0) + ' orders · ' + (r.decisions || []).length + ' decisions · ' + r.seconds + 's' + (r.halted ? ' · halted' : '') + ' · one tick';
-    document.querySelector('.howto').open = false;
-    var sh = $('share-run');
-    if (r.permalink) { sh.hidden = false; sh.dataset.url = r.permalink; sh.querySelector('a').href = r.permalink; }
-    else { sh.hidden = true; }
-    showLedger(r.ledger);
-    var D = $('run-decisions'), ds = r.decisions || [];
-    if (ds.length) {
-      D.innerHTML = '<table class="cmp mini"><thead><tr><th>market</th><th>order</th><th>result</th></tr></thead><tbody>' +
-        ds.map(function (d) {
-          var order = d.side ? d.side + ' ' + (d.outcome || '') + (d.size ? ' ' + (+d.size).toFixed(2) + ' @ ' + d.price : '') : '';
-          var res = d.result === 'filled' ? 'filled' + (d.avg_price ? ' @ ' + d.avg_price : '') : d.result === 'resting' ? 'resting' : d.result === 'partial' ? 'partial ' + d.filled : d.result;
-          return '<tr class="r-' + esc(d.result) + '"><td class="strat">' + esc(d.market || '') + '<small>' + esc(d.strategy || '') + (d.why ? ' · ' + esc(d.why) : '') + '</small></td>' +
-            '<td class="mono">' + esc(order) + (d.verdict ? '<small>check ' + esc(d.verdict) + '</small>' : '') + '</td>' +
-            '<td>' + esc(res) + (d.detail ? '<small>' + esc(d.detail) + '</small>' : '') + '</td></tr>';
-        }).join('') + '</tbody></table>';
-      D.hidden = false;
-    } else {
-      var u = r.universe || {}, why = '';
-      if (u.error) why = 'the market scan failed (' + u.error + '). Try again in a moment.';
-      else if (!(r.candidates || []).length) why = (u.scanned || 0) + ' markets scanned for ' + (u.query || 'all markets') + ', none passed the filters' + (u.dropped ? ' (' + Object.keys(u.dropped).map(function (k) { return u.dropped[k] + ' ' + k; }).join(', ') + ')' : '') + '. Try all markets, or lower the volume floor.';
-      else if (!(r.strategies || []).length) why = r.candidates.length + ' candidates found, no strategy switched on, so nothing was placed. Switch one on or pick a preset.';
-      else why = r.candidates.length + ' candidates, nothing qualified this pass. The steps below say what each piece checked. That is the rules working, not a bug.';
-      D.innerHTML = '<p class="muted">No decisions this pass: ' + esc(why) + '</p>';
-      D.hidden = false;
-    }
-    $('run-log').textContent = (r.steps || []).join('\n');
-    $('run-steps').hidden = !(r.steps || []).length;
-    $('run-steps').open = !ds.length;
-    $('run-note').textContent = r.halted || '';
-  }
-  function runError(msg) { $('run-status').textContent = 'failed'; $('run-note').textContent = msg; }
-  var runBtn = $('run'), runMobile = $('run-mobile'), running = false, ready = false;
-  function setRunButtons(label, disabled) { [runBtn, runMobile].forEach(function (b) { b.disabled = disabled; b.textContent = label; }); }
-  setRunButtons('connecting…', true);
-  function runPass() {
-    if (running || !ready) return;
-    running = true; setRunButtons('Running…', true);
-    $('run-status').textContent = 'scanning the live book…'; $('run-note').textContent = ''; $('runbar-status').textContent = 'running…';
-    document.querySelector('.pv-tabs .tab[data-ptab=run]').click();
-    api('/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest(), config: read() }) })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
-      .then(function (x) {
-        if (x.status === 401 && session()) { setSession(''); acct.hidden = true; $('keep').hidden = false; runError('your sign-in expired; press Keep this agent to sign in again'); return; }
-        if (!x.ok || !x.j.ok) runError(x.j.error || ('HTTP ' + x.status)); else { showRun(x.j); $('runbar-status').textContent = (x.j.orders_placed || 0) + ' orders · ' + (x.j.decisions || []).length + ' decisions'; if (window.innerWidth <= 1000) document.querySelector('.preview').scrollIntoView({ behavior: 'smooth' }); }
-      })
-      .catch(function (e) { runError('could not reach the server (' + e.message + ')'); })
-      .then(function () { running = false; setRunButtons('▶ Run paper pass', false); });
-  }
-  runBtn.addEventListener('click', runPass);
-  runMobile.addEventListener('click', runPass);
-  document.querySelector('#share-run button').addEventListener('click', function () {
-    var b = this;
-    navigator.clipboard.writeText($('share-run').dataset.url).then(function () { b.textContent = 'copied'; setTimeout(function () { b.textContent = 'copy link'; }, 1400); });
-  });
-  $('ledger-reset').addEventListener('click', function () {
-    api('/run/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest() }) })
-      .then(function (r) { return r.json(); }).then(function () { $('run-status').textContent = 'ledger reset to $1,000'; $('run-decisions').hidden = true; $('run-steps').hidden = true; loadLedger(); })
-      .catch(function (e) { runError('reset failed (' + e.message + ')'); });
-  });
-  function loadLedger() {
-    api('/run/ledger?guest=' + guest()).then(function (r) { return r.json(); }).then(function (l) { if (l && l.ok) { showLedger(l); if (!l.fresh) $('run-status').textContent = (l.account ? l.account + ' · ' : '') + 'ledger loaded'; } }).catch(function () {});
-  }
-
-  // ------------------------------ keep this agent ---------------------------
-  var acct = $('acct');
-  function showAccount(me) {
-    acct.hidden = false;
-    var signedIn = !!(me && me.signed_in);
-    $('acct-out').hidden = signedIn; $('acct-in').hidden = !signedIn;
-    $('keep').hidden = signedIn;
-    if (!signedIn) return;
-    $('acct-email').textContent = me.email;
-    var f = $('agent'), a = me.agent || {};
-    f.querySelector('[name=name]').value = a.name || (me.arena || '');
-    f.querySelector('[name=strategy]').value = a.strategy || '';
-    f.querySelector('[name=schedule]').checked = a.schedule === 'hourly';
-    f.querySelector('[name=arena]').checked = !!me.arena;
-    var last = a.last_result;
-    $('agent-status').textContent = a.runs ? (a.runs + ' scheduled run' + (a.runs === 1 ? '' : 's') + (last && last.at ? ', last ' + String(last.at).replace('T', ' ').slice(0, 16) + ' UTC' : '')) : (a.name ? 'saved' : '');
-  }
-  function loadMe() {
-    if (!session()) { $('keep').hidden = false; return; }
-    api('/me').then(function (r) { return r.json(); }).then(function (me) { if (me && me.ok && me.signed_in) showAccount(me); else { setSession(''); $('keep').hidden = false; $('run-status').textContent = 'your sign-in expired; the ledger shown is this browser\'s guest ledger'; } }).catch(function () {});
-  }
-  $('keep').addEventListener('click', function () { if (MAIL === 'console') return; acct.hidden = !acct.hidden; $('acct-out').hidden = false; $('acct-in').hidden = true; if (!acct.hidden) acct.scrollIntoView({ block: 'nearest' }); });
-  $('claim').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var email = $('claim').querySelector('[name=email]').value.trim();
-    $('claim-status').textContent = 'sending…';
-    api('/claim/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ guest: guest(), email: email }) })
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (!j.ok) { $('claim-status').textContent = j.error || 'could not send'; return; }
-        $('claim-status').innerHTML = j.sent ? 'Sent. Open the link in the email within 15 minutes; it brings you back here signed in.' : ('Mail is not configured on this server yet' + (j.dev_link ? ': <a href="' + esc(j.dev_link) + '">use this link</a>' : ', so the link went to the server log') + '.');
-      })
-      .catch(function (err) { $('claim-status').textContent = 'could not reach the server (' + err.message + ')'; });
-  });
-  $('agent').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var f = $('agent');
-    var body = { name: f.querySelector('[name=name]').value.trim(), strategy: f.querySelector('[name=strategy]').value.trim(), config: read(), schedule: f.querySelector('[name=schedule]').checked ? 'hourly' : 'off', arena: f.querySelector('[name=arena]').checked };
-    $('agent-status').textContent = 'saving…';
-    api('/agents', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json(); })
-      .then(function (j) { $('agent-status').textContent = j.ok ? ('saved' + (body.schedule === 'hourly' ? ', runs every hour' : '') + (body.arena ? ', on the board' : '')) : (j.error || 'could not save'); })
-      .catch(function (err) { $('agent-status').textContent = 'could not reach the server (' + err.message + ')'; });
-  });
-  $('signout').addEventListener('click', function () {
-    api('/logout', { method: 'POST' }).catch(function () {}).then(function () { setSession(''); acct.hidden = true; $('keep').hidden = false; $('run-status').textContent = 'signed out'; loadLedger(); });
-  });
-
-  probe(0).then(function () { loadLedger(); loadMe(); });
+  form.addEventListener('submit',e=>e.preventDefault());
+  document.addEventListener('click',e=>{const b=e.target.closest('button[data-step],button[data-next]');if(b){e.preventDefault();next(Number(b.dataset.next??b.dataset.step));}});
+  form.addEventListener('input',sync);
+  form.addEventListener('change',e=>{const n=e.target.name||'';if(n.startsWith('topic_')&&e.target.checked){if(n==='topic_all')categories.filter(x=>x[0]!=='all').forEach(([id])=>input('topic_'+id).checked=false);else input('topic_all').checked=false;}sync();});
+  renderSelected();sync();
+  if(url.searchParams.has('market')){input('market_mode').value='specific';$('market-search').value=url.searchParams.get('market');sync();findMarket($('market-search').value);}
 })();

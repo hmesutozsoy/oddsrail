@@ -35,14 +35,30 @@ class RateLimiter:
     turning the sign-in form into a mail cannon; the per-email allowance in
     the provider is the durable one."""
 
-    def __init__(self, limit: int = 20, window: float = 3600.0):
+    def __init__(self, limit: int = 20, window: float = 3600.0, *, max_keys: int = 4096, clock=None):
         self.limit, self.window = limit, window
-        self._hits: dict[str, collections.deque] = collections.defaultdict(collections.deque)
+        if limit < 1 or window <= 0 or max_keys < 1:
+            raise ValueError("Rate limits must be positive")
+        self.max_keys, self._clock = max_keys, clock or time.monotonic
+        self._hits: dict[str, collections.deque] = {}
+        self._next_cleanup = float("-inf")
 
     def allow(self, key: str) -> bool:
-        now = time.time()
-        q = self._hits[key]
-        while q and q[0] < now - self.window:
+        now = self._clock()
+        cutoff = now - self.window
+        if now >= self._next_cleanup:
+            for old_key, hits in list(self._hits.items()):
+                if not hits or hits[-1] <= cutoff:
+                    del self._hits[old_key]
+            self._next_cleanup = now + min(self.window, 60.0)
+        q = self._hits.get(key)
+        if q is None:
+            # Do not evict active limits: rotating keys must not reset a known
+            # client's allowance. Deny new keys until an idle slot is pruned.
+            if len(self._hits) >= self.max_keys or not isinstance(key, str) or len(key) > 512:
+                return False
+            q = self._hits[key] = collections.deque()
+        while q and q[0] <= cutoff:
             q.popleft()
         if len(q) >= self.limit:
             return False
@@ -223,6 +239,95 @@ def build_app():
             return None, "body must be an object"
         return body, None
 
+    # Public, read-only setup data. User URLs are parsed as Polymarket slugs;
+    # they are never fetched as arbitrary URLs.
+    from .read_admission import ReadAdmission, ReadBusy, market_success, portfolio_success
+    public_reads = ReadAdmission()
+    market_limiter = RateLimiter(limit=120, window=60.0)
+
+    @srv.custom_route("/markets/{action}", methods=["GET", "OPTIONS"])
+    async def market_choices(request: Request):
+        from ..market_selection import search_selection, resolve_selection, SelectionError
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        action = request.path_params["action"]
+        if action not in ("search", "resolve"):
+            return JSONResponse({"ok": False, "error": "Unknown market action"}, status_code=404, headers=cors(request))
+        if not market_limiter.allow(client_ip(request)):
+            return JSONResponse({"ok": False, "error": "Too many searches; try again shortly."}, status_code=429, headers=cors(request))
+        try:
+            value = request.query_params.get("q", "")
+            if len(value) > (2048 if action == "resolve" else 160):
+                raise SelectionError("Market query is too long.")
+            result = await public_reads.get(
+                "markets:" + action + ":" + value,
+                lambda: resolve_selection(value) if action == "resolve" else search_selection(value),
+                ttl=30 if action == "resolve" else 15, cache_if=market_success)
+            return JSONResponse(result, headers=cors(request))
+        except ReadBusy as exc:
+            return JSONResponse({"ok": False, "code": "read_capacity", "error": "Market data is busy; try again shortly."},
+                                status_code=503, headers={**cors(request), "Retry-After": str(exc.retry_after)})
+        except SelectionError as exc:
+            status = {"invalid_input": 400, "not_found": 404, "upstream_unavailable": 503}.get(exc.code, 400)
+            return JSONResponse({"ok": False, "error": str(exc), "code": exc.code}, status_code=status, headers=cors(request))
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Market data is temporarily unavailable."}, status_code=503, headers=cors(request))
+
+    portfolio_limiter = RateLimiter(limit=30, window=60.0)
+
+    @srv.custom_route("/portfolio", methods=["GET", "OPTIONS"])
+    async def public_portfolio(request: Request):
+        from .portfolio import InvalidAddress, load_portfolio, normalize_address
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        addresses = request.query_params.getlist("address")
+        try:
+            address = normalize_address(addresses[0] if len(addresses) == 1 else None)
+        except InvalidAddress as exc:
+            return JSONResponse({"ok": False, "code": "invalid_address", "error": str(exc)},
+                                status_code=400, headers=cors(request))
+        if not portfolio_limiter.allow(client_ip(request)):
+            return JSONResponse({"ok": False, "error": "Too many account reads; try again shortly."},
+                                status_code=429, headers=cors(request))
+        # This public lookup intentionally does not call who(), read an account
+        # ledger, or consume the browser's OAuth token as proof of wallet ownership.
+        try:
+            result = await public_reads.get("portfolio:" + address, lambda: load_portfolio(address),
+                                            ttl=10, cache_if=portfolio_success)
+            return JSONResponse(result, headers=cors(request))
+        except ReadBusy as exc:
+            return JSONResponse({"ok": False, "code": "read_capacity", "error": "Account data is busy; try again shortly."},
+                                status_code=503, headers={**cors(request), "Retry-After": str(exc.retry_after)})
+        except Exception:
+            return JSONResponse({"ok": False, "code": "upstream_unavailable",
+                                 "error": "Public account data is temporarily unavailable."},
+                                status_code=503, headers=cors(request))
+
+    @srv.custom_route("/capabilities", methods=["GET", "OPTIONS"])
+    async def setup_capabilities(request: Request):
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        return JSONResponse({"ok": True, "specific_markets": True, "paper_runner": True,
+                             "hosted_live": False, "session_authorization": False,
+                             "hosted_ai": "unavailable", "byo_api": False}, headers=cors(request))
+
+    @srv.custom_route("/config/validate", methods=["POST", "OPTIONS"])
+    async def validate_setup(request: Request):
+        from .configuration import validate_config
+        if request.method == "OPTIONS":
+            return PlainTextResponse("", status_code=204, headers=cors(request))
+        if len(await request.body()) > 20000:
+            return JSONResponse({"ok": False, "error": "Configuration is too large."}, status_code=413, headers=cors(request))
+        body, err = await run_json(request)
+        if err:
+            return JSONResponse({"ok": False, "error": err}, status_code=400, headers=cors(request))
+        try:
+            normalized = validate_config(body.get("config"), allow_draft=True)
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400, headers=cors(request))
+        return JSONResponse({"ok": True, "normalized": normalized,
+                             "mode": body["config"].get("mode", "paper")}, headers=cors(request))
+
     @srv.custom_route("/run", methods=["POST", "OPTIONS"])
     async def run_pass(request: Request):
         if request.method == "OPTIONS":
@@ -241,6 +346,13 @@ def build_app():
         if not isinstance(cfg, dict):
             return JSONResponse({"ok": False, "error": "config must be an object"}, status_code=400,
                                 headers=cors(request))
+        from .configuration import validate_config, validate_version
+        try:
+            validate_version(cfg)
+            if cfg.get("schema_version") == 2 or cfg.get("mode") == "draft":
+                validate_config(cfg)
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400, headers=cors(request))
         async with runner.lock_for(ledger):
             try:
                 out = await asyncio.wait_for(runner.run_pass(cfg, ledger), timeout=120.0)
@@ -407,6 +519,13 @@ def build_app():
             return JSONResponse({"ok": False, "error": str(e)}, status_code=400, headers=cors(request))
         strategy = " ".join(str(body.get("strategy") or "").split())[:arena.STRATEGY_MAX]
         cfg = body.get("config") if isinstance(body.get("config"), dict) else {}
+        from .configuration import validate_config, validate_version
+        try:
+            validate_version(cfg)
+            if cfg.get("schema_version") == 2 or cfg.get("mode") == "draft":
+                validate_config(cfg)
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400, headers=cors(request))
         schedule = "hourly" if body.get("schedule") in ("hourly", True) else "off"
         prov.db.agent_put(user["id"], name, strategy, cfg, schedule)
         if body.get("arena"):

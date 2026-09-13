@@ -10,3 +10,5 @@ build/
 *.sqlite3
 *.sqlite3-*
 cloud-data/
+
+work/

@@ -1,0 +1,30 @@
+.product .competition-main{padding-top:55px;padding-bottom:52px}
+.product .competition-intro{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(240px,1fr);gap:44px;align-items:center;padding:18px 0 55px}
+.product .competition-status{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:99px;padding:7px 12px;font-size:11px;color:var(--accent);margin-bottom:25px}
+.product .competition-status>span{width:5px;height:5px;flex-shrink:0;border-radius:50%;background:currentColor}
+.product .competition-copy h1{font-size:clamp(38px,4.2vw,57px);letter-spacing:-2.6px;margin-bottom:19px;line-height:1.1}
+.product .competition-lede{font-size:22px;line-height:1.5;letter-spacing:-.4px;color:var(--muted);margin-bottom:30px}
+.product .competition-timing{font-size:11px;line-height:1.7;color:var(--muted);max-width:335px;margin:20px 0 0}
+.product .competition-emblem{height:280px;width:280px;position:relative;display:flex;align-items:center;justify-content:center;justify-self:center;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 8%,transparent),transparent 68%)}
+.product .competition-ring{position:absolute;border:1px solid var(--line);border-radius:50%;inset:0}
+.product .competition-ring.ring-inner{inset:28px;border-style:dashed;opacity:.7}
+.product .competition-emblem>svg{width:180px;height:180px;stroke:var(--text);stroke-width:2.6}
+.product .competition-emblem .emblem-spark{stroke:var(--accent);stroke-width:2}
+.product .competition-how{border-top:1px solid var(--line);padding-top:31px}
+.product .competition-how>h2{margin-bottom:23px;font-size:19px}
+.product .competition-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;list-style:none;margin:0;padding:0}
+.product .competition-steps>li{padding:25px 25px 26px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.product .competition-step-number{display:block;font-size:11px;font-variant-numeric:tabular-nums;letter-spacing:1px;color:var(--accent);margin-bottom:25px}
+.product .competition-steps h3{font-size:17px;letter-spacing:-.3px;margin-bottom:10px}
+.product .competition-steps p{font-size:13px;line-height:1.65;color:var(--muted);max-width:245px;margin-bottom:0}
+.product .competition-format{margin-top:26px;border-bottom:1px solid var(--line)}
+.product .competition-format>summary{display:flex;align-items:center;justify-content:space-between;gap:20px;list-style:none;cursor:pointer;padding:17px 0 20px;color:var(--muted);font-size:12px}
+.product .competition-format>summary::-webkit-details-marker{display:none}
+.product .competition-format>summary:hover{color:var(--text)}
+.product .competition-format>summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:4px}
+.product .competition-format>summary svg{width:16px;height:16px;transition:transform .18s}
+.product .competition-format[open]>summary svg{transform:rotate(180deg)}
+.product .competition-format>p{font-size:12px;line-height:1.8;color:var(--muted);max-width:710px;margin:0 0 22px}
+@media(max-width:900px){.product .competition-intro{gap:22px;grid-template-columns:minmax(0,1.5fr) minmax(170px,1fr)}.product .competition-emblem{height:220px;width:220px}.product .competition-emblem>svg{width:155px;height:155px}.product .competition-steps>li{padding:22px 19px}.product .competition-steps h3{font-size:15px}}
+@media(max-width:760px){.product .competition-main{padding-top:30px}.product .competition-intro{grid-template-columns:1fr;padding-top:7px;padding-bottom:36px;gap:0}.product .competition-emblem{display:none}.product .competition-status{margin-bottom:23px}.product .competition-copy h1{font-size:40px;letter-spacing:-1.8px;max-width:440px}.product .competition-lede{font-size:20px;margin-bottom:26px}.product .competition-timing{font-size:11px;margin-top:18px;max-width:320px}.product .competition-how{padding-top:25px}.product .competition-how>h2{font-size:18px;margin-bottom:20px}.product .competition-steps{grid-template-columns:1fr;gap:12px}.product .competition-steps>li{position:relative;padding:23px 23px 24px 72px;border-radius:18px}.product .competition-step-number{position:absolute;left:25px;top:26px;margin:0}.product .competition-steps h3{font-size:16px;margin-bottom:7px}.product .competition-steps p{max-width:none;font-size:12px}.product .competition-format{margin-top:15px}.product .competition-format>summary{padding:17px 0;font-size:11px}.product .competition-format>p{font-size:11px}.product .competition-format>summary svg{width:15px;height:15px}}
+@media(max-width:360px){.product .competition-copy h1{font-size:35px}.product .competition-steps>li{padding-left:63px}.product .competition-step-number{left:21px}}

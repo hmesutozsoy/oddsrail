@@ -451,3 +451,219 @@ def test_one_inbox_is_one_account(cloud):
     a = httpx.get(base + "/me", headers={"authorization": f"Bearer {first}"}).json()
     b = httpx.get(base + "/me", headers={"authorization": f"Bearer {second}"}).json()
     assert a["email"] == b["email"] == "farm@example.com", "plus-addressing is the same account"
+
+
+# Guided builder routes deliberately exercised without a venue lookup. All
+# execution requests below must fail validation before the runner is entered.
+def _guided_config():
+    return {"schema_version": 2, "mode": "paper", "market_mode": "universe",
+            "market_ids": [], "topics": ["crypto"], "keyword": "", "bankroll": 1000,
+            "perorder": 25, "maxpos": 5, "closing": 2, "minvol": 20000,
+            "on": {"fade": True, "daily": True},
+            "vals": {"fade": {"jump": 8, "hours": 6}, "daily": {"usd": 30}}}
+
+
+def test_guided_capabilities_do_not_advertise_live_authorization(cloud):
+    response = httpx.get(cloud["base"] + "/capabilities")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    capabilities = response.json()
+    assert capabilities["ok"] is True
+    assert capabilities["paper_runner"] is True
+    assert capabilities["specific_markets"] is True
+    assert capabilities["hosted_live"] is False
+    assert capabilities["session_authorization"] is False
+    assert capabilities["hosted_ai"] == "unavailable"
+    assert capabilities["byo_api"] is False
+
+
+def test_guided_validation_returns_executable_summary_not_replacement_config(cloud):
+    config = _guided_config()
+    response = httpx.post(cloud["base"] + "/config/validate", json={"config": config})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["ok"] is True and result["mode"] == "paper"
+    summary = result["normalized"]
+    assert summary["schema_version"] == 2
+    assert summary["perorder"] == config["perorder"]
+    assert summary["bankroll"] == config["bankroll"]
+    assert summary["fade"]["jump"] == .08
+    assert summary["daily"] == 30
+    assert "config" not in result, "The normalized summary must not replace the original configuration."
+
+
+@pytest.mark.parametrize("body", [None, [], "agent", 3, {"config": []}, {"config": None}])
+def test_guided_validation_rejects_wrong_json_types(cloud, body):
+    response = httpx.post(cloud["base"] + "/config/validate", content=json.dumps(body),
+                          headers={"content-type": "application/json"})
+    assert response.status_code == 400, response.text
+    assert response.json()["ok"] is False
+    assert isinstance(response.json()["error"], str)
+
+
+def test_guided_validation_rejects_invalid_json_and_oversized_body(cloud):
+    url = cloud["base"] + "/config/validate"
+    invalid = httpx.post(url, content="{", headers={"content-type": "application/json"})
+    assert invalid.status_code == 400
+    assert invalid.json()["ok"] is False
+    large = httpx.post(url, json={"config": _guided_config(), "padding": "x" * 20001})
+    assert large.status_code == 413
+    assert large.json()["ok"] is False
+
+
+@pytest.mark.parametrize("forecast", ["Bitcoin: NaN", "Bitcoin: 1", "Bitcoin: .7\nEthereum: unknown"])
+def test_guided_validation_rejects_malformed_forecasts(cloud, forecast):
+    config = _guided_config()
+    config["on"]["value"] = True
+    config["vals"]["value"] = {"edge": 5, "kelly": .25, "views": forecast}
+    response = httpx.post(cloud["base"] + "/config/validate", json={"config": config})
+    assert response.status_code == 400, response.text
+    assert "forecast" in response.json()["error"].lower()
+
+
+def test_guided_validation_blocks_hosted_live_mode(cloud):
+    config = _guided_config()
+    config["mode"] = "live"
+    response = httpx.post(cloud["base"] + "/config/validate", json={"config": config})
+    assert response.status_code == 400
+    assert "live" in response.json()["error"].lower()
+
+
+def test_guided_validation_preserves_specific_outcome_scope(cloud):
+    config = _guided_config()
+    config.update(market_mode="specific", topics=[], market_ids=[str(10**50 + 1), str(10**50 + 2)])
+    response = httpx.post(cloud["base"] + "/config/validate", json={"config": config})
+    assert response.status_code == 200, response.text
+    summary = response.json()["normalized"]
+    assert summary["market_mode"] == "specific"
+    assert summary["market_ids"] == config["market_ids"]
+    assert all(isinstance(token, str) for token in summary["market_ids"])
+    config["market_ids"] = []
+    invalid = httpx.post(cloud["base"] + "/config/validate", json={"config": config})
+    assert invalid.status_code == 400, "An empty selection must not become an unrestricted universe."
+
+
+@pytest.mark.parametrize("url", ["https://polymarket.com.evil.example/event/a",
+                                  "https://user@polymarket.com/event/a",
+                                  "https://polymarket.com:443/event/a"])
+def test_guided_market_resolution_rejects_untrusted_urls_offline(cloud, url):
+    response = httpx.get(cloud["base"] + "/markets/resolve", params={"q": url})
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_input"
+
+
+@pytest.mark.parametrize("invalid_case", ["order_limit", "selection", "forecast", "live"])
+def test_guided_run_rejects_invalid_v2_before_execution(cloud, invalid_case):
+    config = _guided_config()
+    if invalid_case == "order_limit":
+        config["perorder"] = 501
+    elif invalid_case == "selection":
+        config.update(market_mode="specific", market_ids=[])
+    elif invalid_case == "forecast":
+        config["on"]["value"] = True
+        config["vals"]["value"] = {"edge": 5, "kelly": .25, "views": "Bitcoin: maybe"}
+    else:
+        config["mode"] = "live"
+    guest = secrets.token_hex(16)
+    ledger = cloud["data"] / "guests" / (guest + ".json")
+    assert not ledger.exists()
+    response = httpx.post(cloud["base"] + "/run", json={"guest": guest, "config": config}, timeout=5)
+    assert response.status_code == 400, response.text
+    result = response.json()
+    assert result["ok"] is False and isinstance(result["error"], str)
+    assert "run_id" not in result and "decisions" not in result
+    assert not ledger.exists(), "Rejected configuration must not enter paper execution."
+
+
+@pytest.mark.parametrize("body", [None, [], "agent"])
+def test_guided_run_rejects_nonobject_body(cloud, body):
+    response = httpx.post(cloud["base"] + "/run", content=json.dumps(body),
+                          headers={"content-type": "application/json"})
+    assert response.status_code == 400
+    assert response.json()["ok"] is False
+
+
+def test_guided_agent_save_keeps_original_config_and_rejects_invalid_update(cloud):
+    base = cloud["base"]
+    session = sign_in(base, "guided-save@example.com")["token_response"].json()["access_token"]
+    auth = {"authorization": "Bearer " + session}
+    config = _guided_config()
+    request = {"name": "guided save bot", "strategy": "rules", "config": config,
+               "schedule": "off", "arena": False}
+    saved = httpx.post(base + "/agents", headers=auth, json=request)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["agent"]["config"] == config
+    invalid = _guided_config()
+    invalid["perorder"] = 501
+    rejected = httpx.post(base + "/agents", headers=auth, json={**request, "config": invalid})
+    assert rejected.status_code == 400
+    current = httpx.get(base + "/me", headers=auth).json()["agent"]
+    assert current["config"] == config, "A rejected update must preserve the saved agent."
+
+
+def _draft_config(version):
+    config = _guided_config()
+    config["mode"] = "draft"
+    if version is None:
+        config.pop("schema_version")
+    else:
+        config["schema_version"] = version
+    return config
+
+
+@pytest.mark.parametrize("version", [2, 1, None])
+def test_draft_can_be_reviewed_without_execution_for_every_version(cloud, version):
+    config = _draft_config(version)
+    response = httpx.post(cloud["base"] + "/config/validate", json={"config": config})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["ok"] is True and result["mode"] == "draft"
+    assert result["normalized"]["schema_version"] == (version or 1)
+    assert "run_id" not in result and "decisions" not in result
+
+
+@pytest.mark.parametrize("version", [2, 1, None])
+def test_draft_cannot_enter_run_for_every_version(cloud, version):
+    guest = secrets.token_hex(16)
+    ledger = cloud["data"] / "guests" / (guest + ".json")
+    response = httpx.post(cloud["base"] + "/run", json={"guest": guest, "config": _draft_config(version)},
+                          timeout=5)
+    assert response.status_code == 400, response.text
+    result = response.json()
+    assert result["ok"] is False and "draft" in result["error"].lower()
+    assert "run_id" not in result and "decisions" not in result
+    assert not ledger.exists(), "A draft must not enter the runner even without a v2 marker."
+
+
+@pytest.mark.parametrize("version", [2, 1, None])
+def test_draft_cannot_be_saved_as_scheduled_agent_for_every_version(cloud, version):
+    base = cloud["base"]
+    suffix = str(version) if version is not None else "omitted"
+    session = sign_in(base, f"draft-guard-{suffix}@example.com")["token_response"].json()["access_token"]
+    auth = {"authorization": "Bearer " + session}
+    response = httpx.post(base + "/agents", headers=auth, json={
+        "name": "draft guard " + suffix, "strategy": "review only", "config": _draft_config(version),
+        "schedule": "hourly", "arena": False})
+    assert response.status_code == 400, response.text
+    assert "draft" in response.json()["error"].lower()
+    assert httpx.get(base + "/me", headers=auth).json()["agent"] is None
+
+
+@pytest.mark.parametrize("query", [[], [("address", "")], [("address", "0x123")],
+                                     [("address", "0x" + "0" * 40)],
+                                     [("address", "http://127.0.0.1/private")],
+                                     [("address", "0x" + "ab" * 20), ("address", "0x" + "cd" * 20)]])
+def test_public_portfolio_rejects_invalid_address_before_public_fetch(cloud, query):
+    response = httpx.get(cloud["base"] + "/portfolio", params=query,
+                         headers={"origin": "https://oddsrail.app", "authorization": "Bearer not-a-login"})
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_address"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["access-control-allow-origin"] == "https://oddsrail.app"
+
+
+def test_public_portfolio_preflight_needs_no_account_or_address(cloud):
+    response = httpx.options(cloud["base"] + "/portfolio", headers={"origin": "https://oddsrail.app"})
+    assert response.status_code == 204
+    assert response.headers["access-control-allow-origin"] == "https://oddsrail.app"
+    assert "GET" in response.headers["access-control-allow-methods"]
