@@ -27,6 +27,7 @@ from .. import crossvenue as xv
 from .. import paper
 from .. import polymarket as pm
 from .. import signals
+from .. import market_selection as selection
 from .arena import FORCED_LEDGER
 
 MAX_CANDIDATES = 15
@@ -85,6 +86,15 @@ def normalize(raw: dict) -> dict:
     raw = raw or {}
     on = {k: bool(v) for k, v in (raw.get("on") or {}).items()}
     vals = raw.get("vals") or {}
+    market_mode = raw.get("market_mode", "specific" if raw.get("market_ids") else "universe")
+    market_ids, selection_error = [], None
+    if market_mode not in ("universe", "specific"):
+        selection_error = "Choose universe or specific market selection."
+    elif market_mode == "specific":
+        try:
+            market_ids = selection.validate_market_ids(raw.get("market_ids", []))
+        except selection.SelectionError as exc:
+            selection_error = str(exc)
 
     def val(frag, key, default):
         return _f((vals.get(frag) or {}).get(key), default)
@@ -104,6 +114,8 @@ def normalize(raw: dict) -> dict:
     if keyword:
         label = f"{label} + {keyword}" if label else keyword
     cfg = {
+        "schema_version": 2 if raw.get("schema_version") == 2 else 1,
+        "market_mode": market_mode, "market_ids": market_ids, "selection_error": selection_error,
         "topics": topics, "keyword": keyword, "topic": label,
         "minvol": max(0.0, _f(raw.get("minvol"), 20000)),
         "bankroll": min(max(10.0, _f(raw.get("bankroll"), 1000)), 100000.0),
@@ -154,6 +166,8 @@ class Pass:
         self.cost_by_market: dict = {}   # market title -> cost of positions held or bought
         self.taken: dict = {}            # market title -> outcome bought this pass
         self.outcome_of: dict = {}       # token_id -> "yes" | "no", looked up once
+        self.selected_raw: list[dict] | None = None
+        self.selection_failure: str | None = None
 
     def log(self, msg: str) -> None:
         self.steps.append(f"{time.time() - self.t0:5.1f}s {msg}")
@@ -197,6 +211,17 @@ async def _sources(p: Pass, closing_hours: float | None) -> tuple[list[dict], li
     """Raw market lists for the switched-on categories and keyword, merged
     and de-duplicated, most traded first. Returns (markets, failures)."""
     c = p.cfg
+    if c["market_mode"] != "universe":
+        if p.selected_raw is None:
+            p.selected_raw = []
+            try:
+                if c["selection_error"]:
+                    raise selection.SelectionError(c["selection_error"])
+                p.selected_raw = await selection.selected_markets(c["market_ids"])
+            except selection.SelectionError as exc:
+                p.selection_failure = str(exc)
+                p.halted = "specific selection: " + str(exc)
+        return p.selected_raw, [p.selection_failure] if p.selection_failure else []
     jobs: list[tuple[str, object]] = []
     if closing_hours:
         jobs.append(("closing-soon", pm.closing_soon(hours=closing_hours, limit=20)))
@@ -234,13 +259,14 @@ async def _universe(p: Pass, query: str = "", closing_hours: float | None = None
     closing-soon list)."""
     c = p.cfg
     raw, failures = await _sources(p, closing_hours)
-    if closing_hours and c["keyword"]:
+    if closing_hours and c["keyword"] and c["market_mode"] == "universe":
         raw = [m for m in raw if xv.similarity(m.get("question") or "", c["keyword"]) > 0] or raw
-    label = "closing-soon" if closing_hours else c["topic"]
+    label = "specific markets" if c["market_mode"] != "universe" else ("closing-soon" if closing_hours else c["topic"])
     if not raw and failures:
         p.log(f"universe {label}: scan failed ({'; '.join(failures)})")
         if not closing_hours:
-            p.universe = {"query": c["topic"], "topics": c["topics"], "keyword": c["keyword"],
+            p.universe = {"query": label, "market_mode": c["market_mode"], "market_ids": c["market_ids"],
+                          "topics": c["topics"], "keyword": c["keyword"],
                           "scanned": 0, "candidates": 0, "error": "; ".join(failures)}
         return []
     out, dropped = [], {}
@@ -252,10 +278,13 @@ async def _universe(p: Pass, query: str = "", closing_hours: float | None = None
             continue
         out.append(u)
     cap = MAX_CANDIDATES_MULTI if len(c["topics"]) + bool(c["keyword"]) > 1 else MAX_CANDIDATES
+    if c["market_mode"] != "universe":
+        cap = selection.MAX_MARKET_IDS
     p.log(f"universe {label}: {len(raw)} scanned, {len(out)} candidates"
           + (f", dropped {dropped}" if dropped else "") + (f", failed {failures}" if failures else ""))
     if not closing_hours:
-        p.universe = {"query": c["topic"], "topics": c["topics"], "keyword": c["keyword"],
+        p.universe = {"query": label, "market_mode": c["market_mode"], "market_ids": c["market_ids"],
+                      "topics": c["topics"], "keyword": c["keyword"],
                       "scanned": len(raw), "candidates": min(len(out), cap), "dropped": dropped}
         if failures:
             p.universe["partial"] = failures
@@ -350,6 +379,75 @@ async def _hygiene(p: Pass, m: dict, token: str, side: str, price: float, size: 
     return None, limit
 
 
+def _committed_capital(d: dict, title: str | None = None) -> tuple[float, float]:
+    """Raw ledger cost basis plus worst-case resting BUY cost, without marking.
+
+    Used only by v2 configs. Counting the saved ledger rather than the pass's
+    position summary includes partial fills and quotes from every strategy.
+    SELL orders do not release capital until their fills reduce position cost.
+    """
+    held = reserved = 0.0
+    for row in (d.get("positions") or {}).values():
+        cost = float(row["cost"])
+        if not math.isfinite(cost) or cost < 0:
+            raise ValueError("invalid position cost")
+        if title is None or row.get("title") == title:
+            held += cost
+    for order in d.get("open_orders") or []:
+        if order.get("side") != "BUY":
+            continue
+        price, size = float(order["price"]), float(order["size"])
+        if not (math.isfinite(price) and math.isfinite(size) and 0 < price < 1 and size >= 0):
+            raise ValueError("invalid resting BUY commitment")
+        if title is None or order.get("title") == title:
+            reserved += price * size
+    if not math.isfinite(held + reserved):
+        raise ValueError("invalid total capital commitment")
+    return held, reserved
+
+
+def _buy_room(p: Pass, title: str) -> float:
+    d = paper.load()
+    held, reserved = _committed_capital(d)
+    cash = float(d["cash"])
+    if not math.isfinite(cash):
+        raise ValueError("invalid paper cash")
+    room = min(p.cfg["perorder"], p.cfg["bankroll"] - held - reserved, cash - reserved)
+    if p.cfg["on"].get("expo"):
+        market_held, market_reserved = _committed_capital(d, title)
+        room = min(room, p.cfg["expo"] - market_held - market_reserved)
+    return max(0.0, room)
+
+
+def _position_tokens(d: dict) -> set[str]:
+    """V2 position slots include held outcomes and every pending BUY outcome."""
+    tokens = set()
+    for token, row in (d.get("positions") or {}).items():
+        size = float(row["size"])
+        if not math.isfinite(size) or size < 0:
+            raise ValueError("invalid position size")
+        if size > 0:
+            tokens.add(str(token))
+    for order in d.get("open_orders") or []:
+        if order.get("side") != "BUY":
+            continue
+        size = float(order["size"])
+        if not math.isfinite(size) or size < 0:
+            raise ValueError("invalid resting BUY size")
+        if size > 0:
+            tokens.add(str(order["token_id"]))
+    return tokens
+
+
+def _cancel_entries(p: Pass, strategy: str, detail: str) -> None:
+    """Pull every resting entry on this ledger while preserving SELL exits."""
+    for order in list(paper.load().get("open_orders") or []):
+        if order.get("side") == "BUY":
+            paper.cancel(order["id"])
+            p.decide(strategy=strategy, token_id=order.get("token_id"), side="BUY",
+                     paper_order_id=order["id"], result="cancelled", detail=detail)
+
+
 async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: float,
                  notional_usd: float, strategy: str, why: str, resting: bool = False) -> dict:
     """Size, cap, check and paper-place one order; always returns a decision."""
@@ -359,6 +457,8 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
                 token_id=token, outcome=outcome.upper(), side=side, price=round(price, 4), why=why)
     held = p.positions.get(token)
     if side == "BUY":
+        if c["market_mode"] != "universe" and token not in c["market_ids"]:
+            return p.decide(**base, result="skipped", detail="outcome is outside the specific selection")
         # Entries are rationed: the loss limit, the pass cap, positions cap,
         # exposure cap and the no-add rule all apply. Exits never are.
         if p.halted:
@@ -369,7 +469,15 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
         if other and other != outcome.lower():
             return p.decide(**base, result="skipped",
                             detail=f"another piece already bought {other.upper()} on this market this pass")
-        if not held and len(p.positions) >= c["maxpos"]:
+        if c["schema_version"] == 2:
+            try:
+                occupied = _position_tokens(paper.load())
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                return p.decide(**base, result="skipped", detail=f"position accounting unavailable: {exc}")
+            if len(occupied | {str(token)}) > c["maxpos"]:
+                return p.decide(**base, result="skipped",
+                                detail=f"max open positions ({c['maxpos']}) includes held and pending BUY outcomes")
+        elif not held and len(p.positions) >= c["maxpos"]:
             return p.decide(**base, result="skipped", detail=f"max open positions ({c['maxpos']}) reached")
         if held and c["on"].get("noadd") and held.get("mark") is not None and held["mark"] < held["avg_cost"]:
             return p.decide(**base, result="skipped", detail="never add to a loser: mark below entry")
@@ -381,7 +489,16 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
                 if notional <= 0:
                     return p.decide(**base, result="skipped",
                                     detail=f"exposure cap ${c['expo']:g} reached for this market (${spent:.2f} held)")
+        if c["schema_version"] == 2:
+            try:
+                notional = min(notional, _buy_room(p, title))
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                return p.decide(**base, result="skipped", detail=f"capital accounting unavailable: {exc}")
+            if notional <= 0:
+                return p.decide(**base, result="skipped", detail="allocated capital, available cash or exposure cap reached")
         if not resting and notional < MIN_NOTIONAL:
+            if c["schema_version"] == 2:
+                return p.decide(**base, result="skipped", detail="under the exchange minimum within the configured caps")
             if c["perorder"] >= MIN_NOTIONAL:
                 notional = MIN_NOTIONAL
             else:
@@ -399,6 +516,17 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
     skip, price = await _hygiene(p, m, token, side, price, size, resting=resting)
     if skip:
         return p.decide(**base, result="skipped", detail=skip)
+    if side == "BUY" and c["schema_version"] == 2:
+        # Hygiene can raise the BUY limit to reach deeper book levels. Re-size
+        # at that final limit so no configured money cap is exceeded.
+        try:
+            room = _buy_room(p, title)
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            return p.decide(**base, result="skipped", detail=f"capital accounting unavailable: {exc}")
+        size = min(size, math.floor(room / price * 100) / 100)
+        if size <= 0 or (not resting and size * price < 1.0):
+            return p.decide(**base, result="skipped", detail="remaining capital cannot fund the checked order minimum")
+        base["size"] = size
     base["price"] = round(price, 4)
     base["notional"] = round(size * price, 2)
 
@@ -427,6 +555,15 @@ async def _order(p: Pass, m: dict, token: str, outcome: str, side: str, price: f
         return p.decide(**base, result="skipped", detail="; ".join(binding))
     if accepted:
         base["caution_accepted"] = accepted
+
+    if side == "BUY" and c["schema_version"] == 2:
+        try:
+            if len(_position_tokens(paper.load()) | {str(token)}) > c["maxpos"]:
+                return p.decide(**base, result="skipped", detail="position capacity changed during order checks")
+            if size * price > _buy_room(p, title) + 1e-9:
+                return p.decide(**base, result="skipped", detail="capital budget changed during order checks")
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            return p.decide(**base, result="skipped", detail=f"capital accounting unavailable: {exc}")
 
     try:
         fill = await paper.simulate_polymarket(token, side, price, size)
@@ -571,7 +708,7 @@ async def _momentum(p: Pass, cands: list[dict]) -> None:
     p.log(f"momentum: {checked} candidates checked, {moved} moved {c['move']:.0%} or more over {c['hours']:g}h")
 
 
-async def _value(p: Pass) -> None:
+async def _value(p: Pass, selected_candidates: list[dict] | None = None) -> None:
     c = p.cfg["value"]
     for line in c["views"].splitlines():
         if ":" not in line:
@@ -583,11 +720,14 @@ async def _value(p: Pass) -> None:
         text = text.strip()
         if not text or not (0 < prob < 1):
             continue
-        try:
-            found = [xv.unify_polymarket(x) for x in await pm.search_markets(query=text, limit=5)]
-        except Exception as e:
-            p.log(f"value: search failed for {text!r}: {type(e).__name__}")
-            continue
+        if p.cfg["market_mode"] != "universe":
+            found = list(selected_candidates or [])
+        else:
+            try:
+                found = [xv.unify_polymarket(x) for x in await pm.search_markets(query=text, limit=5)]
+            except Exception as e:
+                p.log(f"value: search failed for {text!r}: {type(e).__name__}")
+                continue
         found = [(xv.similarity(f.get("title") or "", text), f) for f in found if not _ok_candidate(p, f)]
         found.sort(key=lambda t: -t[0])
         if not found or found[0][0] < 0.3:
@@ -610,6 +750,11 @@ async def _value(p: Pass) -> None:
 
 
 async def _mm(p: Pass, cands: list[dict]) -> None:
+    if p.cfg["schema_version"] == 2 and p.halted:
+        # Do not refresh quotes after a daily halt: BUYs were cancelled by the
+        # stop, and existing SELL exits must remain available to reduce risk.
+        p.decide(strategy="mm", result="skipped", detail=p.halted)
+        return
     c = p.cfg["mm"]
     liquid = quoted = cancelled = 0
     resting = paper.load().get("open_orders") or []
@@ -621,11 +766,23 @@ async def _mm(p: Pass, cands: list[dict]) -> None:
         if not yes or not no:
             continue
         # Fresh quotes every pass: stale ones on this market are pulled first.
-        for o in [o for o in resting if o.get("token_id") in (yes, no)]:
+        for o in [o for o in resting if o.get("token_id") in (yes, no)
+                  and (p.cfg["schema_version"] != 2 or o.get("side") == "BUY")]:
             paper.cancel(o["id"])
             cancelled += 1
         held_here = yes in p.positions or no in p.positions
-        if not held_here and len(p.positions) + quoted >= p.cfg["maxpos"]:
+        if p.cfg["schema_version"] == 2:
+            try:
+                pair_slots = _position_tokens(paper.load()) | {str(yes), str(no)}
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                p.decide(strategy="mm", market=m.get("title"), result="skipped",
+                         detail=f"position accounting unavailable: {exc}")
+                continue
+            if len(pair_slots) > p.cfg["maxpos"]:
+                p.decide(strategy="mm", market=m.get("title"), result="skipped",
+                         detail=f"max open positions ({p.cfg['maxpos']}) has no room for both outcome quotes")
+                continue
+        elif not held_here and len(p.positions) + quoted >= p.cfg["maxpos"]:
             p.decide(strategy="mm", market=m.get("title"), result="skipped",
                      detail=f"max open positions ({p.cfg['maxpos']}) would be exceeded if these quotes filled")
             continue
@@ -699,6 +856,30 @@ def _day_pnl(d: dict, equity: float) -> float:
     return equity - float(r.get("day_start_equity") or equity)
 
 
+def _v2_daily_review(p: Pass, equity: float) -> None:
+    """A sampled daily stop: once observed, retain the halt for this UTC day.
+
+    paper.positions() can fill a crossed quote before returning its new mark;
+    cancelling here prevents subsequent fills, not that first detection fill.
+    """
+    if not math.isfinite(equity):
+        p.halted = "daily loss status unavailable; no new entries"
+        _cancel_entries(p, "daily", p.halted)
+        return
+    d = paper.load()
+    day = _day_pnl(d, equity)
+    today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    if p.cfg["on"].get("daily") and (day <= -p.cfg["daily"]
+                                       or d["runner"].get("daily_halted_day") == today):
+        d["runner"]["daily_halted_day"] = today
+        p.halted = f"daily loss limit: today {day:+.2f} against -${p.cfg['daily']:g}; no new entries this UTC day"
+        paper.save(d)
+        _cancel_entries(p, "daily", "daily loss limit reached; resting entry cancelled")
+        p.log(p.halted)
+    else:
+        paper.save(d)
+
+
 # --------------------------------- entry ----------------------------------- #
 
 async def run_pass(raw_cfg: dict, ledger: Path) -> dict:
@@ -706,12 +887,43 @@ async def run_pass(raw_cfg: dict, ledger: Path) -> dict:
     p = Pass(cfg)
     token = FORCED_LEDGER.set(ledger)
     try:
+        if cfg["market_mode"] != "universe":
+            await _sources(p, None)
+            allowed = set(cfg["market_ids"]) if not p.halted else set()
+            # A saved selection also applies to old resting entries before a
+            # ledger refresh has an opportunity to fill them. Existing holdings
+            # remain eligible for risk-reducing exits.
+            for order in list(paper.load().get("open_orders") or []):
+                if order.get("side") == "BUY" and order.get("token_id") not in allowed:
+                    paper.cancel(order["id"])
+                    p.decide(strategy="selection", token_id=order.get("token_id"), result="cancelled",
+                             detail=("specific selection could not be verified; resting entry cancelled"
+                                     if p.halted else "resting entry is outside the active specific selection"))
+        if cfg["schema_version"] == 2:
+            # A lowered allocation must not let previously saved quotes fill
+            # beyond the new budget. Existing positions are never forcibly sold.
+            try:
+                held, reserved = _committed_capital(paper.load())
+                if held + reserved > cfg["bankroll"] + 1e-9:
+                    _cancel_entries(p, "capital", "saved entries exceed allocated capital; resting entry cancelled")
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                p.halted = f"capital accounting unavailable: {exc}"
+                _cancel_entries(p, "capital", p.halted)
+            today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+            if cfg["on"].get("daily") and paper.load().get("runner", {}).get("daily_halted_day") == today:
+                p.halted = "daily loss limit reached earlier this UTC day; no new entries"
+                _cancel_entries(p, "daily", p.halted)
         try:
             pos = await paper.positions()
         except Exception as e:
             pos = None
             p.log(f"ledger mark failed: {type(e).__name__}: {e}")
-        p.equity = float((pos or {}).get("equity") or paper.bankroll())
+            if cfg["schema_version"] == 2 and cfg["on"].get("daily"):
+                p.halted = "daily loss status unavailable; no new entries"
+                _cancel_entries(p, "daily", p.halted)
+        equity = (pos or {}).get("equity")
+        p.equity = float(equity if cfg["schema_version"] == 2 and equity is not None
+                         else equity or paper.bankroll())
         if pos:
             p.positions = {r["token_id"]: r for r in pos.get("positions") or []}
             for r in p.positions.values():
@@ -719,12 +931,15 @@ async def run_pass(raw_cfg: dict, ledger: Path) -> dict:
                     p.cost_by_market[r["title"]] = p.cost_by_market.get(r["title"], 0.0) + float(r["size"]) * float(r["avg_cost"])
             p.log(f"ledger: cash ${pos['cash']:.2f}, equity ${pos['equity']:.2f}, "
                   f"{len(p.positions)} positions, {len(pos.get('open_orders') or [])} resting")
-            d = paper.load()
-            day = _day_pnl(d, p.equity)
-            paper.save(d)
-            if cfg["on"].get("daily") and day <= -cfg["daily"]:
-                p.halted = f"daily loss limit: today {day:+.2f} against -${cfg['daily']:g}; no new entries"
-                p.log(p.halted)
+            if cfg["schema_version"] == 2:
+                _v2_daily_review(p, p.equity)
+            else:
+                d = paper.load()
+                day = _day_pnl(d, p.equity)
+                paper.save(d)
+                if cfg["on"].get("daily") and day <= -cfg["daily"]:
+                    p.halted = f"daily loss limit: today {day:+.2f} against -${cfg['daily']:g}; no new entries"
+                    p.log(p.halted)
             await _review(p, pos)
 
         strategies = [s for s in ("fade", "settle", "value", "momentum", "mm") if cfg["on"].get(s)]
@@ -738,7 +953,7 @@ async def run_pass(raw_cfg: dict, ledger: Path) -> dict:
             seen = {c["market_id"] for c in soon}
             await _settle(p, soon + [c for c in cands if c["market_id"] not in seen])
         if "value" in strategies:
-            await _value(p)
+            await _value(p, cands)
         if "momentum" in strategies:
             await _momentum(p, cands)
         if "mm" in strategies:
@@ -746,6 +961,9 @@ async def run_pass(raw_cfg: dict, ledger: Path) -> dict:
 
         try:
             after = await paper.positions()
+            if cfg["schema_version"] == 2:
+                _v2_daily_review(p, float(after["equity"]))
+                after["open_orders"] = paper.load().get("open_orders") or []
         except Exception as e:
             after = pos
             p.log(f"final mark failed: {type(e).__name__}: {e}")

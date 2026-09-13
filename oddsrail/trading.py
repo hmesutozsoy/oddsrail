@@ -34,11 +34,25 @@ Safety model:
   and non-custodial by design.
 """
 
+import asyncio
 import os
 
 from . import geo, guard, hosted, paper
 
 _secure = None
+
+# Account reads must finish or refuse the order; a partial count never grants
+# permission to submit. The early stop at the configured cap can only refuse.
+_OPEN_ORDER_COUNT_MAX_PAGES = 100
+_OPEN_ORDER_COUNT_TIMEOUT_SECONDS = 10.0
+
+_UNCONFIRMED_ORDER_NOTE = (
+    "Acceptance is unconfirmed, not a confirmed rejection (accepted=False). "
+    "The order MAY have posted or already filled. Do not retry automatically. "
+    "Check open_orders and my_fills before deciding whether to retry; an "
+    "immediately filled order may not appear in open_orders. Use order_status "
+    "if an order ID is available."
+)
 
 
 # Exactly these three values turn off the safety net; each reads unambiguously
@@ -146,6 +160,29 @@ def _intent(token_id, side, price, size, post_only):
     }
 
 
+async def _count_open_orders(client, cap: int) -> int:
+    """Count every SDK page, or stop once there is enough evidence to refuse."""
+    total = 0
+    seen_cursors = set()
+    async with asyncio.timeout(_OPEN_ORDER_COUNT_TIMEOUT_SECONDS):
+        paginator = client.list_open_orders()
+        for _ in range(_OPEN_ORDER_COUNT_MAX_PAGES):
+            page = await paginator.first_page()
+            total += len(page.items)
+            if total >= cap:
+                return total
+            if page.has_more is False:
+                return total
+            if page.has_more is not True:
+                raise RuntimeError("open-order page has no valid completion flag")
+            cursor = page.next_cursor
+            if not isinstance(cursor, str) or not cursor or cursor in seen_cursors:
+                raise RuntimeError("open-order pagination has a missing or repeated cursor")
+            seen_cursors.add(cursor)
+            paginator = paginator.from_cursor(cursor)
+    raise RuntimeError("open-order pagination exceeded the page limit")
+
+
 async def place_order(token_id: str, side: str, price: float, size: float,
                       post_only: bool = False):
     side = side.upper()
@@ -182,33 +219,38 @@ async def place_order(token_id: str, side: str, price: float, size: float,
         return out
 
     from .polymarket import dump
+    submission_started = False
     try:
         # _client() belongs INSIDE the try: its first outbound call is the
         # CLOB auth handshake, so a network block lands here — and this tool
         # is not idempotent, so the agent must get a structured answer, not a
         # bare MCP error it might retry into a doubled position.
         client = await _client()
-        if guard._i("ODDSRAIL_MAX_OPEN_ORDERS") is not None:
+        open_order_cap = guard._i("ODDSRAIL_MAX_OPEN_ORDERS")
+        if open_order_cap is not None:
             try:
-                n_open = len(list((await client.list_open_orders().first_page()).items))
-            except Exception:
-                n_open = None
+                n_open = await _count_open_orders(client, open_order_cap)
+            except Exception as e:
+                return {**guard.unverified_open_orders(open_order_cap),
+                        "error_type": type(e).__name__, "error": str(e),
+                        "submitted": intent}
             block = guard.check_order("polymarket", token_id, notional, dry,
                                       open_orders_now=n_open)
             if block:
                 return {**block, "submitted": intent}
         guard.record_live_submission(notional)   # the intent is going out
+        submission_started = True
         resp = await client.place_limit_order(
             token_id=token_id, price=str(price), size=str(size), side=side,
             post_only=post_only, builder_code=builder_code())
     except Exception as e:
         out = {"dry_run": False, "accepted": False,
+               "execution_state": "unknown" if submission_started else "not_submitted",
                "error_type": type(e).__name__, "error": str(e),
                "submitted": intent,
-               "note": ("no confirmation was received. If this was a timeout "
-                        "the order MAY still have posted — call open_orders "
-                        "before retrying. Any other failure happened before "
-                        "the exchange accepted anything.")}
+               "note": (_UNCONFIRMED_ORDER_NOTE if submission_started else
+                        "Order submission was not attempted; setup failed before "
+                        "the order-placement call. Nothing was sent for this order.")}
         cls = geo.classify(e, getattr(e, "status", None), venue="polymarket")
         if cls:
             out["failure_class"] = cls
@@ -220,12 +262,11 @@ async def place_order(token_id: str, side: str, price: float, size: float,
         # The exchange ANSWERED — a failure here is ours, not a rejection,
         # and the order may well rest. Never report this as "not posted".
         return {"dry_run": False, "accepted": False,
+                "execution_state": "unknown",
                 "response_shape": "unparseable",
                 "error_type": type(e).__name__, "error": str(e),
                 "submitted": intent,
-                "note": ("the exchange answered but the response could not "
-                         "be parsed — the order MAY rest. Call open_orders "
-                         "before retrying.")}
+                "note": "The exchange response could not be parsed. " + _UNCONFIRMED_ORDER_NOTE}
     return _interpret_order_response(d, intent)
 
 
@@ -236,22 +277,23 @@ def _interpret_order_response(d, intent):
     agent believe a rejected order rests. Branch on it, and treat a shape
     this version does not recognise as NOT CONFIRMED rather than as either
     success or rejection."""
-    if not isinstance(d, dict) or "ok" not in d:
+    if not isinstance(d, dict) or not isinstance(d.get("ok"), bool):
         return {"dry_run": False, "accepted": False,
-                "response_shape": "unrecognised — no 'ok' field",
+                "execution_state": "unknown",
+                "response_shape": "unrecognised — no boolean 'ok' field",
                 "order": d, "submitted": intent,
                 "note": ("the SDK returned a shape this version does not "
                          "recognise; NOT confirmed as posted and NOT "
-                         "confirmed as rejected. Call open_orders or "
-                         "order_status to see whether the order rests "
-                         "before retrying.")}
+                         "confirmed as rejected. " + _UNCONFIRMED_ORDER_NOTE)}
     if not d.get("ok"):
         return {"dry_run": False, "accepted": False,
+                "execution_state": "rejected",
                 "rejected_code": d.get("code"),
                 "rejected_reason": d.get("message"),
                 "submitted": intent,
                 "note": "rejected by the exchange — no order rests, nothing was attributed"}
-    return {"dry_run": False, "accepted": True, "order": d, "submitted": intent}
+    return {"dry_run": False, "accepted": True, "execution_state": "accepted",
+            "order": d, "submitted": intent}
 
 
 async def cancel_order(order_id: str):

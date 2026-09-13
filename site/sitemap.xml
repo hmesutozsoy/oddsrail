@@ -14,4 +14,6 @@
   <url><loc>https://oddsrail.app/notes/a-rejected-order-is-a-return-value-not-an-exception</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://oddsrail.app/notes/the-sdk-call-that-sounds-like-your-trades-returns-everyones</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://oddsrail.app/notes/a-price-gap-across-venues-is-not-an-edge</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://oddsrail.app/agents</loc><lastmod>2026-09-12</lastmod><changefreq>weekly</changefreq></url>
+  <url><loc>https://oddsrail.app/portfolio</loc><lastmod>2026-09-12</lastmod><changefreq>daily</changefreq></url>
 </urlset>

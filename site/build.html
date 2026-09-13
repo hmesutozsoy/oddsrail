@@ -1,223 +1,27 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Build a trading agent with oddsrail</title>
-<meta name="description" content="Switch on the strategy pieces and risk rules you want, read the prompt they compose, edit it, and send it to Claude with the oddsrail connector. No code.">
-<link rel="canonical" href="https://oddsrail.app/build">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="oddsrail">
-<meta property="og:title" content="Build a trading agent with oddsrail">
-<meta property="og:description" content="Switch on strategy pieces and risk rules, press Run, and read what your agent did against the live Polymarket book. Paper, no account, ten seconds.">
-<meta property="og:url" content="https://oddsrail.app/build">
-<meta property="og:image" content="https://oddsrail.app/og.png">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Build a trading agent with oddsrail">
-<meta name="twitter:description" content="Switch on strategy pieces and risk rules, press Run, and read what your agent did against the live Polymarket book. Paper, no account, ten seconds.">
-<meta name="twitter:image" content="https://oddsrail.app/og.png">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css?v=0.18.0">
-</head>
-<body>
-<header class="top">
-  <div class="wrap">
-    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="24" height="24">oddsrail</a>
-    <nav aria-label="Sections">
-      <a href="/">Home</a>
-      <a href="/build" aria-current="page">Build</a>
-      <a href="/arena">Arena</a>
-      <a href="/notes/">Notes</a>
-      <a href="https://github.com/hmesutozsoy/oddsrail">GitHub</a>
-    </nav>
-  </div>
-</header>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Create an agent · OddsRail</title><meta name="description" content="Choose a strategy, select Polymarket markets, and review your agent's trading limits."><link rel="canonical" href="https://oddsrail.app/build"><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/product.css?v=20260912-3"><link rel="stylesheet" href="/builder.css?v=20260913-3"><script src="/wallet.js?v=20260912-3" defer></script><script src="/shell.js?v=20260912-3" defer></script><script src="/strategy-visuals.js?v=20260913-3" defer></script><script src="/build.js?v=20260913-2" defer></script></head>
+<body class="product" data-page="build"><div data-shell></div><main id="main-content" class="app-main builder-main">
+<div class="page-heading"><div><p class="eyebrow">YOUR EDGE. YOUR RULES.</p><h1>Make the strategy yours.</h1><p class="muted">Choose how it trades. Set its limits. Review before authorizing.</p></div></div>
 
-<main class="wrap wide">
-<section class="hero compact" aria-labelledby="h-title">
-  <p class="kicker">Agent builder</p>
-  <h1 id="h-title">Switch on the pieces. Press Run. Read what your agent did.</h1>
-  <p class="lede">Each switch is a strategy fragment or a risk rule. Press Run and they execute on our server against the live Polymarket book, into a paper ledger for this browser, in seconds. No account, no install, no key. The same pieces also compose into a prompt for your own Claude, on the second tab.</p>
-</section>
+<nav class="setup-steps" aria-label="Agent setup"><button data-step="0" aria-current="step"><span>1</span> Strategy</button><button data-step="1"><span>2</span> Markets &amp; limits</button><button data-step="2"><span>3</span> Review &amp; authorize</button></nav>
+<div class="builder-layout"><form id="setup-form" novalidate><section data-stage="0" aria-labelledby="strategy-title">
+<label class="field">Agent name<input class="input" name="name" maxlength="40" value="My first agent" required></label>
+<div class="section-heading"><h2 id="strategy-title">Start with a strategy</h2><span class="muted small">Choose one or combine a few</span></div><div class="strategy-preview-actions"><button type="button" id="toggle-strategy-visuals" class="strategy-animation-control">Hide animations</button></div><div id="strategy-choices" class="strategy-grid"></div>
+<div class="description-box"><label class="field">Describe your idea <span class="muted small">Optional notes</span><textarea class="input" name="description" rows="4" maxlength="1200" placeholder="What is your edge? Which signals should this agent pay attention to?"></textarea></label><p class="muted small">Saved with your draft. Your chosen settings define the strategy; these notes do not change trading rules.</p></div>
+<div class="wizard-actions"><span class="muted small">You can save a draft at any point.</span><button class="pill" type="button" data-next="1">Markets &amp; limits <span aria-hidden="true">→</span></button></div></section>
+<section data-stage="1" aria-labelledby="limits-title" hidden><h2 id="limits-title">Give your agent boundaries.</h2><p class="muted">A broad universe, or only the markets you choose.</p>
+<div class="choice-tabs" role="group" aria-label="Market scope"><label><input type="radio" name="market_mode" value="universe" checked> Market universe</label><label><input type="radio" name="market_mode" value="specific"> Specific markets</label></div>
+<div id="universe-fields"><div class="category-choices" id="category-choices"></div><label class="field">Additional search keyword<input class="input" name="keyword" maxlength="80" placeholder="e.g. Bitcoin or interest rates"></label><p class="muted small">Categories and the additional keyword are combined into one pool. Volume and closing-time filters apply to every candidate.</p></div>
+<div id="specific-fields" hidden><div class="field"><label for="market-search">Search or paste a Polymarket link</label><div class="search-row"><input class="input" id="market-search" maxlength="2048" placeholder="Bitcoin, or https://polymarket.com/event/…"><button class="pill secondary" type="button" id="find-market">Find</button></div></div><p id="market-status" class="muted small" role="status"></p><div id="market-results" class="market-results"></div><div class="section-heading"><h3>Selected markets</h3><span class="muted small">Up to 20 outcomes</span></div><div id="selected-markets"></div><p class="muted small">Both outcomes are included when you add a market. An event with several markets requires you to choose which ones.</p></div>
+<h3 class="section-gap">Capital &amp; order limits</h3><div class="field-grid" id="capital-fields"></div>
+<details class="advanced-settings" open><summary>Risk &amp; execution rules</summary><div id="risk-fields" class="detail-content"></div><p class="muted small">Stops and loss limits are checked on each runner pass. They cannot guarantee an exit price or maximum loss.</p></details>
+<h3 class="section-gap">Choose your runner</h3><div class="runner-choices"><label class="strategy-card"><input type="radio" name="runner" value="hosted" checked><span><strong>OddsRail hosted</strong><small>Built-in strategy rules. No model account needed.</small><span class="status-chip">Live authorization pending</span></span></label><label class="strategy-card"><input type="radio" name="runner" value="external"><span><strong>My own agent</strong><small>Use your own Claude, Codex or other MCP client.</small><span class="status-chip">Your environment</span></span></label></div>
+<details class="advanced-settings"><summary>How AI access works</summary><p class="muted">These five strategies execute rules without ongoing AI calls. Hosted AI research and provider API-key connections are not available yet. An external agent uses its own provider access in its native app.</p><p class="muted">Trading capital and model usage are separate. You never need to paste a wallet private key here.</p></details>
+<div class="wizard-actions"><button class="pill secondary" type="button" data-step="0">Back</button><button class="pill" type="button" data-next="2" id="review-button">Review configuration <span aria-hidden="true">→</span></button></div></section>
+<section data-stage="2" aria-labelledby="review-title" hidden><p class="eyebrow">THE FINAL CHECK</p><h2 id="review-title">Know exactly what it can do.</h2><div class="panel review-panel"><ul id="review-list"></ul></div><div id="review-notes" class="notice" hidden></div>
+<div class="authorization panel"><div class="section-heading"><h3>Trading authorization</h3><span class="status-chip">Not active</span></div><p class="muted" id="authorization-copy">Connect your wallet once to identify it. Agent trading permission is a separate approval, after account compatibility and funding are checked.</p><div class="auth-row"><span>Owner wallet</span><strong id="wallet-state">Not connected</strong></div><div class="auth-row"><span>Polymarket trading account</span><strong id="trading-account-state">Not identified</strong></div><div class="auth-row"><span>Session-key permission</span><strong>Not authorized</strong></div><p class="muted small">Hosted live activation is being integrated. Existing supported balances should be reused; connecting a wallet does not require making another deposit.</p><button class="pill" type="button" disabled>Live activation unavailable</button><details><summary>About trading permission</summary><p class="muted small">Polymarket's session-key beta supports Deposit Wallets and requires builder enablement. A session key can trade but cannot withdraw. Trading can lose funds. Market and spending limits must be enforced by OddsRail; they are not session-key spending restrictions. Revoking permission does not close existing positions.</p></details></div>
+<div id="external-runner" class="panel" hidden><h3>Use your own agent</h3><p class="muted">Copy your strategy brief and connect an MCP client to your own installation. Review the local setup before authorizing live trading.</p><a class="pill secondary" id="advanced-link" href="/advanced">Open external setup <span aria-hidden="true">↗</span></a></div>
 
-<section id="builder" aria-label="Builder" class="bterm">
-  <form id="bform" class="cfg" autocomplete="off">
-    <div class="bbar">
-      <div class="seg" role="radiogroup" aria-label="Where it runs">
-        <label><input type="radio" name="mode" value="paper" checked><span>Paper <i>hosted</i></span></label>
-        <label><input type="radio" name="mode" value="live"><span>Live <i>self-hosted</i></span></label>
-      </div>
-      <div class="presets" aria-label="Presets">
-        <span class="lbl">presets</span>
-        <button type="button" data-preset="fade">P1 Fade</button>
-        <button type="button" data-preset="settle">P2 Settle</button>
-        <button type="button" data-preset="quote">P3 Quote</button>
-        <button type="button" data-preset="view">P4 My view</button>
-        <button type="button" data-preset="clear" class="ghost">clear</button>
-      </div>
-    </div>
-
-    <details class="bpanel connect" id="connect">
-      <summary class="ph"><b>Connect your own Claude</b><span class="muted">only for the Prompt tab; the Run tab needs none of this</span></summary>
-      <div class="brows" data-mode="paper">
-        <div class="brow"><span><b class="step">1</b> Claude, Settings, Connectors, <i>Add custom connector</i>, paste this URL <small id="host-note" class="muted"></small></span><label class="unit url"><input type="text" readonly value="https://mcp.oddsrail.app/mcp"><button type="button" data-copy="https://mcp.oddsrail.app/mcp">copy</button></label></div>
-        <div class="brow"><span><b class="step">2</b> Sign in with your email when Claude asks. The account holds a paper ledger and nothing else.</span><b class="pill">no keys</b></div>
-        <div class="brow"><span><b class="step">3</b> In the chat, open the tools menu and switch oddsrail on, then paste the prompt.</span><b class="pill">per chat</b></div>
-      </div>
-      <div class="brows" data-mode="live" hidden>
-        <div class="brow"><span><b class="step">1</b> Install on your machine</span><label class="unit url"><input type="text" readonly value="pip install oddsrail"><button type="button" data-copy="pip install oddsrail">copy</button></label></div>
-        <div class="brow"><span><b class="step">2</b> Add it to Claude Code, then set your key and guardrails in the environment</span><label class="unit url"><input type="text" readonly value="claude mcp add --transport stdio oddsrail -- oddsrail"><button type="button" data-copy="claude mcp add --transport stdio oddsrail -- oddsrail">copy</button></label></div>
-        <div class="brow"><span><b class="step">3</b> Everything starts in dry-run. <code>ODDSRAIL_DRY_RUN=0</code> is the only switch that makes an order real.</span><b class="pill">your keys</b></div>
-      </div>
-    </details>
-
-    <div class="bpanel">
-      <div class="ph"><b>Universe</b><span class="muted">what the agent may touch</span></div>
-      <div class="brows">
-        <div class="brow cats" aria-label="Market categories"><span>Markets <small class="muted">tick any</small></span><span class="chipset" id="cats">
-          <label class="cat"><input type="checkbox" name="t_all" value="all" checked><span>everything</span></label>
-          <label class="cat"><input type="checkbox" name="t_crypto" value="crypto"><span>crypto</span></label>
-          <label class="cat"><input type="checkbox" name="t_politics" value="politics"><span>politics</span></label>
-          <label class="cat"><input type="checkbox" name="t_geopolitics" value="geopolitics"><span>geopolitics</span></label>
-          <label class="cat"><input type="checkbox" name="t_economy" value="economy"><span>economy &amp; fed</span></label>
-          <label class="cat"><input type="checkbox" name="t_business" value="business"><span>business</span></label>
-          <label class="cat"><input type="checkbox" name="t_soccer" value="soccer"><span>football</span></label>
-          <label class="cat"><input type="checkbox" name="t_esports" value="esports"><span>esports</span></label>
-          <label class="cat"><input type="checkbox" name="t_tennis" value="tennis"><span>tennis</span></label>
-          <label class="cat"><input type="checkbox" name="t_us-sports" value="us-sports"><span>US sports</span></label>
-          <label class="cat"><input type="checkbox" name="t_motorsport" value="motorsport"><span>motorsport</span></label>
-        </span></div>
-        <div class="brow topic"><span>Plus a keyword <small class="muted">optional</small></span><input type="text" name="keyword" value="" placeholder="e.g. bitcoin, trump, arsenal"></div>
-        <div class="brow"><span>Min 24h volume</span><label class="unit"><em>$</em><input type="number" name="minvol" value="20000" min="0" step="1000"></label></div>
-        <div class="brow"><span>Bankroll</span><label class="unit"><em>$</em><input type="number" name="bankroll" value="1000" min="10" step="10"></label></div>
-        <div class="brow"><span>Max per order</span><label class="unit"><em>$</em><input type="number" name="perorder" value="25" min="1" step="1"></label></div>
-        <div class="brow"><span>Max open positions</span><input type="number" name="maxpos" value="5" min="1" step="1"></div>
-        <div class="brow"><span>Skip closing within</span><label class="unit"><input type="number" name="closing" value="2" min="0" step="1"><em>h</em></label></div>
-      </div>
-    </div>
-
-    <div class="bpanel">
-      <div class="tabs" role="tablist">
-        <button type="button" class="tab on" role="tab" aria-selected="true" data-tab="strategies">Strategy <i>0</i></button>
-        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="risk">Risk <i>0</i></button>
-        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="hygiene">Hygiene <i>0</i></button>
-        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="extras">Output <i>0</i></button>
-      </div>
-      <div class="pane on" data-pane="strategies" id="strategies"></div>
-      <div class="pane" data-pane="risk" id="risk"></div>
-      <div class="pane" data-pane="hygiene" id="hygiene"></div>
-      <div class="pane" data-pane="extras" id="extras"></div>
-    </div>
-
-    <div class="bpanel locked">
-      <div class="ph"><b>Always on</b><span class="muted">cannot be switched off</span></div>
-      <div class="brows">
-        <div class="brow"><span><code>check_order</code> before every <code>place_order</code>, with your intent verbatim</span><b class="pill on">on</b></div>
-        <div class="brow"><span>a <code>block</code> verdict is final. A <code>caution</code> about the resolution source or fill quality is recorded, and enforced when its switch is on; any other caution stops the order</span><b class="pill on">on</b></div>
-        <div class="brow"><span>never resubmit an order whose result is unknown</span><b class="pill on">on</b></div>
-      </div>
-    </div>
-  </form>
-
-  <aside class="preview" aria-label="Run and prompt">
-    <div class="tabs pv-tabs" role="tablist">
-      <button type="button" class="tab on" role="tab" data-ptab="run">Run</button>
-      <button type="button" class="tab" role="tab" data-ptab="prompt">Prompt for Claude</button>
-    </div>
-
-    <div class="ppane on" data-ppane="run">
-      <div class="pv-h">
-        <b>Paper pass</b>
-        <span id="run-status" class="muted">not run yet</span>
-        <div class="pv-tools">
-          <button type="button" id="ledger-reset" title="Reset this browser's paper ledger to $1,000">reset ledger</button>
-        </div>
-      </div>
-      <div class="run-body" id="run-body">
-        <p class="run-intro">Runs the switches on our server against the live Polymarket book, into a paper ledger that belongs to this browser. No account, nothing installed. Every decision comes back with its check_order verdict.</p>
-        <details class="howto" open>
-          <summary>What one pass is, and is not</summary>
-          <ul>
-            <li><b>One tick, now.</b> A pass reads the book at this moment and decides once. It is not a backtest and does not replay past days.</li>
-            <li><b>The ledger remembers.</b> Positions, resting quotes and fills from earlier passes are loaded, re-marked at the current mid, and the risk rules are applied to them before anything new is placed.</li>
-            <li><b>Signals look back, orders do not.</b> Fade and momentum read the last hours of prices to judge a move; they only act on what is happening now.</li>
-            <li><b>Nothing is watched between passes.</b> A resting quote fills and a stop loss triggers only when the next pass looks. Run again to advance the clock; hourly scheduling on our server is the next step.</li>
-          </ul>
-        </details>
-        <div class="tiles" id="run-tiles" hidden></div>
-        <div class="tablewrap slim" id="run-decisions" hidden></div>
-        <div class="tablewrap slim" id="run-positions" hidden></div>
-        <p class="share" id="share-run" hidden><span>Share this pass:</span> <a href="#" target="_blank" rel="noopener">open the permalink</a> <button type="button">copy link</button></p>
-        <details id="run-steps" hidden><summary>steps</summary><pre id="run-log"></pre></details>
-        <p class="muted run-note" id="run-note"></p>
-      <div class="acct" id="acct" hidden>
-        <div class="acct-out" id="acct-out">
-          <p class="muted">Enter your email. The link we send turns this browser's ledger into your account's, so what you built here comes with you.</p>
-          <form id="claim" autocomplete="off"><input type="email" name="email" required placeholder="you@example.com" autocomplete="email"><button type="submit" class="btn primary">Send sign-in link</button></form>
-          <p class="muted" id="claim-status"></p>
-        </div>
-        <div class="acct-in" id="acct-in" hidden>
-          <div class="ph slim"><b>Your agent</b><span class="muted" id="acct-email"></span><button type="button" id="signout" class="link">sign out</button></div>
-          <form id="agent" autocomplete="off">
-            <div class="grid2">
-              <label>Agent name<input type="text" name="name" maxlength="24" placeholder="fade-bot-3000" required></label>
-              <label>Strategy, one line<input type="text" name="strategy" maxlength="140" placeholder="quotes football and tennis, stop loss 25%"></label>
-            </div>
-            <div class="opts-inline">
-              <label class="sw"><input type="checkbox" name="schedule"><span></span></label><span>Run every hour on our server, with the switches as they are now</span>
-              <label class="sw"><input type="checkbox" name="arena"><span></span></label><span>Show on the <a href="/arena">arena board</a> under this name</span>
-            </div>
-            <div class="actions"><button type="submit" class="btn primary">Save agent</button><span class="muted" id="agent-status"></span></div>
-          </form>
-        </div>
-      </div>
-      </div>
-      <div class="pv-f">
-        <button type="button" id="run" class="btn primary">▶ Run paper pass</button>
-        <button type="button" id="keep" class="btn">Keep this agent</button>
-        <span class="muted">Ledgers start at $1,000 for everyone. Paper fills come from the live book with no queue and no fees, an upper bound. One pass is one tick; a record needs many. Keep the agent to name it, run it hourly on our server and put it on the board.</span>
-      </div>
-    </div>
-
-    <div class="ppane" data-ppane="prompt">
-      <div class="pv-h">
-        <b>Prompt</b>
-        <span id="status" class="muted"></span>
-        <div class="pv-tools">
-          <button type="button" id="regen" title="Regenerate from the switches">↻ regen</button>
-          <button type="button" id="copy" title="Copy the prompt">copy</button>
-          <button type="button" id="copycfg" title="Copy the configuration as JSON">json</button>
-        </div>
-      </div>
-      <textarea id="out" spellcheck="false" aria-label="Composed prompt"></textarea>
-      <div class="pv-tags" id="tools" aria-label="Tools the prompt uses"></div>
-      <div class="pv-f">
-        <button type="button" id="copy2" class="btn primary">Copy prompt</button>
-        <a id="open" class="btn" href="#" target="_blank" rel="noopener">Open in Claude ↗</a>
-        <span class="muted">For running the same pieces inside your own Claude, with the connector from the Connect panel. Claude shows a caution banner on any prompt opened from a link; copying and pasting avoids it.</span>
-      </div>
-    </div>
-  </aside>
-</section>
-
-<div class="runbar" id="runbar" hidden><button type="button" id="run-mobile" class="btn primary">▶ Run paper pass</button><span class="muted" id="runbar-status"></span></div>
-
-<section id="honest" aria-labelledby="h-honest" class="notes">
-  <h2 id="h-honest">What the switches cannot do</h2>
-  <ul class="lessons">
-    <li><b>Stop losses are review rules, not orders.</b> Polymarket has no stop orders. A stop here means: at each review, if the mark is below your threshold, sell at the bid. Between reviews nothing protects you.</li>
-    <li><b>Paper is an upper bound.</b> Fills are simulated from the live book with no queue, no impact and no fees, and paper does not pay out at resolution; it marks at the mid.</li>
-    <li><b>Two-sided quoting looked fine on paper for us too.</b> The maintainer's own market-making engine lost about 4.5 cents per share on markout live at small size. That fragment ships with the warning inside the prompt.</li>
-    <li><b>One pass per message.</b> Claude runs the prompt once. For an agent that keeps going, run the same prompt on a schedule with the self-hosted plugin, or ask Claude for another pass. In Claude Code: <code>claude mcp add --transport http oddsrail https://mcp.oddsrail.app/mcp</code>.</li>
-  </ul>
-</section>
-</main>
-
-<footer class="bottom">
-  <div class="wrap">
-    <p>oddsrail is open source under the MIT license. Not financial advice; prediction markets are restricted in many jurisdictions and you are responsible for your own compliance.</p>
-  </div>
-</footer>
-<script src="/build.js?v=0.18.0" defer></script>
-</body>
-</html>
+<div class="wizard-actions"><button class="pill secondary" type="button" data-step="1">Edit limits</button><button class="pill" type="button" id="save-final">Save draft <span aria-hidden="true">↗</span></button></div></section>
+<p id="setup-error" class="form-error" role="alert"></p></form>
+<aside class="panel agent-summary" aria-label="Agent summary"><div class="section-heading"><span class="eyebrow">YOUR AGENT</span><span class="status-chip">Draft</span></div><div class="agent-orbit" aria-hidden="true"><span>↗</span></div><h2 id="summary-name">My first agent</h2><div id="summary-strategies" class="summary-chips"></div><div class="summary-values"><div><span>Markets</span><strong id="summary-market">All markets</strong></div><div id="summary-quote"><span>Quote size</span><strong id="summary-shares">20 per outcome</strong></div><div><span>Per order</span><strong id="summary-order">$25</strong></div><div><span>Per-market exposure</span><strong id="summary-exposure">$100</strong></div><div><span>Daily loss entry limit</span><strong id="summary-daily">$30</strong></div></div><div class="summary-values"><div><span>Decision engine</span><strong>Strategy rules</strong></div><div><span>Ongoing model calls</span><strong>None</strong></div><div><span>Live trading</span><strong>Not enabled</strong></div></div><button type="button" class="pill secondary" id="save-draft">Save draft</button><p id="draft-status" class="muted small" role="status">Stored in this browser until you activate.</p></aside></div></main></body></html>
