@@ -1,0 +1,4 @@
+# Build the local project without an unpinned isolated build environment.
+# Included with pyproject.toml's dev and cloud extras in ci.lock.
+hatchling
+editables

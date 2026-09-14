@@ -1,5 +1,15 @@
 (() => {
   'use strict';
+  function publicHoldings(state) {
+    const address = /^0x[0-9a-f]{40}$/i;
+    if (!state || state.status !== 'connected' || state.authenticated !== true || !address.test(state.address || '') || state.portfolioStatus !== 'ready') return null;
+    const portfolio = state.portfolio;
+    if (!portfolio || typeof portfolio.address !== 'string' || portfolio.address.toLowerCase() !== state.address.toLowerCase() || portfolio.account?.status !== 'resolved' || !address.test(portfolio.account.trading_address || '')) return null;
+    const value = portfolio.summary?.holdings_value_usd;
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = {publicHoldings};
+  if (typeof document === 'undefined') return;
   const icons = {
     markets: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
     portfolio: '<rect x="3" y="6" width="18" height="15" rx="3"/><path d="M8 6V3h8v3M3 12h18M10 12v3h4v-3"/>',
@@ -31,7 +41,7 @@
     const page = currentPage === 'agents' ? 'portfolio' : currentPage;
     const items = [['markets','/','Markets'],['portfolio','/portfolio','Dashboard'],['arena','/arena','Competition']];
     const links = mobile => items.map(([id,href,label]) => `<a href="${href}" class="${page === id ? 'active' : ''}"${page === id ? ' aria-current="page"' : ''}>${mobile ? svg(id) : ''}<span>${label}</span></a>`).join('');
-    host.innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><header class="shell-header"><div class="shell-bar"><a class="shell-brand" href="/" aria-label="OddsRail home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>oddsrail</a><nav class="shell-nav" aria-label="Main navigation">${links(false)}</nav><div class="shell-actions"><button class="icon-button desktop-more" data-more-toggle type="button" aria-label="More options" aria-controls="shell-menu" aria-expanded="false">${svg('more')}</button><a href="/build" class="pill secondary small create-agent">Create agent <span aria-hidden="true">↗</span></a><div class="shell-account-summary" id="shell-balances" hidden><a href="/portfolio" class="shell-balance"><span>Portfolio</span><strong id="shell-portfolio-value">—</strong></a><a href="/portfolio" class="shell-balance"><span>Cash</span><strong id="shell-cash-value">—</strong></a></div><button class="pill small shell-connect" id="shell-connect" type="button">Connect wallet</button><button id="shell-wallet-toggle" class="wallet-avatar" type="button" aria-label="Wallet options" aria-controls="shell-wallet-menu" aria-expanded="false" hidden>${svg('wallet')}</button></div></div></header><p id="shell-wallet-status" class="shell-wallet-status" role="status" hidden></p><div id="shell-wallet-menu" class="shell-wallet-menu" hidden><p class="menu-label">Connected wallet</p><p id="shell-wallet-address" class="wallet-address"></p><p class="wallet-caption">Connected for a read-only account view.</p><a href="/portfolio">Dashboard <span aria-hidden="true">↗</span></a><a href="/portfolio?tab=agents">Agents <span aria-hidden="true">↗</span></a><a href="/portfolio?tab=history">History <span aria-hidden="true">↗</span></a><div class="menu-divider"></div><button id="shell-disconnect" type="button">Disconnect from OddsRail</button></div><div id="shell-menu" class="shell-menu" hidden><p class="menu-label">More from OddsRail</p><a href="https://github.com/hmesutozsoy/oddsrail/issues" target="_blank" rel="noopener noreferrer">${svg('support')}<span>Support</span>${svg('arrow')}</a><a href="https://github.com/hmesutozsoy/oddsrail#readme" target="_blank" rel="noopener noreferrer">${svg('docs')}<span>Documentation</span>${svg('arrow')}</a><a href="/arena">${svg('arena')}<span>Competition</span>${svg('arrow')}</a><div class="menu-divider"></div><button type="button" data-theme-toggle role="switch" aria-label="Dark mode" aria-checked="true">${svg('moon')}<span>Dark mode</span><span class="theme-switch" aria-hidden="true"></span></button><a href="/terms">${svg('terms')}<span>Terms</span>${svg('arrow')}</a><p class="menu-footnote">Open source. Built on Polymarket.</p></div>`;
+    host.innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><header class="shell-header"><div class="shell-bar"><a class="shell-brand" href="/" aria-label="OddsRail home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>oddsrail</a><nav class="shell-nav" aria-label="Main navigation">${links(false)}</nav><div class="shell-actions"><button class="icon-button desktop-more" data-more-toggle type="button" aria-label="More options" aria-controls="shell-menu" aria-expanded="false">${svg('more')}</button><a href="/build" class="pill secondary small create-agent">Create agent <span aria-hidden="true">↗</span></a><div class="shell-account-summary" id="shell-balances" hidden><a href="/portfolio" class="shell-balance"><span>Holdings</span><strong id="shell-holdings-value">—</strong></a></div><button class="pill small shell-connect" id="shell-connect" type="button">Connect wallet</button><button id="shell-wallet-toggle" class="wallet-avatar" type="button" aria-label="Wallet options" aria-controls="shell-wallet-menu" aria-expanded="false" hidden>${svg('wallet')}</button></div></div></header><p id="shell-wallet-status" class="shell-wallet-status" role="status" hidden></p><div id="shell-wallet-menu" class="shell-wallet-menu" hidden><p class="menu-label">Signed-in wallet</p><p id="shell-wallet-address" class="wallet-address"></p><p class="wallet-caption">Wallet ownership verified. Trading is not authorized.</p><a href="/portfolio">Dashboard <span aria-hidden="true">↗</span></a><a href="/portfolio?tab=agents">Agents <span aria-hidden="true">↗</span></a><a href="/portfolio?tab=history">History <span aria-hidden="true">↗</span></a><div class="menu-divider"></div><button id="shell-disconnect" type="button">Sign out of OddsRail</button></div><div id="shell-menu" class="shell-menu" hidden><p class="menu-label">More from OddsRail</p><a href="https://github.com/hmesutozsoy/oddsrail/issues" target="_blank" rel="noopener noreferrer">${svg('support')}<span>Support</span>${svg('arrow')}</a><a href="https://github.com/hmesutozsoy/oddsrail#readme" target="_blank" rel="noopener noreferrer">${svg('docs')}<span>Documentation</span>${svg('arrow')}</a><a href="/arena">${svg('arena')}<span>Competition</span>${svg('arrow')}</a><div class="menu-divider"></div><button type="button" data-theme-toggle role="switch" aria-label="Dark mode" aria-checked="true">${svg('moon')}<span>Dark mode</span><span class="theme-switch" aria-hidden="true"></span></button><a href="/terms">${svg('terms')}<span>Terms</span>${svg('arrow')}</a><p class="menu-footnote">Open source. Built on Polymarket.</p></div>`;
     const footer = document.createElement('footer');
     footer.className = 'shell-footer';
     footer.innerHTML = '<span>© '+new Date().getFullYear()+' OddsRail</span><span class="footer-builder"><span class="verified-glyph" aria-hidden="true">✓</span> Verified Polymarket builder</span><a href="https://github.com/hmesutozsoy/oddsrail" target="_blank" rel="noopener noreferrer">Built in the open ↗</a>';
@@ -63,23 +73,25 @@
     const connect = document.getElementById('shell-connect'), status = document.getElementById('shell-wallet-status');
     const wallet = window.OddsRailWallet;
     if (wallet) {
-      connect.addEventListener('click', async () => { const connected = await wallet.connect(); if (connected && location.pathname === '/') location.assign('/portfolio'); });
+      connect.addEventListener('click', async () => { if (wallet.getState().signOutPending) { await wallet.disconnect(); return; } const connected = await wallet.connect(); if (connected && location.pathname === '/') location.assign('/portfolio'); });
       document.getElementById('shell-disconnect').addEventListener('click', () => { closeWallet(); wallet.disconnect(); connect.focus(); });
       const money = value => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
       wallet.subscribe(state => {
-        const connected = state.status === 'connected';
+        const connected = state.status === 'connected' && state.authenticated === true;
+        const labels = {connecting:'Connecting…',signing:'Sign in your wallet…',verifying:'Verifying…'};
+        const busy = Boolean(labels[state.status]);
         document.body.dataset.walletConnected = String(connected);
-        connect.hidden = connected; connect.disabled = state.status === 'connecting'; connect.textContent = state.status === 'connecting' ? 'Connecting…' : 'Connect wallet';
+        connect.hidden = connected; connect.disabled = busy; connect.textContent = labels[state.status] || (state.signOutPending ? 'Retry sign-out' : 'Connect wallet');
         walletToggle.hidden = !connected; document.getElementById('shell-balances').hidden = !connected;
         if (!connected) closeWallet();
         walletToggle.setAttribute('aria-label', connected ? 'Wallet options for ' + state.address : 'Wallet options');
         document.getElementById('shell-wallet-address').textContent = state.address;
-        const summary = state.portfolio?.summary;
-        [['shell-portfolio-value',summary?.portfolio_value_usd],['shell-cash-value',summary?.cash_usd]].forEach(([id,value]) => {
-          const node = document.getElementById(id); node.textContent = state.portfolioStatus === 'loading' ? '…' : money(value);
-          node.title = state.portfolioStatus === 'loading' ? 'Loading account data' : typeof value === 'number' && Number.isFinite(value) ? money(value) : 'Balance is not available';
-        });
-        status.textContent = state.error || ''; status.hidden = !state.error;
+        const holdings = publicHoldings(state), loading = connected && state.portfolioStatus === 'loading';
+        const value = document.getElementById('shell-holdings-value');
+        value.textContent = loading ? '…' : money(holdings);
+        value.title = loading ? 'Loading reported holdings' : holdings !== null ? 'Reported holdings: ' + money(holdings) + '. Excludes cash.' : 'Reported holdings value is unavailable. Excludes cash.';
+        const progress = state.status === 'signing' ? 'Sign the OddsRail message in your wallet. It confirms ownership without granting trading permission.' : state.status === 'verifying' ? 'Verifying your signature…' : '';
+        status.textContent = state.error || progress; status.hidden = !status.textContent;
       });
     } else { connect.disabled = true; status.textContent = 'Wallet connection is unavailable. Reload to try again.'; status.hidden = false; }
     setTheme(initialTheme);

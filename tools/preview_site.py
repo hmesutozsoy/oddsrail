@@ -23,6 +23,7 @@ DATA.mkdir(parents=True, exist_ok=True)
 env = {k: v for k, v in os.environ.items() if not k.startswith(('ODDSRAIL_', 'POLYMARKET_', 'KALSHI_', 'OPENAI_', 'ANTHROPIC_'))}
 env.update(ODDSRAIL_CLOUD_URL=BACKEND, ODDSRAIL_CLOUD_PORT=str(BACKEND_PORT),
            ODDSRAIL_CLOUD_DATA=str(DATA), ODDSRAIL_SITE_URL=f'http://127.0.0.1:{PORT}',
+           ODDSRAIL_CLOUD_DEV='1',
            PYTHONDONTWRITEBYTECODE='1', PYTHONUNBUFFERED='1')
 log = open(DATA / 'backend.log', 'a')
 backend = subprocess.Popen([sys.executable, '-m', 'oddsrail.cloud.app'], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -49,10 +50,23 @@ class Preview(http.server.SimpleHTTPRequestHandler):
             self.send_error(400)
             return
         headers = {'content-type': self.headers.get('content-type', 'application/json')}
+        for name in ('origin', 'cookie', 'sec-fetch-site'):
+            if self.headers.get(name):
+                headers[name] = self.headers[name]
+        # Same-origin fetch GETs omit Origin. Only supply the configured origin
+        # for a browser request from this exact local preview.
+        if ('origin' not in headers and self.command == 'GET'
+                and self.headers.get('sec-fetch-site') == 'same-origin'
+                and self.headers.get('host') == f'127.0.0.1:{PORT}'):
+            headers['origin'] = f'http://127.0.0.1:{PORT}'
         if self.headers.get('authorization'):
             headers['authorization'] = self.headers['authorization']
-        length = int(self.headers.get('content-length', '0'))
-        if length > 100000:
+        try:
+            length = int(self.headers.get('content-length', '0'))
+        except ValueError:
+            self.send_error(400)
+            return
+        if length < 0 or length > (8192 if path.startswith('/auth/wallet/') else 100000):
             self.send_error(413)
             return
         data = self.rfile.read(length) if length else None
@@ -69,6 +83,8 @@ class Preview(http.server.SimpleHTTPRequestHandler):
             self.send_response(response.status)
             self.send_header('Content-Type', response.headers.get('content-type', 'application/json'))
             self.send_header('Cache-Control', 'no-store')
+            for cookie in response.headers.get_all('Set-Cookie', []):
+                self.send_header('Set-Cookie', cookie)
             self.send_header('Content-Length', str(len(content)))
             self.end_headers()
             self.wfile.write(content)

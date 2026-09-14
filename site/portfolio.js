@@ -121,26 +121,30 @@
   function render(state) {
     state = object(state) ? state : {};
     set('portfolio-action-status', typeof state.error === 'string' && state.error ? text(state.error, '', 300) : '');
-    var connected = state.status === 'connected' && ADDRESS.test(state.address || ''), loading = state.status === 'connecting' || (connected && state.portfolioStatus === 'loading');
+    var authLabels = {connecting:'Connecting…',signing:'Sign in your wallet…',verifying:'Verifying…'};
+    var busy = Boolean(authLabels[state.status]);
+    var connected = state.status === 'connected' && state.authenticated === true && ADDRESS.test(state.address || ''), loading = busy || (connected && state.portfolioStatus === 'loading');
     $('portfolio-connect').hidden = connected;
-    $('portfolio-connect').disabled = !wallet || state.status === 'connecting';
-    $('portfolio-connect').textContent = state.status === 'connecting' ? 'Connecting…' : 'Connect wallet ↗';
+    $('portfolio-connect').disabled = !wallet || busy;
+    $('portfolio-connect').textContent = authLabels[state.status] || (state.signOutPending ? 'Retry sign-out' : 'Connect wallet ↗');
     $('portfolio-refresh').hidden = !connected;
     $('portfolio-refresh').disabled = loading;
+    $('portfolio-setup').hidden = true;
+    $('portfolio-setup-check').disabled = !connected || loading;
+    set('portfolio-setup-address', connected ? shortAddress(state.address) : '');
+    $('portfolio-setup-address').title = connected ? state.address : '';
     $('portfolio-address').hidden = !connected;
     set('portfolio-address', shortAddress(state.address)); $('portfolio-address').title = connected ? state.address : '';
     $('account-indicator').className = 'account-indicator' + (connected ? ' connected' : '');
-    set('portfolio-account-label', connected ? 'Connected wallet' : (state.status === 'connecting' ? 'Waiting for your wallet' : 'No wallet connected'));
+    set('portfolio-account-label', connected ? 'Wallet ownership verified' : (busy ? 'Waiting for wallet sign-in' : 'Not signed in'));
     set('portfolio-updated', '');
-    ['portfolio-total', 'portfolio-cash', 'portfolio-holdings'].forEach(function (id) { set(id, '—'); });
-    set('portfolio-total-note', connected ? 'Total requires verified holdings and cash.' : 'Connect to view available account data.');
-    set('portfolio-cash-note', 'Available balance has not been verified.');
-    set('portfolio-holdings-note', 'Current value of reported positions.');
-    set('portfolio-total-tag', loading ? 'Loading' : (connected ? 'Not verified' : 'Not connected'));
+    set('portfolio-holdings', '—');
+    set('portfolio-holdings-note', connected ? 'Reported positions only. Excludes cash.' : 'Connect to view reported positions value. Excludes cash.');
+    set('portfolio-holdings-tag', loading ? 'Loading' : (connected ? 'Not verified' : 'Not connected'));
     clearTables();
     if (!connected) {
-      var connecting = state.status === 'connecting';
-      set('portfolio-scope-note', connecting ? 'Approve the connection in your wallet to look up its public Polymarket account.' : 'Connect a wallet to look up its public Polymarket account. Connecting does not authorize trading.');
+      var connecting = busy;
+      set('portfolio-scope-note', connecting ? 'Approve the connection, then sign the OddsRail sign-in message in your wallet. This does not authorize trading.' : 'Connect and sign in with your wallet to view its public Polymarket account. Trading permission is separate.');
       empty('positions-state', connecting ? 'Connecting your wallet…' : 'See what you hold.', connecting ? 'Waiting for your wallet connection.' : 'Connect a wallet to find its public Polymarket positions.', connecting ? 'loading' : '');
       empty('history-state', connecting ? 'Connecting your wallet…' : 'Your activity, together.', connecting ? 'Waiting for your wallet connection.' : 'Connect a wallet to look up its public account activity.', connecting ? 'loading' : '');
       if (typeof state.error === 'string' && state.error) set('portfolio-action-status', text(state.error, '', 300));
@@ -154,7 +158,7 @@
     }
     var portfolio = matchingPortfolio(state);
     if (state.portfolioStatus === 'error' || !portfolio) {
-      set('portfolio-total-tag', 'Unavailable');
+      set('portfolio-holdings-tag', 'Unavailable');
       set('portfolio-scope-note', text(state.portfolioError, 'Account data could not be verified. Refresh to try again.', 400));
       empty('positions-state', 'Could not load this account.', 'Account data is temporarily unavailable. Refresh to try again.', 'error');
       empty('history-state', 'Could not load this account.', 'Account data is temporarily unavailable. Refresh to try again.', 'error');
@@ -163,18 +167,18 @@
     var account = object(portfolio.account) ? portfolio.account : {};
     if (account.status !== 'resolved' || !ADDRESS.test(account.trading_address || '')) {
       var unresolved = account.status === 'unresolved';
-      set('portfolio-total-tag', unresolved ? 'Account unverified' : 'Unavailable');
-      set('portfolio-scope-note', unresolved ? 'A Polymarket trading account could not be verified for this wallet. This does not mean its balances or positions are zero.' : 'The trading account could not be verified. Refresh to try again.');
-      empty('positions-state', unresolved ? 'Trading account not verified.' : 'Account lookup unavailable.', unresolved ? 'No verified account mapping is available for this wallet. Positions will appear when its trading account can be resolved.' : 'We could not verify the account linked to this wallet.', unresolved ? '' : 'error');
-      empty('history-state', unresolved ? 'Trading account not verified.' : 'Account lookup unavailable.', 'Public activity requires a verified trading account.', unresolved ? '' : 'error');
+      $('portfolio-setup').hidden = !unresolved;
+      set('portfolio-holdings-tag', unresolved ? 'Account not found' : 'Unavailable');
+      set('portfolio-scope-note', unresolved ? 'Wallet ownership is verified. A linked Polymarket trading account has not been identified yet; this does not establish that its balances or positions are zero.' : 'Your wallet sign-in is verified, but the Polymarket account lookup is temporarily unavailable. Refresh to try again.');
+      empty('positions-state', unresolved ? 'Find your trading account first.' : 'Account lookup unavailable.', unresolved ? 'Complete the account setup above, or check again if you already use this wallet on Polymarket. Positions appear after the linked account is found.' : 'We could not verify the account linked to this wallet. Refresh to try again.', unresolved ? '' : 'error');
+      empty('history-state', unresolved ? 'Find your trading account first.' : 'Account lookup unavailable.', 'Public activity will appear after the linked trading account is found.', unresolved ? '' : 'error');
       return;
     }
     var summary = object(portfolio.summary) ? portfolio.summary : {};
-    set('portfolio-total', money(summary.portfolio_value_usd)); set('portfolio-cash', money(summary.cash_usd)); set('portfolio-holdings', money(summary.holdings_value_usd));
-    set('portfolio-total-tag', finite(summary.portfolio_value_usd) ? 'Public snapshot' : 'Partial view');
-    set('portfolio-total-note', finite(summary.portfolio_value_usd) ? 'Reported holdings and available cash.' : 'Total unavailable without verified cash and holdings.');
-    set('portfolio-cash-note', finite(summary.cash_usd) ? 'Verified available account balance.' : 'Cash is not available from this public account lookup.');
-    set('portfolio-holdings-note', finite(summary.holdings_value_usd) ? (summary.valuation_scope === 'single_market_marks_plus_unresolved_combo_cost' ? 'Market values plus unresolved combo cost, where applicable.' : 'Reported position value at current prices.') : 'Holdings value could not be verified.');
+    var holdings = finite(summary.holdings_value_usd) && summary.holdings_value_usd >= 0 ? summary.holdings_value_usd : null;
+    set('portfolio-holdings', money(holdings));
+    set('portfolio-holdings-tag', holdings !== null ? 'Public snapshot' : 'Unavailable');
+    set('portfolio-holdings-note', holdings !== null ? (summary.valuation_scope === 'single_market_marks_plus_unresolved_combo_cost' ? 'Market values plus unresolved combo cost. Excludes cash.' : 'Reported position value at current prices. Excludes cash.') : 'Holdings value could not be verified. Excludes cash.');
     set('portfolio-scope-note', 'Public records for ' + account.trading_address + ', returned by the Polymarket profile lookup for the connected address. Other accounts are outside this view. This lookup does not verify account ownership or OddsRail agent attribution.');
     set('portfolio-updated', date(portfolio.as_of) ? 'Updated ' + dateLabel(portfolio.as_of) : 'Snapshot time unavailable');
     renderPositions(portfolio.positions); renderHistory(portfolio.history);
@@ -228,8 +232,9 @@
     set('portfolio-action-status', '');
     try { await wallet[action](); } catch (error) { set('portfolio-action-status', text(error && error.message, 'The wallet request could not be completed.', 300)); }
   }
-  $('portfolio-connect').addEventListener('click', function () { walletAction('connect'); });
+  $('portfolio-connect').addEventListener('click', function () { walletAction(wallet?.getState().signOutPending ? 'disconnect' : 'connect'); });
   $('portfolio-refresh').addEventListener('click', function () { walletAction('refresh'); });
+  $('portfolio-setup-check').addEventListener('click', function () { walletAction('refresh'); });
   try { set('history-timezone', 'Times in ' + Intl.DateTimeFormat().resolvedOptions().timeZone); } catch (_) { set('history-timezone', 'Local times'); }
   renderDrafts();
   if (wallet && typeof wallet.getState === 'function' && typeof wallet.subscribe === 'function') {

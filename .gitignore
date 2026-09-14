@@ -1,4 +1,6 @@
 .venv/
+.ci-venv/
+test-results.xml
 __pycache__/
 *.pyc
 .env

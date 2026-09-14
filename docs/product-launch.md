@@ -28,18 +28,34 @@ does not provide continuous supervision between passes. Existing self-hosted
 MCP installations have a separate live trading path with operator credentials.
 A browser connection or a saved draft does not create a live execution account.
 
-Keep `/capabilities` authoritative for availability: hosted live execution,
+Keep `/capabilities` authoritative for availability: `wallet_authentication` is enabled; hosted live execution,
 session authorization, hosted AI research, and provider API-key connections must
 remain unavailable until the corresponding backend is implemented and verified.
 
 ## Wallet navigation and public dashboard
 
-The shared header connects an injected browser wallet through account exposure
-only. A session-storage flag allows passive `eth_accounts` restoration; there is
-no stored address claim, signed login, owner-key collection or CLOB credential.
-Switching or disconnecting clears displayed account data immediately. Both request
-generations and abort signals fence late portfolio responses. The guided builder
-subscribes to this shared connection and has no second connection control.
+The shared header connects an injected Ethereum wallet and requests a standard
+Sign-In with Ethereum message through `personal_sign`. The browser validates the
+message's origin, address, chain, nonce, login-only statement and expiry before
+signing. The server verifies the exact issued challenge and signature, consumes
+the challenge atomically and issues a browser-bound eight-hour session.
+
+The four `/auth/wallet/` endpoints use exact Origin allowlists, credentialed CORS,
+8 KiB JSON body limits, bounded rate/storage admission and HTTP-only, Secure,
+host-only SameSite=Strict cookies. Nonces expire in five minutes; sessions are
+opaque and stored hashed in a separate `wallet-auth.sqlite3`. No wallet session
+is accepted as an email OAuth identity, a legacy runner bearer token or evidence
+that a public Polymarket profile is owner-controlled. Only EOA message signatures
+on Ethereum (1) and Polygon (137) are supported; WalletConnect and contract-wallet
+signature verification are not implemented.
+
+A session-storage flag permits passive restoration using exposed accounts and a
+server session check, without automatic signatures. Account/network changes and
+sign-out clear the UI immediately and revoke the server session. Auth requests
+are serialized; cookie-backed confirmation is required after verification.
+Session expiry, cross-tab changes and focus checks invalidate stale login state.
+Public portfolio requests omit cookies. The localhost preview forwards cookies
+through its same-origin API proxy with development-only cookie settings.
 
 `GET /portfolio?address=...` reads Polymarket's public profile wallet association,
 then the current V2 positions, activity and aggregate holdings endpoints. It does
@@ -121,6 +137,14 @@ Polymarket prices, tokens, or credentials.
 
 ## Hosted live dependencies
 
+The separate `oddsrail.live` package now provides a tested public price feed,
+quote planner, durable reservations, order lifecycle and supervisor. See
+[Live execution foundation](live-execution.md) for its timing, accounting rules,
+observation-only command and remaining integration gates. It is not mounted as
+a financial API, and its default engine cannot activate or submit an order.
+The production signer and venue adapter remain unimplemented. Existing hosted
+capability flags must stay false until that complete path is reviewed and tested.
+
 Polymarket's session-key beta currently supports Deposit Wallets, with a separate
 authorized signer and Builder API enablement during rollout. Session keys cannot
 withdraw, but trading can still lose funds. Authorizations expose venue scopes;
@@ -135,10 +159,38 @@ release, then lock deployment dependencies. Do not copy TypeScript version
 numbers or expiry parameters into Python integrations. Source:
 [official SDK changelog](https://docs.polymarket.com/changelog/sdks).
 
-The following are implementation requirements, not completed capabilities:
+Signed owner login is implemented. The dashboard now guides unresolved accounts
+to Polymarket with the same wallet and provides an authenticated refresh. A
+missing public profile is kept separate from a failed lookup and never becomes
+a zero balance.
 
-1. **Account identity and compatibility.** Verify owner identity through a
-   server-issued, expiring, replay-protected signing challenge. Discover the
+`POST /activation/check` uses the signed-in owner, validates a draft and returns
+separate wallet, configuration, public account discovery, funding, permission and
+execution checks. It shares the wallet service's strict origins, opaque cookies,
+bounded request admission and expiry checks, including a recheck after upstream
+reads. It accepts no client address claim, cannot save or start an agent, and
+always returns `can_activate: false` while funding, delegation and execution are
+unimplemented. Browser results are cleared when the wallet, network or draft
+changes. An account-setup link is not a claim of compatible wallet ownership.
+
+The guided builder now also offers a separate trading API connection. A new
+authenticated `POST /trading/accounts` discovers canonical wallet addresses and
+checks current deployment/control on Polygon. The browser authenticates directly
+with the CLOB using an owner-signed ClobAuth message, retains credentials in memory
+and reads balances, allowances, open orders and close-only status. It does not use
+the SDK convenience paths that can deploy wallets or automatically approve tokens.
+Unknown or ambiguous account mappings fail closed. Exchange balances are snapshots,
+not verified spendable agent capital. Credential access is cleared on page exit,
+wallet/session changes, explicit disconnection or the 30-minute local limit.
+
+The public dashboard and header display holdings value only. They no longer show
+unavailable Cash or a cash-inclusive portfolio total. The private exchange balance
+appears only after the separate trading connection succeeds.
+
+The API connection does not submit an order, implement a browser strategy runner
+or grant hosted delegation. The following requirements still apply:
+
+1. **Account identity and compatibility.** Use the verified wallet identity to discover the
    actual trading account type, ownership, balances, approvals, and chain.
    Reuse supported balances where possible. Do not require a second deposit
    just because a wallet was connected. Unsupported account migration must be
