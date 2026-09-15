@@ -17,7 +17,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 WIDTH, HEIGHT, SCALE = 720, 260, 2
-TEXT_SCALE, MIN_TEXT_SIZE = 0.8, 22
+TEXT_SCALE, MIN_TEXT_SIZE = 0.64, 18
 FRAMES = 60
 DURATIONS = [70, 70, 60] * 20  # GIF timing uses 10 ms units: exactly four seconds.
 ROOT = Path(__file__).resolve().parents[1]

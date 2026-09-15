@@ -9,17 +9,14 @@
   };
   const records = [];
   const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const toggle = document.getElementById('toggle-strategy-visuals');
-  let enabled = true, scheduled = false;
-  try { enabled = localStorage.getItem('oddsrail.strategy-visuals') !== 'hidden'; } catch (_) {}
+  let scheduled = false;
   const element = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text) node.textContent = text; return node; };
   const theme = () => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-  function path(record, extension) { return '/assets/strategy-gifs/' + record.id + '-' + theme() + '.' + extension + '?v=20260913-3'; }
+  function path(record, extension) { return '/assets/strategy-gifs/' + record.id + '-' + theme() + '.' + extension + '?v=20260913-4'; }
   function wantsMotion(record) { return !record.paused && (!preference.matches || record.motionOverride); }
   function paint(record) {
-    if (record.figure.hidden !== !enabled) record.figure.hidden = !enabled;
     const rect = record.figure.getBoundingClientRect();
-    const visible = enabled && !document.hidden && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+    const visible = !document.hidden && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
     const play = visible && wantsMotion(record) && !record.failed;
     // Replacing the source is what stops a GIF; CSS animation rules do not.
     if (visible || record.image.hasAttribute('src')) {
@@ -32,7 +29,6 @@
   function update() {
     scheduled = false;
     records.forEach(paint);
-    if (toggle) toggle.textContent = enabled ? 'Hide animations' : 'Show animations';
   }
   function schedule() { if (!scheduled) { scheduled = true; requestAnimationFrame(update); } }
   function attach(container, id) {
@@ -60,11 +56,6 @@
     observer?.observe(figure); schedule();
   }
   const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(schedule) : null;
-  toggle?.addEventListener('click', () => {
-    enabled = !enabled;
-    try { localStorage.setItem('oddsrail.strategy-visuals', enabled ? 'shown' : 'hidden'); } catch (_) {}
-    update();
-  });
   preference.addEventListener('change', () => { records.forEach(record => { record.motionOverride = false; }); update(); });
   new MutationObserver(schedule).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
   const form = document.getElementById('setup-form');

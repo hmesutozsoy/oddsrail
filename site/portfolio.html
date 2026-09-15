@@ -9,10 +9,10 @@
 <link rel="canonical" href="https://oddsrail.app/portfolio">
 <link rel="icon" href="/favicon.svg">
 <link rel="stylesheet" href="/product.css?v=20260912-3">
-<link rel="stylesheet" href="/portfolio.css?v=20260912-3">
-<script src="/wallet.js?v=20260912-3" defer></script>
-<script src="/shell.js?v=20260912-3" defer></script>
-<script src="/portfolio.js?v=20260912-3" defer></script>
+<link rel="stylesheet" href="/portfolio.css?v=20260914-1">
+<script src="/wallet.js?v=20260914-1" defer></script>
+<script src="/shell.js?v=20260914-1" defer></script>
+<script src="/portfolio.js?v=20260914-1" defer></script>
 </head>
 <body class="product" data-page="portfolio">
 <div data-shell></div>
@@ -22,16 +22,29 @@
     <div class="portfolio-heading-actions"><button class="pill secondary" id="portfolio-refresh" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg>Refresh</button><button class="pill" id="portfolio-connect" type="button">Connect wallet <span aria-hidden="true">↗</span></button></div>
   </div>
   <p id="portfolio-action-status" class="portfolio-action-status muted" role="status" aria-live="polite"></p>
-  <section class="portfolio-overview" aria-label="Portfolio summary">
-    <article class="panel portfolio-metric primary-metric"><div class="metric-heading"><h2>Portfolio</h2><span class="metric-tag" id="portfolio-total-tag">Not connected</span></div><p class="metric-value" id="portfolio-total">&mdash;</p><p class="metric-note" id="portfolio-total-note">Connect to view available account data.</p></article>
-    <article class="panel portfolio-metric"><div class="metric-heading"><h2>Cash</h2></div><p class="metric-value" id="portfolio-cash">&mdash;</p><p class="metric-note" id="portfolio-cash-note">Available balance has not been verified.</p></article>
-    <article class="panel portfolio-metric"><div class="metric-heading"><h2>Holdings value</h2></div><p class="metric-value" id="portfolio-holdings">&mdash;</p><p class="metric-note" id="portfolio-holdings-note">Current value of reported positions.</p></article>
+  <section id="portfolio-setup" class="panel portfolio-setup" aria-labelledby="portfolio-setup-title" hidden>
+    <div class="portfolio-setup-heading">
+      <span class="portfolio-setup-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h15a1 1 0 0 1 1 1v11H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12v3M20 11h-5v4h5"/></svg></span>
+      <div><p class="eyebrow">YOUR NEXT STEP</p><h2 id="portfolio-setup-title">Set up your Polymarket trading account</h2></div>
+      <span class="portfolio-setup-verified">Wallet verified <span aria-hidden="true">✓</span></span>
+    </div>
+    <p class="portfolio-setup-intro">You're signed in to OddsRail. We couldn't find a linked trading account yet. If you're new to Polymarket, complete its account setup with this same wallet.</p>
+    <ol class="portfolio-setup-steps">
+      <li><span class="portfolio-step-number" aria-hidden="true">1</span><div><h3>Connect on Polymarket</h3><p>Open Polymarket and choose the same wallet: <code id="portfolio-setup-address"></code>. Follow its account setup steps.</p></div></li>
+      <li><span class="portfolio-step-number" aria-hidden="true">2</span><div><h3>Come back and check</h3><p>Return here and check again so OddsRail can look up your trading account.</p></div></li>
+      <li><span class="portfolio-step-number" aria-hidden="true">3</span><div><h3>Review before activating</h3><p>Once your account is found, review its funding and supported agent permissions. Signing in alone doesn't authorize trades.</p></div></li>
+    </ol>
+    <div class="portfolio-setup-actions"><a class="pill" href="https://polymarket.com" target="_blank" rel="noopener noreferrer">Open Polymarket <span aria-hidden="true">↗</span><span class="sr-only"> (opens in a new tab)</span></a><button class="pill secondary" id="portfolio-setup-check" type="button">I've set it up · Check again</button></div>
+    <p class="portfolio-setup-note muted">Already have an account? Check that you used the same wallet on Polymarket. Public account discovery can be delayed or incomplete. Unknown balances remain blank.</p>
+  </section>
+  <section class="portfolio-overview" aria-label="Reported holdings">
+    <article class="panel portfolio-metric primary-metric"><div class="metric-heading"><h2>Holdings value</h2><span class="metric-tag" id="portfolio-holdings-tag">Not connected</span></div><p class="metric-value" id="portfolio-holdings">&mdash;</p><p class="metric-note" id="portfolio-holdings-note">Reported positions only. Excludes cash.</p></article>
   </section>
   <div class="portfolio-account">
-    <div class="account-identity"><span class="account-indicator" id="account-indicator" aria-hidden="true"></span><span id="portfolio-account-label">No wallet connected</span><code id="portfolio-address" hidden></code></div>
+    <div class="account-identity"><span class="account-indicator" id="account-indicator" aria-hidden="true"></span><span id="portfolio-account-label">Not signed in</span><code id="portfolio-address" hidden></code></div>
     <span class="portfolio-updated" id="portfolio-updated"></span>
   </div>
-  <p id="portfolio-scope-note" class="portfolio-scope-note muted">Connect a wallet to look up its public Polymarket account. Connecting does not authorize trading.</p>
+  <p id="portfolio-scope-note" class="portfolio-scope-note muted">Connect and sign in with your wallet to view its public Polymarket account. Trading permission is separate.</p>
 
   <section class="portfolio-workspace" aria-label="Account details">
     <div class="portfolio-tabs" role="tablist" aria-label="Portfolio sections">

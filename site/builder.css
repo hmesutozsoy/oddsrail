@@ -11,16 +11,15 @@
 .strategy-option .strategy-glyph{font-size:25px;margin-bottom:9px}
 .strategy-controls{padding:5px 22px 20px;background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
 .strategy-controls .field-grid{gap:18px}
-.strategy-controls .field-grid .input{font-size:24px;padding:12px 15px}
-.strategy-controls .field-grid .field:first-child .input{font-weight:550}
+.product .strategy-controls label.field{font-size:12px;gap:7px;margin-bottom:14px}
+.strategy-controls .field-grid .input{font-size:16px;line-height:1.35;padding:9px 12px;min-height:44px;border-radius:10px;font-weight:400}
 .strategy-controls p:last-child{margin-bottom:0}
 .strategy-controls #quote-example{color:var(--text);margin:1px 0 9px}
 @media(max-width:480px){.strategy-option>.strategy-card{padding:18px}.strategy-controls{padding:4px 18px 18px}.strategy-controls .field-grid{grid-template-columns:1fr;gap:0}.strategy-controls .field{margin-bottom:14px}}
 
 @media(max-width:480px){.builder-layout form .section-heading{flex-direction:column;align-items:flex-start;gap:6px}.builder-layout form .section-heading h2{margin:0}.builder-layout form .section-heading p{margin:0}}
 
-/* Optional illustrative GIFs; hiding these never changes strategy settings. */
-.strategy-preview-actions{display:flex;justify-content:flex-end;margin:-3px 0 14px}
+/* Illustrative GIFs with individual pause controls and static motion alternatives. */
 .strategy-animation-control{display:inline-flex;align-items:center;justify-content:center;background:var(--surface-2);border:1px solid var(--line);color:var(--text);font-size:11px!important;border-radius:20px;padding:6px 12px;min-height:30px;white-space:nowrap}
 .strategy-animation-control:hover{border-color:var(--accent)}
 .strategy-visual{margin:0 0 22px;border:1px solid var(--line);border-radius:14px;background:var(--bg);overflow:hidden}
@@ -29,3 +28,19 @@
 .strategy-visual-media img{display:block;width:100%;height:auto;aspect-ratio:720/260}
 .strategy-visual figcaption{font-size:11px;color:var(--muted);line-height:1.5;padding:3px 14px 13px}
 @media(max-width:480px){.strategy-visual-toolbar{padding:10px 10px 0}.strategy-visual figcaption{padding:4px 10px 12px;font-size:10px}}
+
+.activation-checks{margin-top:20px;border-top:1px solid var(--line)}
+.activation-check{padding:16px 0;border-bottom:1px solid var(--line)}
+.activation-check-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:13px}
+.activation-check p{margin:7px 0 0;line-height:1.6}
+.activation-check-state{font-size:11px;white-space:nowrap;color:var(--muted)}
+.activation-check-state[data-status="ready"]{color:var(--accent)}
+.activation-check a{display:inline-block;margin-top:10px}
+#activation-status{margin:12px 0 0}
+.trading-connection-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+#trading-connection-status{margin:14px 0;line-height:1.6}
+#trading-account-choice{margin-top:20px}
+#trading-connection-details .auth-row strong{max-width:65%;overflow-wrap:anywhere}
+#trading-connection-details code{font-size:11px;overflow-wrap:anywhere}
+#trading-connection-details details{margin-top:14px;font-size:12px}
+@media(max-width:480px){.trading-connection-actions{flex-direction:column;align-items:stretch}.trading-connection-actions button{width:100%;min-height:44px}}

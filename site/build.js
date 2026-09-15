@@ -173,15 +173,98 @@
     }catch(e){if(revision===searchRevision)$('market-status').textContent=e.message;}finally{if(revision===searchRevision)$('find-market').disabled=false;}
   }
   $('find-market').onclick=()=>findMarket($('market-search').value);$('market-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findMarket(e.target.value);}});
+  let trading=null, renderActivation=()=>{};
   window.OddsRailWallet?.subscribe(state => {
-    $('wallet-state').textContent = state.address ? state.address.slice(0,6)+'…'+state.address.slice(-4) : 'Not connected';
+    $('wallet-state').textContent = state.authenticated && state.address ? state.address.slice(0,6)+'…'+state.address.slice(-4)+' · Verified' : 'Not signed in';
     const account = state.portfolio?.account;
-    $('trading-account-state').textContent = account?.status === 'resolved' && account.trading_address ? account.trading_address.slice(0,6)+'…'+account.trading_address.slice(-4)+' (read only)' : 'Not identified';
+    const linked=trading?.getState();
+    $('trading-account-state').textContent = linked?.connected && linked.account ? linked.account.address.slice(0,6)+'…'+linked.account.address.slice(-4)+' · API connected' : account?.status === 'resolved' && account.trading_address ? account.trading_address.slice(0,6)+'…'+account.trading_address.slice(-4)+' (public profile)' : 'Not identified';
   });
   form.addEventListener('submit',e=>e.preventDefault());
   document.addEventListener('click',e=>{const b=e.target.closest('button[data-step],button[data-next]');if(b){e.preventDefault();next(Number(b.dataset.next??b.dataset.step));}});
   form.addEventListener('input',sync);
   form.addEventListener('change',e=>{const n=e.target.name||'';if(n.startsWith('topic_')&&e.target.checked){if(n==='topic_all')categories.filter(x=>x[0]!=='all').forEach(([id])=>input('topic_'+id).checked=false);else input('topic_all').checked=false;}sync();});
+  const activation = window.OddsRailActivation?.createActivationChecker({
+    wallet:window.OddsRailWallet,api:API,getConfig:read,validate,
+    fetch:(...args)=>window.fetch(...args),setTimeout:window.setTimeout.bind(window),clearTimeout:window.clearTimeout.bind(window)
+  });
+  if(activation){
+    $('check-activation').onclick=()=>activation.check();
+    renderActivation=state=>{
+      const working=state.phase==='connecting'||state.phase==='checking';
+      $('check-activation').disabled=working;
+      $('check-activation').textContent=state.phase==='connecting'?'Waiting for wallet…':state.phase==='checking'?'Checking…':'Check activation readiness';
+      $('activation-badge').textContent='Not active';
+      $('activation-status').textContent=state.error||(working?'Checking your sign-in and setup…':state.report?'Your agent is not active. Review the remaining steps below.':'Your agent is not active.');
+      const checks=$('activation-checks');checks.replaceChildren();checks.hidden=!state.report;
+      state.report?.checks.forEach(original=>{
+        const check={...original}, connection=trading?.getState();
+        if(check.id==='funding'){
+          check.detail=connection?.connected?'Your exchange balance and approvals are shown above. Available funds for this agent still require market-specific checks and accounting for existing positions and orders.':'Connect your trading account above to authenticate balance and allowance reads. Public holdings value does not include these funds.';
+        }
+        const row=el('div',undefined,'activation-check'),title=el('div',undefined,'activation-check-title');
+        const label=el('strong',check.label),badge=el('span',check.status==='ready'?'Checked':check.status==='action_required'?'Next step':'Not ready','activation-check-state');
+        badge.dataset.status=check.status;title.append(label,badge);row.append(title,el('p',check.detail,'muted small'));
+        if(check.href){const link=el('a','Open Polymarket ↗','small');link.href='https://polymarket.com/';link.target='_blank';link.rel='noopener noreferrer';row.append(link);}
+        checks.append(row);
+      });
+    };
+    activation.subscribe(renderActivation);
+    form.addEventListener('input',()=>activation.invalidate());
+    form.addEventListener('change',()=>activation.invalidate());
+    // Market selection buttons update scope without a native input event.
+    $('selected-markets').addEventListener('click',()=>activation.invalidate());
+    $('market-results').addEventListener('click',()=>activation.invalidate());
+    // Keep controls usable when Back restores this page from the browser cache.
+    window.addEventListener('pagehide',()=>activation.invalidate());
+    window.addEventListener('pageshow',()=>activation.invalidate());
+  }else{$('check-activation').disabled=true;}
+  function units(value){
+    if(typeof value!=='string'||!/^\d{1,78}$/.test(value))return 'Unavailable';
+    const n=BigInt(value),whole=(n/1000000n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,','),fraction=(n%1000000n).toString().padStart(6,'0');
+    return '$'+whole+'.'+(n>0n&&n<10000n?fraction.replace(/0+$/,'').padEnd(2,'0'):fraction.slice(0,2));
+  }
+  const names={DEPOSIT_WALLET:'Deposit wallet',GNOSIS_SAFE:'Safe wallet',POLY_PROXY:'Proxy wallet'};
+  function renderTrading(state){
+    const working=['checking','signing','loading'].includes(state.phase);
+    $('connect-trading').disabled=working;$('connect-trading').hidden=state.connected;
+    $('connect-trading').textContent=state.phase==='signing'?'Confirm in your wallet…':working?'Connecting…':state.phase==='choosing'?'Connect selected account':'Connect trading account';
+    $('trading-connection-badge').textContent=state.connected?'API connected':working?'Connecting':'Not connected';
+    $('refresh-trading').hidden=!state.connected;$('refresh-trading').disabled=working;
+    $('disconnect-trading').hidden=!state.connected&&!working;
+    $('trading-account-choice').hidden=state.phase!=='choosing';
+    if(state.phase==='choosing'){
+      const selected=$('trading-account-select').value;
+      $('trading-account-select').replaceChildren(...state.accounts.map(account=>{const option=el('option',names[account.wallet_type]+' · '+account.address);option.value=account.address;return option;}));
+      if(state.accounts.some(account=>account.address===selected))$('trading-account-select').value=selected;
+    }
+    $('trading-connection-status').textContent=state.error||(state.phase==='signing'?'Sign the Polymarket connection message in your wallet. This is separate from OddsRail sign-in.':working?'Verifying your trading account and reading exchange data…':state.phase==='choosing'?'Choose which verified trading account to connect.':state.phase==='setup_required'?'No supported deployed account was found. Finish account setup on Polymarket with this wallet, then try again.':state.connected?'Connected for this tab. The balance below is an exchange snapshot; it is not an agent spending limit.':'Your private key stays in your wallet. Trading API credentials are held in this tab only.');
+    const details=$('trading-connection-details');details.replaceChildren();details.hidden=!state.connected;
+    if(state.connected){
+      const row=(label,value)=>{const r=el('div',undefined,'auth-row');r.append(el('span',label),el('strong',value));details.append(r);};
+      row(names[state.account.wallet_type]||'Trading account',state.account.address);
+      row('Exchange balance',units(state.balance?.balance));
+      row('Account access',state.closedOnly===true?'Closing positions only':state.closedOnly===false?'No close-only restriction reported':'Not verified');
+      row('Open orders',state.ordersComplete?String(state.orders.length):'Incomplete — retry before trading');
+      const approvals=el('details'),entries=Object.entries(state.balance?.allowances||{});approvals.append(el('summary','Spending approvals · '+entries.length+' returned'));
+      if(!entries.length)approvals.append(el('p','No exchange approvals were returned. Complete trading setup on Polymarket.','muted small'));
+      entries.forEach(([address,amount])=>{const item=el('p',undefined,'small');item.append(el('code',address),document.createTextNode(' · '+units(amount)));approvals.append(item);});details.append(approvals);
+      details.append(el('p','Existing orders can commit part of this balance. Approvals must be checked for the selected market before an order is submitted.','muted small'));
+      $('trading-account-state').textContent=state.account.address.slice(0,6)+'…'+state.account.address.slice(-4)+' · API connected';
+    }else{
+      const account=window.OddsRailWallet?.getState().portfolio?.account;
+      $('trading-account-state').textContent=account?.status==='resolved'&&account.trading_address?account.trading_address.slice(0,6)+'…'+account.trading_address.slice(-4)+' (public profile)':'Not identified';
+    }
+    if(activation)renderActivation(activation.getState());
+  }
+  if(window.OddsRailTradingConnection&&window.OddsRailWallet){
+    trading=window.OddsRailTradingConnection.createTradingConnection({wallet:window.OddsRailWallet,api:API,fetch:(...args)=>window.fetch(...args),crypto:window.crypto,setTimeout:window.setTimeout.bind(window),clearTimeout:window.clearTimeout.bind(window)});
+    trading.subscribe(renderTrading);
+    $('connect-trading').onclick=()=>trading.connect({tradingWallet:trading.getState().phase==='choosing'?$('trading-account-select').value:undefined});
+    $('refresh-trading').onclick=()=>trading.refresh();
+    $('disconnect-trading').onclick=()=>trading.disconnect();
+    window.addEventListener('pagehide',()=>trading.disconnect());
+  }else{$('connect-trading').disabled=true;$('trading-connection-status').textContent='Trading connection is unavailable. Reload and try again.';}
   renderSelected();sync();
   if(url.searchParams.has('market')){input('market_mode').value='specific';$('market-search').value=url.searchParams.get('market');sync();findMarket($('market-search').value);}
 })();

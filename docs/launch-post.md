@@ -73,55 +73,59 @@ with one environment variable if you would rather attribute to yourself.
 The profile is a verified Polymarket builder and their builder team confirmed
 this is the right pattern for a self-hosted tool.
 
-**The honest numbers.** This week the code ranks around #124 of 216
-builders, and all of that volume is my own market-making bot. There is a
-public attribution ledger that lists every wallet carrying the code and
-subtracts mine, so the "external users" number is real and, today, zero:
-https://oddsrail.app/attribution. That page is also how you will know if any
-of this worked.
+**The honest numbers.** All of the volume carrying the code so far is my
+own market-making bot, so the count of outside users is zero. You do not
+have to take my word for either figure: Polymarket publishes every builder's
+volume and active users on its own feed, at
+data-api.polymarket.com/v1/builders/leaderboard, and that is where to look to
+see whether any of this worked.
 
 Site: https://oddsrail.app · Source: https://github.com/hmesutozsoy/oddsrail
 · Registry: `app.oddsrail/polymarket-kalshi-trading`
 
 ---
 
-## Show HN (September 2026 version: the builder and the arena)
+## Show HN (September 2026 version: markets, the builder and the connector)
 
 **Title (80 characters max):**
 
-Show HN: Oddsrail – build a paper-trading agent for Polymarket in 10 seconds, no account
+Show HN: OddsRail – an open-source rail for AI agents that trade Polymarket
 
-**URL:** https://oddsrail.app/build
+**URL:** https://oddsrail.app
 
 **First comment, posted right after submitting:**
 
-Author here. Oddsrail started as an open-source MCP server that lets an AI
-agent read, cost, audit and trade Polymarket and Kalshi (pip install
-oddsrail, MIT, 42 tools). Nobody wants to install an MCP server to try an
-idea, so the page linked above runs the strategy for you.
+Author here. OddsRail is an open-source MCP server that lets an AI agent
+read, cost, check and trade Polymarket and Kalshi (pip install oddsrail, MIT,
+42 tools). There are three ways in, depending on how much you want to commit.
 
-What happens when you press Run: the switches you ticked (fade overshoots,
-buy near-certain resolutions, follow the move, two-sided quotes, your own
-probabilities, plus risk rules like stop loss and daily loss limit) execute
-on our server as one deterministic pass against the live Polymarket book.
-Every order goes through a pre-trade check that compares the order with the
-market, the book and the rules, and the pass comes back as a list of
-decisions with the verdict and reason for each. Fills land in a paper ledger
-that belongs to your browser. No model is consulted, so two people with the
-same switches get the same behaviour, which is what a fair leaderboard
-needs. Keep the agent with an email and it runs hourly and appears on the
-board at oddsrail.app/arena.
+Browse and design, no account: the site lists live Polymarket markets, and
+the builder walks you through a strategy (fade overshoots, near-certain
+resolutions, following a move, your own probabilities) with risk rules like
+stop losses and loss limits. The draft is saved in your browser. Nothing
+trades from the website yet, and the page says so.
 
-What it is not: not real money (paper only, fills are an upper bound since
-there is no queue or impact), not a backtest, and the market-making piece
-carries the warning that my own engine lost about 4.5 cents a share on
-markout live after looking fine on paper.
+Trade by chat, no install: add https://mcp.oddsrail.app/mcp to Claude as a
+custom connector and sign in with an email. Your agent gets the tools and a
+paper ledger that fills against the live order book, so you can see what a
+strategy would have done without risking anything.
 
-Why it exists: Polymarket pays builders a share of a weekly pool by
-attributed volume, and I am a verified builder, so the self-hosted server
-attaches my builder code at 0 bps. The hosted paper runner is the top of
-that funnel. Code: https://github.com/hmesutozsoy/oddsrail. Happy to answer
-anything about the venue APIs; the README has six footguns they taught me.
+Live, under your own key: pip install oddsrail. Orders are dry-run until you
+say otherwise, every order goes through a deterministic pre-trade check first
+(right market, right side, sane price, the $1 minimum, your guardrails), and
+your key never leaves your machine.
+
+What it is not: a backtest, or a promise that a strategy makes money. Paper
+fills are an upper bound because there is no queue or market impact, and the
+two-sided quoting strategy carries the warning that my own market-making
+engine lost about 4.5 cents a share on markout live after looking fine on
+paper.
+
+Why it exists: Polymarket pays verified builders a share of a weekly pool by
+attributed volume. I am one, and the server attaches my builder code at
+0 bps, so it adds nothing to anyone's trade. Code: https://github.com/hmesutozsoy/oddsrail. Happy to answer anything
+about the venue APIs; there are six notes on what they get wrong at
+https://oddsrail.app/notes/.
 
 **Rules of the day:** never ask anyone for votes, reply to every comment
 for the first three hours, and post Tuesday to Thursday between 14:00 and
@@ -141,8 +145,9 @@ The interesting part is what the venue APIs get wrong, and there is a keyless
 script that shows all six live: `python examples/footguns.py`.
 
 `pip install oddsrail` then `claude mcp add --transport stdio oddsrail -- oddsrail`.
-Verified Polymarket builder, MIT, 175 tests. Honest usage numbers are on the
-site's attribution ledger, and today the external count is zero.
+Verified Polymarket builder, MIT, well over a thousand tests. Honest usage:
+every attributed trade so far is my own bot, so outside users are zero, and
+Polymarket's own public builder feed will confirm that.
 
 https://github.com/hmesutozsoy/oddsrail
 
@@ -171,7 +176,7 @@ guardrails the agent cannot change, gasless split/merge/redeem with your own
 relayer key. 0 bps builder code you can override. Verified Polymarket
 builder. MIT.
 
-6/ Honest numbers: rank ~#124 of 216 builders this week, all of it my own
-bot. The ledger at oddsrail.app/attribution subtracts my wallet, so the
-external-user count is real. Today it is zero. Repo:
-github.com/hmesutozsoy/oddsrail
+6/ Honest numbers: every attributed trade so far is my own bot, so outside
+users are zero. Polymarket publishes builder volume on its own public feed,
+so you can check that rather than trust me. Six notes on the API traps:
+oddsrail.app/notes. Repo: github.com/hmesutozsoy/oddsrail

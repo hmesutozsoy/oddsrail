@@ -36,7 +36,7 @@
 <section class="hero">
   <p class="kicker">Privacy policy</p>
   <h1>What oddsrail keeps, and what it never touches</h1>
-  <p class="lede">Last updated 12 September 2026. This covers the website at oddsrail.app and the hosted server at mcp.oddsrail.app. The open-source package you run yourself sends nothing to us at all.</p>
+  <p class="lede">Last updated 13 September 2026. This covers the website at oddsrail.app and the hosted server at mcp.oddsrail.app. The open-source package you run yourself sends nothing to us at all.</p>
 </section>
 
 <section id="self-hosted">
@@ -59,15 +59,20 @@
 
 <section id="website">
   <h2>The website</h2>
-  <p>The guided builder stores strategy drafts, optional notes, selected market identifiers and your theme preference in this browser. Clearing site storage removes these drafts. Connecting a browser wallet reveals its public address to the page; this build does not request a private key or trading signature. Market searches are sent to the hosted service, which retrieves public venue data. After a wallet connection, the public address is sent to the hosted service and Polymarket to look up its public profile, positions, holdings value and activity. The address may appear in request logs. This is a public-data lookup, not a verified login or permission to trade.</p>
-  <p>oddsrail.app is a static site served by Cloudflare. We run no analytics scripts and set no cookies. Cloudflare may log requests as part of serving the site; its own privacy policy governs that. A connection flag is saved in browser session storage so navigation can restore the connection through the wallet. Portfolio responses remain in page memory and are cleared on disconnect or account change; they are not saved with strategy drafts. Browser drafts are separate from wallet ownership.</p>
+  <p>The guided builder stores strategy drafts, optional notes, selected market identifiers and your theme preference in this browser. Clearing site storage removes these drafts. Connecting a browser wallet reveals its public address. Signing the OddsRail sign-in message proves control of that signing address; it does not authorize trading, transfers or access to funds. We never ask for your wallet private key.</p>
+  <p>Wallet sign-in uses essential, HTTP-only cookies: a browser context for a five-minute sign-in challenge and an eight-hour session. The server stores your signing address, chain, sign-in origin, expiry and hashed session identifiers. Signatures are checked and are not stored. Expired challenges and sessions are removed during subsequent sign-in or sign-out activity. Sign out from the wallet menu to revoke the browser session. Wallet sessions are separate from email-based MCP accounts and do not establish ownership of browser drafts.</p>
+  <p>Market searches are sent to the hosted service, which retrieves public venue data. After sign-in, your public address is sent to the hosted service and Polymarket to look up its public profile, positions, holdings value and activity. The address may appear in request logs. A public trading-account association does not itself prove control of that trading account.</p>
+  <p>If you choose Connect trading account, the hosted service checks public Polygon contract state to verify supported trading accounts. Your browser then sends a separate wallet-signed authentication message directly to Polymarket to create or derive trading API credentials. This connection uses them to read exchange balances, allowances, open orders and account restrictions. It does not submit orders, approve token spending or grant an agent a session key.</p>
+  <p>Trading API credentials stay in page memory and are discarded when you disconnect the trading connection, leave the page, change wallets, end your sign-in or reach the connection's 30-minute limit. They are not sent to the OddsRail server or saved in browser storage. Disconnect this tab clears this tab's access; it does not revoke an API credential at Polymarket. API credentials can support order management, so they should not be treated as credentials with a venue-enforced read-only scope.</p>
+  <p>oddsrail.app is a static site served by Cloudflare. We run no analytics scripts. Cloudflare may log requests as part of serving the site; its own privacy policy governs that. A connection flag is saved in browser session storage so navigation can restore an existing session without prompting for another signature. Session tokens are not available to page scripts or stored in local storage. Portfolio responses stay in page memory and are cleared on sign-out or account change.</p>
 </section>
 
 <section id="sharing">
   <h2>Sharing and third parties</h2>
   <ul>
     <li><b>Resend</b> delivers sign-in emails and processes your email address for that purpose.</li>
-    <li><b>Polymarket</b> receives market-data requests and, after a wallet connection, the public addresses needed for account lookups.</li>
+    <li><b>Polymarket</b> receives market-data requests, account lookups and, if you connect a trading account, the authentication signature and authenticated account requests sent directly by your browser.</li>
+    <li><b>Polygon RPC providers</b> receive public wallet and contract addresses when the trading connection verifies account ownership and deployment.</li>
     <li>We do not sell or rent any data, and we do not share it with anyone else except when required by law.</li>
   </ul>
 </section>

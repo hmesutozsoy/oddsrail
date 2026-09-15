@@ -473,8 +473,89 @@ def test_guided_capabilities_do_not_advertise_live_authorization(cloud):
     assert capabilities["specific_markets"] is True
     assert capabilities["hosted_live"] is False
     assert capabilities["session_authorization"] is False
+    assert capabilities["wallet_authentication"] is True
     assert capabilities["hosted_ai"] == "unavailable"
     assert capabilities["byo_api"] is False
+
+
+def test_wallet_sign_in_is_mounted_but_does_not_authorize_legacy_accounts(cloud):
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+
+    signer = Account.create()  # Disposable offline test identity, never funded.
+    with httpx.Client(base_url=cloud["base"], headers={"Origin": "https://oddsrail.app"}) as client:
+        challenge = client.post("/auth/wallet/challenge", json={"address": signer.address, "chain_id": 137})
+        assert challenge.status_code == 200, challenge.text
+        message = challenge.json()["message"]
+        signature = "0x" + signer.sign_message(encode_defunct(text=message)).signature.hex()
+        verified = client.post("/auth/wallet/verify", json={"message": message, "signature": signature})
+        assert verified.status_code == 200, verified.text
+        session = client.get("/auth/wallet/session")
+        assert session.json()["authenticated"] is True
+        assert session.json()["address"] == signer.address
+        assert client.get("/me").json() == {"ok": True, "signed_in": False}
+        assert client.post("/agents", json={}).status_code == 401
+        mcp_response = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+                                   headers={"accept": "application/json, text/event-stream"})
+        assert mcp_response.status_code == 401
+        assert client.post("/auth/wallet/logout", json={}).status_code == 200
+        assert client.get("/auth/wallet/session").json()["authenticated"] is False
+
+
+def test_wallet_auth_does_not_inherit_permissive_public_cors(cloud):
+    # Public lookup CORS has broader local-preview support; auth is stricter.
+    for origin in ("http://127.0.0.1:9999", "null", "https://oddsrail.app.evil.invalid"):
+        response = httpx.post(cloud["base"] + "/auth/wallet/challenge",
+                              headers={"Origin": origin}, json={"address": "0x" + "a" * 40, "chain_id": 137})
+        assert response.status_code == 403
+        assert "set-cookie" not in response.headers
+
+
+def test_activation_check_is_mounted_and_requires_wallet_cookie(cloud):
+    capabilities = httpx.get(cloud["base"] + "/capabilities").json()
+    assert capabilities["activation_check"] is True
+    assert capabilities["hosted_live"] is False and capabilities["session_authorization"] is False
+    response = httpx.post(cloud["base"] + "/activation/check", json={"config": {}},
+                          headers={"Origin": "https://oddsrail.app", "Authorization": "Bearer not-a-wallet-session"})
+    assert response.status_code == 401 and response.json()["error"] == "wallet_sign_in_required"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    response = httpx.post(cloud["base"] + "/activation/check", json={"config": {}},
+                          headers={"Origin": "http://127.0.0.1:9999"})
+    assert response.status_code == 403
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_trading_account_discovery_is_mounted_as_a_private_read(cloud):
+    capabilities = httpx.get(cloud["base"] + "/capabilities").json()
+    assert capabilities["trading_accounts"] is True
+    assert capabilities["hosted_live"] is False
+    response = httpx.post(cloud["base"] + "/trading/accounts", json={},
+                          headers={"Origin": "https://oddsrail.app"})
+    assert response.status_code == 401 and response.json()["error"] == "wallet_sign_in_required"
+    assert response.headers["cache-control"] == "no-store"
+    response = httpx.post(cloud["base"] + "/trading/accounts", json={},
+                          headers={"Origin": "http://127.0.0.1:9999"})
+    assert response.status_code == 403 and "accounts" not in response.json()
+
+
+def test_activation_check_validates_authenticated_draft_without_execution(cloud):
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+
+    signer = Account.create()
+    with httpx.Client(base_url=cloud["base"], headers={"Origin": "https://oddsrail.app"}) as client:
+        challenge = client.post("/auth/wallet/challenge", json={"address": signer.address, "chain_id": 137})
+        assert challenge.status_code == 200, challenge.text
+        message = challenge.json()["message"]
+        signature = "0x" + signer.sign_message(encode_defunct(text=message)).signature.hex()
+        assert client.post("/auth/wallet/verify", json={"message": message, "signature": signature}).status_code == 200
+        response = client.post("/activation/check", json={"config": {"mode": "live"}})
+        assert response.status_code == 400 and response.json()["error"] == "invalid_configuration"
+        assert "draft" in response.json()["detail"]
+        response = client.post("/activation/check", json={"config": {}, "address": signer.address})
+        assert response.status_code == 400 and response.json()["error"] == "invalid_body"
+        assert client.post("/auth/wallet/logout", json={}).status_code == 200
+        assert client.post("/activation/check", json={"config": {}}).status_code == 401
 
 
 def test_guided_validation_returns_executable_summary_not_replacement_config(cloud):
@@ -667,3 +748,23 @@ def test_public_portfolio_preflight_needs_no_account_or_address(cloud):
     assert response.status_code == 204
     assert response.headers["access-control-allow-origin"] == "https://oddsrail.app"
     assert "GET" in response.headers["access-control-allow-methods"]
+
+
+def test_the_host_answers_what_crawlers_and_clients_ask_for(cloud):
+    """Three requests the access log showed being met with 404."""
+    import json
+    from pathlib import Path
+    base = cloud["base"]
+    # Glama verifies ownership of a remote server by fetching this on the host
+    g = httpx.get(base + "/.well-known/glama.json")
+    assert g.status_code == 200
+    assert g.json() == json.loads((Path(__file__).resolve().parent.parent / "glama.json").read_text())
+    # some MCP clients try the path-appended metadata URL before the path-inserted one
+    r = httpx.get(base + "/mcp/.well-known/oauth-protected-resource", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].endswith("/.well-known/oauth-protected-resource/mcp")
+    assert httpx.get(base + "/mcp/.well-known/oauth-protected-resource", follow_redirects=True).json()["resource"].endswith("/mcp")
+    r = httpx.get(base + "/mcp/.well-known/oauth-authorization-server", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].endswith("/.well-known/oauth-authorization-server")
+    # search crawlers ask the API host for the site's sitemap
+    r = httpx.get(base + "/sitemap.xml", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "https://oddsrail.app/sitemap.xml"
