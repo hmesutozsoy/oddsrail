@@ -748,3 +748,23 @@ def test_public_portfolio_preflight_needs_no_account_or_address(cloud):
     assert response.status_code == 204
     assert response.headers["access-control-allow-origin"] == "https://oddsrail.app"
     assert "GET" in response.headers["access-control-allow-methods"]
+
+
+def test_the_host_answers_what_crawlers_and_clients_ask_for(cloud):
+    """Three requests the access log showed being met with 404."""
+    import json
+    from pathlib import Path
+    base = cloud["base"]
+    # Glama verifies ownership of a remote server by fetching this on the host
+    g = httpx.get(base + "/.well-known/glama.json")
+    assert g.status_code == 200
+    assert g.json() == json.loads((Path(__file__).resolve().parent.parent / "glama.json").read_text())
+    # some MCP clients try the path-appended metadata URL before the path-inserted one
+    r = httpx.get(base + "/mcp/.well-known/oauth-protected-resource", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].endswith("/.well-known/oauth-protected-resource/mcp")
+    assert httpx.get(base + "/mcp/.well-known/oauth-protected-resource", follow_redirects=True).json()["resource"].endswith("/mcp")
+    r = httpx.get(base + "/mcp/.well-known/oauth-authorization-server", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].endswith("/.well-known/oauth-authorization-server")
+    # search crawlers ask the API host for the site's sitemap
+    r = httpx.get(base + "/sitemap.xml", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "https://oddsrail.app/sitemap.xml"

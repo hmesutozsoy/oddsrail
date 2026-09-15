@@ -66,6 +66,11 @@ class RateLimiter:
         return True
 
 
+# Mirrors glama.json at the repo root; a test keeps the two identical. Glama's
+# crawler asks the hosted server for it at /.well-known/glama.json.
+GLAMA = {"$schema": "https://glama.ai/mcp/schemas/server.json", "maintainers": ["hmesutozsoy"]}
+
+
 def build_app():
     # The profile must be on before oddsrail.server registers its tools.
     os.environ["ODDSRAIL_HOSTED"] = "1"
@@ -631,6 +636,28 @@ def build_app():
     @srv.custom_route("/robots.txt", methods=["GET"])
     async def robots(request: Request):
         return PlainTextResponse("User-agent: *\nDisallow: /login\nDisallow: /authorize\n")
+
+    # ---- what crawlers and MCP clients actually ask this host for ---- #
+    # The access log shows three things that were answered with 404: Glama's
+    # crawler wanting the ownership file on the MCP host itself, MCP clients
+    # trying the path-appended form of the OAuth metadata URLs, and search
+    # crawlers asking the API host for a sitemap. Each is one line to answer.
+
+    @srv.custom_route("/.well-known/glama.json", methods=["GET"])
+    async def glama(request: Request):
+        return JSONResponse(GLAMA, headers={"Cache-Control": "public, max-age=3600"})
+
+    @srv.custom_route("/mcp/.well-known/oauth-protected-resource", methods=["GET"])
+    async def prm_alias(request: Request):
+        return RedirectResponse(f"{base}/.well-known/oauth-protected-resource/mcp", status_code=302)
+
+    @srv.custom_route("/mcp/.well-known/oauth-authorization-server", methods=["GET"])
+    async def asm_alias(request: Request):
+        return RedirectResponse(f"{base}/.well-known/oauth-authorization-server", status_code=302)
+
+    @srv.custom_route("/sitemap.xml", methods=["GET"])
+    async def sitemap(request: Request):
+        return RedirectResponse(f"{site_url}/sitemap.xml", status_code=302)
 
     @srv.custom_route("/privacy", methods=["GET"])
     async def privacy(request: Request):
