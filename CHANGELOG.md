@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.1 (2026-09-15)
+
+- The `attribution_ledger` tool description pointed agents at
+  oddsrail.app/attribution, which was removed and now returns 404. It now
+  names Polymarket's own public builder feed, where the figures can be
+  checked.
+- Site: the six notes on the venue APIs are reachable again from the
+  navigation's More menu, and the run permalink page no longer tells visitors
+  to press a Run button that the builder redesign removed.
+- The launch post describes the product as it is now: markets and a builder
+  that saves drafts on the site, paper trading by chat through the Claude
+  connector, and live trading self-hosted. Every reference to the removed
+  attribution page and the old one-click paper pass is gone.
+
 ## 0.18.0 (2026-09-11)
 
 - **`my_balance`**: the operator's real Polymarket collateral, so an agent
