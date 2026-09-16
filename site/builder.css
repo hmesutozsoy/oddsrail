@@ -24,7 +24,7 @@
 .strategy-animation-control:hover{border-color:var(--accent)}
 .strategy-visual{margin:0 0 22px;border:1px solid var(--line);border-radius:14px;background:var(--bg);overflow:hidden}
 .strategy-visual-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:11px 14px 0}
-.strategy-visual-media{aspect-ratio:720/260;width:100%;display:grid;place-items:center}
+.strategy-visual-media{aspect-ratio:720/260;width:100%;max-width:620px;margin:0 auto;padding-top:10px;display:grid;place-items:center}
 .strategy-visual-media img{display:block;width:100%;height:auto;aspect-ratio:720/260}
 .strategy-visual figcaption{font-size:11px;color:var(--muted);line-height:1.5;padding:3px 14px 13px}
 @media(max-width:480px){.strategy-visual-toolbar{padding:10px 10px 0}.strategy-visual figcaption{padding:4px 10px 12px;font-size:10px}}
