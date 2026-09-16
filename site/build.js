@@ -78,7 +78,7 @@
   }
   function restore(d){
     const c=d.config;if(!c||typeof c!=='object')return;
-    input('name').value=d.name||'My agent';input('description').value=d.description||'';input('runner').value=d.runner==='external'?'external':'hosted';
+    input('name').value=d.name||'My agent';input('description').value=d.description||'';input('runner').value=d.runner==='hosted'?'hosted':'external';
     capitals.forEach(([id])=>{if(c[id]!==undefined)input(id).value=c[id];});
     [...strategies.map(s=>s.id),...risks.map(r=>r[0])].forEach(id=>{input('on_'+id).checked=!!(c.on&&c.on[id]);Object.entries((c.vals||{})[id]||{}).forEach(([k,v])=>{const node=input(id+'_'+k);if(node)node.value=v;});});
     categories.forEach(([id])=>input('topic_'+id).checked=(Array.isArray(c.topics)?c.topics:['all']).includes(id));input('keyword').value=c.keyword||'';
@@ -138,7 +138,7 @@
     if(n.on.liquidity)lines.push('Limit relative price slippage to '+(n.liquidity*100).toFixed(1)+'%.');
     if(n.on.watch)lines.push('Wait '+n.watch+' seconds and recheck the book before an entry.');
     lines.push('Require '+money(n.minvol)+' of 24h volume and skip markets closing within '+n.closing_h+' hours.');
-    lines.push('Apply limits across selected strategies. This configuration stays a draft until live trading is authorized and a runner is ready.');
+    lines.push(input('runner').value==='external'?'Apply limits across selected strategies. Take this configuration to your own agent from the external setup page; nothing trades until you authorize it there.':'Apply limits across selected strategies. The hosted runner is waiting on Polymarket session keys, so this configuration stays a draft here.');
     $('review-list').replaceChildren(...lines.map(t=>el('li',t)));
     if(c.market_mode==='specific'){const detail=el('details');detail.append(el('summary','Exact allowed outcomes'));selected.forEach(m=>{detail.append(el('p',m.title,'small'));m.outcomes.forEach(o=>detail.append(el('p',o.label+': '+o.token_id,'token-id')));});$('review-list').parentNode.querySelectorAll('details').forEach(d=>d.remove());$('review-list').parentNode.append(detail);}else{$('review-list').parentNode.querySelectorAll('details').forEach(d=>d.remove());}
     const notes=input('description').value.trim();$('review-notes').hidden=!notes;$('review-notes').textContent='Draft notes, not executable instructions: '+notes;
