@@ -28,7 +28,9 @@
     scheduled = false;
     records.forEach(paint);
   }
-  function schedule() { if (!scheduled) { scheduled = true; requestAnimationFrame(update); } }
+  // A frame callback can be dropped while a tab is throttled or hidden, which
+  // would leave the flag set and the figure blank; the timer is the fallback.
+  function schedule() { if (!scheduled) { scheduled = true; requestAnimationFrame(update); setTimeout(update, 300); } }
   function attach(container, id) {
     if (!examples[id]) return;
     const figure = element('figure','strategy-visual');
