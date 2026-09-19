@@ -126,7 +126,9 @@ class Harness:
         self.store.register_agent(AgentPolicy(ACCOUNT, "agent", "session", MARKET, ("123", "456"),
                                               D("100"), D("10"), D("100")))
         self.venue = Venue(self.store, self.clock)
-        self.engine = LiveEngine(self.store, venue=self.venue, worker_id="worker", timeout_seconds=0.1)
+        # See the note in test_live_engine.py: the fake venue answers
+        # instantly, so a short real deadline here only measures CI load.
+        self.engine = LiveEngine(self.store, venue=self.venue, worker_id="worker", timeout_seconds=5.0)
         self.feed = Feed(self.clock)
         self.policy = QuotePolicy(MARKET, "123", "456", D("10"), D("0.02"), D("10"))
         self.metadata = MarketMetadata(MARKET, "123", "456", D("0.01"), D("5"), D("1"),
@@ -486,3 +488,32 @@ async def test_account_error_halt_cancels_other_agents_outstanding_orders(h):
 def test_cadence_must_be_finite_with_two_second_quote_minimum(h, fields):
     with pytest.raises(ValueError, match="cadence"):
         QuoteSupervisor(h.engine, ACCOUNT, "agent", h.feed, h.policy, **fields)
+
+
+async def test_a_venue_too_slow_to_verify_risk_pauses_the_agent(h):
+    """The conservative behaviour, asserted deliberately rather than by accident.
+
+    An unverifiable account is a halt, not a guess. This used to arrive by
+    luck: the offline fixtures put a 100 ms real deadline on a fake venue, so
+    a loaded CI runner could trip it inside an unrelated test and pause the
+    agent there instead.
+    """
+    await h.start()
+    await h.supervisor.step()
+    h.engine.timeout_seconds = 0.05
+    answered = asyncio.Event()
+    original = h.venue.account_snapshot
+
+    async def too_slow(account):
+        answered.set()
+        await asyncio.sleep(0.2)                      # past the deadline, on purpose
+        return await original(account)
+
+    h.venue.account_snapshot = too_slow
+    h.advance(2, fresh_books=True)
+    result = await h.supervisor.step()
+    assert answered.is_set(), "the venue was actually consulted"
+    assert result.state == "paused"
+    assert h.store.agent(ACCOUNT, "agent")["state"] == "paused"
+    assert not h.store.orders(ACCOUNT, active_only=True), "resting orders are cancelled, not left behind"
+    assert h.store.status(ACCOUNT)["blocked"], "the account is halted until an operator looks at it"

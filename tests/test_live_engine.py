@@ -109,7 +109,10 @@ def setup(tmp_path):
     store = ExecutionStore(tmp_path / "execution.sqlite", clock=clock)
     register(store)
     venue = FakeVenue(store, clock)
-    engine = LiveEngine(store, venue=venue, worker_id="worker-one", timeout_seconds=0.05)
+    # A real deadline on a fake venue that answers instantly measures the CI
+    # runner, not this code. Tests that exercise a hanging venue shorten it
+    # themselves; everything else gets a deadline jitter cannot reach.
+    engine = LiveEngine(store, venue=venue, worker_id="worker-one", timeout_seconds=5.0)
     return engine, venue, store, clock
 
 
@@ -244,6 +247,7 @@ async def test_first_quote_accepted_second_market_check_fails_cancels_first(setu
 
 async def test_submission_timeout_is_not_retried_and_missing_lookup_retains_reservation(setup):
     engine, venue, store, _ = await start(setup)
+    engine.timeout_seconds = 0.05          # this test waits for the deadline
     attempts = []
 
     async def timeout(prepared):
@@ -267,6 +271,7 @@ async def test_submission_timeout_is_not_retried_and_missing_lookup_retains_rese
 
 async def test_second_submit_timeout_cancels_accepted_sibling_without_releasing_unconfirmed(setup):
     engine, venue, store, _ = await start(setup)
+    engine.timeout_seconds = 0.05          # this test waits for the deadline
     original = venue.submit
     attempts = []
 
