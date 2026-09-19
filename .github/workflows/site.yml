@@ -2,9 +2,9 @@ name: site
 
 on:
   push:
-    paths: ["site/**", ".github/workflows/site.yml"]
+    paths: ["site/**", "tests/*.test.js", ".github/workflows/site.yml"]
   pull_request:
-    paths: ["site/**"]
+    paths: ["site/**", "tests/*.test.js", ".github/workflows/site.yml"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,6 +23,9 @@ jobs:
         run: |
           for f in site/*.js; do node --check "$f" || exit 1; done
           echo "all site scripts parse"
+
+      - name: Browser wallet and onboarding behavior
+        run: node --test tests/*.test.js
 
       - name: No em dashes in published prose
         run: |

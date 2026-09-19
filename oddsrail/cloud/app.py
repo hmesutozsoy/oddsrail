@@ -66,6 +66,11 @@ class RateLimiter:
         return True
 
 
+# Mirrors glama.json at the repo root; a test keeps the two identical. Glama's
+# crawler asks the hosted server for it at /.well-known/glama.json.
+GLAMA = {"$schema": "https://glama.ai/mcp/schemas/server.json", "maintainers": ["hmesutozsoy"]}
+
+
 def build_app():
     # The profile must be on before oddsrail.server registers its tools.
     os.environ["ODDSRAIL_HOSTED"] = "1"
@@ -216,6 +221,14 @@ def build_app():
     accounts = Accounts(prov.db, base, ledgers, guests)
     site_url = os.environ.get("ODDSRAIL_SITE_URL", "https://oddsrail.app").rstrip("/")
 
+    # Browser wallet sign-in is independent of email OAuth and paper ledgers.
+    # It proves control of the signing address, not trading authorization.
+    from .wallet_auth import WalletAuth
+    wallet_origins = (site_url,) if dev else (site_url, "https://oddsrail.app", "https://www.oddsrail.app")
+    wallet_auth = WalletAuth(A.data_dir() / "wallet-auth.sqlite3", allowed_origins=wallet_origins, dev=dev)
+    for route in wallet_auth.routes():
+        srv.custom_route(route.path, methods=sorted(route.methods))(route.endpoint)
+
     def bearer(request: Request) -> str | None:
         h = request.headers.get("authorization", "")
         return h[7:].strip() if h.lower().startswith("bearer ") else None
@@ -244,6 +257,30 @@ def build_app():
     from .read_admission import ReadAdmission, ReadBusy, market_success, portfolio_success
     public_reads = ReadAdmission()
     market_limiter = RateLimiter(limit=120, window=60.0)
+
+    # A signed-in owner may check setup readiness, but this route never grants
+    # trading permission or starts the paper scheduler. Share the same bounded
+    # public-read capacity/cache as market discovery and the public dashboard.
+    from .activation import ActivationCheck
+
+    async def activation_portfolio(address: str):
+        from .portfolio import load_portfolio
+        return await public_reads.get("portfolio:" + address, lambda: load_portfolio(address),
+                                      ttl=10, cache_if=portfolio_success)
+
+    activation_route = ActivationCheck(activation_portfolio).route(wallet_auth)
+    srv.custom_route(activation_route.path, methods=sorted(activation_route.methods))(activation_route.endpoint)
+
+    from .trading_accounts import TradingAccounts, load_accounts
+
+    async def trading_account_lookup(address: str):
+        # Ownership can change; coalesce concurrent checks but never cache an
+        # old owner/deployment result. This shares the global public-read cap.
+        return await public_reads.get("trading-accounts:" + address, lambda: load_accounts(address),
+                                      ttl=0, cache_if=lambda _: False)
+
+    trading_account_route = TradingAccounts(trading_account_lookup).route(wallet_auth)
+    srv.custom_route(trading_account_route.path, methods=sorted(trading_account_route.methods))(trading_account_route.endpoint)
 
     @srv.custom_route("/markets/{action}", methods=["GET", "OPTIONS"])
     async def market_choices(request: Request):
@@ -308,7 +345,8 @@ def build_app():
         if request.method == "OPTIONS":
             return PlainTextResponse("", status_code=204, headers=cors(request))
         return JSONResponse({"ok": True, "specific_markets": True, "paper_runner": True,
-                             "hosted_live": False, "session_authorization": False,
+                             "hosted_live": False, "session_authorization": False, "wallet_authentication": True,
+                             "activation_check": True, "trading_accounts": True,
                              "hosted_ai": "unavailable", "byo_api": False}, headers=cors(request))
 
     @srv.custom_route("/config/validate", methods=["POST", "OPTIONS"])
@@ -598,6 +636,28 @@ def build_app():
     @srv.custom_route("/robots.txt", methods=["GET"])
     async def robots(request: Request):
         return PlainTextResponse("User-agent: *\nDisallow: /login\nDisallow: /authorize\n")
+
+    # ---- what crawlers and MCP clients actually ask this host for ---- #
+    # The access log shows three things that were answered with 404: Glama's
+    # crawler wanting the ownership file on the MCP host itself, MCP clients
+    # trying the path-appended form of the OAuth metadata URLs, and search
+    # crawlers asking the API host for a sitemap. Each is one line to answer.
+
+    @srv.custom_route("/.well-known/glama.json", methods=["GET"])
+    async def glama(request: Request):
+        return JSONResponse(GLAMA, headers={"Cache-Control": "public, max-age=3600"})
+
+    @srv.custom_route("/mcp/.well-known/oauth-protected-resource", methods=["GET"])
+    async def prm_alias(request: Request):
+        return RedirectResponse(f"{base}/.well-known/oauth-protected-resource/mcp", status_code=302)
+
+    @srv.custom_route("/mcp/.well-known/oauth-authorization-server", methods=["GET"])
+    async def asm_alias(request: Request):
+        return RedirectResponse(f"{base}/.well-known/oauth-authorization-server", status_code=302)
+
+    @srv.custom_route("/sitemap.xml", methods=["GET"])
+    async def sitemap(request: Request):
+        return RedirectResponse(f"{site_url}/sitemap.xml", status_code=302)
 
     @srv.custom_route("/privacy", methods=["GET"])
     async def privacy(request: Request):

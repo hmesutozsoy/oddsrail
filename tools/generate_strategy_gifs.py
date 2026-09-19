@@ -17,7 +17,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 WIDTH, HEIGHT, SCALE = 720, 260, 2
-TEXT_SCALE, MIN_TEXT_SIZE = 0.8, 22
+TEXT_SCALE, MIN_TEXT_SIZE = 0.54, 15
 FRAMES = 60
 DURATIONS = [70, 70, 60] * 20  # GIF timing uses 10 ms units: exactly four seconds.
 ROOT = Path(__file__).resolve().parents[1]
@@ -98,7 +98,7 @@ class Canvas:
         self.draw.rounded_rectangle(tuple(round(v * SCALE) for v in box),
                                     radius=round(radius * SCALE), fill=self.color(color, strength))
 
-    def dot(self, xy, phase=0, strength=1, radius=6):
+    def dot(self, xy, phase=0, strength=1, radius=5):
         # Small local halo only. Background and labels never flash or move.
         self.circle(xy, radius + 6 + math.sin(phase * math.tau) * 1.5,
                     strength=0.10 * strength)
@@ -142,12 +142,12 @@ def quote(canvas, phase, poster):
         canvas.line([(198, y), (647, y)], width=2)
         canvas.line([(570, y - 11), (570, y + 11)], "muted", 2)
         canvas.text((570, y - 50), "50¢ mid", 28, "muted", anchor="ma")
-        canvas.circle((312, y), 7, "accent", 0.65, outline=True)
+        canvas.circle((312, y), 6, "accent", 0.65, outline=True)
         canvas.text((312, y - 50), "48¢ bid", 30, "accent", anchor="ma", bold=True)
         canvas.text((444, y + 16), "2¢ below mid", 26, "muted", anchor="ma")
         moving = (570 - 258 * amount, y)
         canvas.line([moving, (570, y)], "accent", 3, strength * 0.8)
-        canvas.dot(moving, phase, strength, radius=6)
+        canvas.dot(moving, phase, strength, radius=5)
 
 
 def fade(canvas, phase, poster):

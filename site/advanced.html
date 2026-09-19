@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/product.css?v=20260912-3">
 <link rel="stylesheet" href="/builder.css?v=20260912-2">
 <link rel="stylesheet" href="/external.css?v=20260912-2">
-<script src="/wallet.js?v=20260912-3" defer></script><script src="/shell.js?v=20260912-3" defer></script>
+<script src="/wallet.js?v=20260916-3" defer></script><script src="/shell.js?v=20260916-3" defer></script>
 <script src="/advanced.js?v=20260912-2" defer></script>
 </head>
 <body class="product" data-page="build">
@@ -23,11 +23,12 @@
   <div class="builder-layout">
     <div class="external-steps">
       <section class="panel" aria-labelledby="install-title">
-        <div class="section-heading"><h2 id="install-title"><span class="external-step" aria-hidden="true">1</span> Connect locally</h2><span class="status-chip">Self-hosted MCP</span></div>
-        <p class="muted">Install OddsRail on the machine running your MCP client.</p>
+        <div class="section-heading"><h2 id="install-title"><span class="external-step" aria-hidden="true">1</span> Connect your agent</h2><span class="status-chip">Works today</span></div>
+        <p class="muted">Install OddsRail on the machine running your MCP client. Your key stays there, orders carry the OddsRail builder code at 0 bps, and every order passes a deterministic pre-trade check first.</p>
         <div class="command-row"><code id="install-command">pip install oddsrail</code><button class="pill secondary small" type="button" data-copy="install-command" aria-label="Copy install command">Copy</button></div>
         <p class="muted small">For Claude Code, add the local server:</p>
         <div class="command-row"><code id="connect-command">claude mcp add --transport stdio oddsrail -- oddsrail</code><button class="pill secondary small" type="button" data-copy="connect-command" aria-label="Copy Claude Code command">Copy</button></div>
+        <details class="external-details"><summary>Try it first without installing anything</summary><p class="muted small">In Claude web or desktop: Settings, Connectors, Add custom connector, then paste this URL and sign in with your email. This hosted server trades on paper only, so it is a way to see the tools work, not a way to trade.</p><div class="command-row"><code id="hosted-url">https://mcp.oddsrail.app/mcp</code><button class="pill secondary small" type="button" data-copy="hosted-url" aria-label="Copy hosted connector URL">Copy</button></div></details>
         <details class="external-details"><summary>Another MCP client</summary><p class="muted small">Add a local stdio server using this command and argument list. Your client's settings format may differ.</p><div class="command-row"><code id="stdio-config">{"command":"oddsrail","args":[]}</code><button class="pill secondary small" type="button" data-copy="stdio-config" aria-label="Copy MCP command configuration">Copy</button></div></details>
       </section>
 

@@ -66,7 +66,6 @@ Where the others are honestly ahead: pmxt trades three venues to our two and cov
 
 ## Attribution ledger
 
-https://oddsrail.app/attribution lists every wallet carrying the oddsrail builder code, per week, with the maintainer's own bot subtracted. The `attribution_ledger` tool computes the same thing from the same public feed.
 
 ## Built from the things the raw API gets wrong
 

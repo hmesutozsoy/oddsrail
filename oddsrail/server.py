@@ -26,7 +26,7 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.18.0"
+VERSION = "0.18.1"
 
 HOSTED_INSTRUCTIONS = (
     "Hosted oddsrail: Polymarket market data, signals, deterministic order "
@@ -345,8 +345,9 @@ async def builder_stats(time_period: str = "WEEK") -> str:
 @srv.tool(description="Attribution ledger for the builder code in use: every "
                       "trade carrying it, aggregated per Sunday-start week and "
                       "per wallet, with the maintainer's own wallets split out "
-                      "into an honest 'external' line. Same public feed as "
-                      "https://oddsrail.app/attribution.",
+                      "into an honest 'external' line. Built from Polymarket's "
+                      "own public builder feed, so any figure it reports can be "
+                      "checked at data-api.polymarket.com/v1/builders/leaderboard.",
            annotations=READ, structured_output=False)
 async def attribution_ledger() -> str:
     code = trading.builder_code()

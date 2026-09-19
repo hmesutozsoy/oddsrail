@@ -1,0 +1,51 @@
+{
+  "provenance": {
+    "checked_on": "2026-09-14",
+    "kind": "Hand-authored contract fixture using documented field names and synthetic valid identities; not captured exchange evidence.",
+    "sources": [
+      "https://docs.polymarket.com/trading/place-orders",
+      "https://docs.polymarket.com/api-reference/trade/get-single-order-by-id",
+      "https://docs.polymarket.com/api-reference/trade/get-trades",
+      "https://docs.polymarket.com/trading/manage-orders",
+      "https://docs.polymarket.com/concepts/order-lifecycle"
+    ],
+    "order_units_excerpt": "Original order size in shares, as a decimal string. Already normalized; do not divide by 1e6.",
+    "pagination_note": "The documented terminal cursor is LTE=. An explicit cursor chain is required; SDK-normalized items/has_more is a different schema.",
+    "raw_trade_blocker": "Guide example: size 10, status MATCHED. Reference example: size 100000000, status TRADE_STATUS_CONFIRMED. These examples do not establish a safe automatic wire unit conversion. No raw trade parser is enabled.",
+    "real_integration_gate": "Verify the delegated signer and pinned SDK/endpoint with authenticated read responses and an authorized small trade; confirm maker contribution units, owner scope, permanent FAILED semantics and independent settlement evidence before implementing Venue.lookup."
+  },
+  "owner_uuid": "f4f247b7-4ac7-ff29-a152-04fda0a8755a",
+  "account": "0x1234567890123456789012345678901234567890",
+  "order_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "condition_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "token_id": "107505882767731489358349912513945399560393482969656700824895970500493757150417",
+  "submit_ack": {
+    "success": true,
+    "errorMsg": "",
+    "orderID": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "live",
+    "makingAmount": "",
+    "takingAmount": "",
+    "transactionsHashes": [],
+    "tradeIDs": []
+  },
+  "order": {
+    "id": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "CANCELED",
+    "owner": "f4f247b7-4ac7-ff29-a152-04fda0a8755a",
+    "maker_address": "0x1234567890123456789012345678901234567890",
+    "market": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "asset_id": "107505882767731489358349912513945399560393482969656700824895970500493757150417",
+    "side": "BUY",
+    "original_size": "10",
+    "size_matched": "4",
+    "price": "0.52",
+    "outcome": "YES",
+    "expiration": "0",
+    "order_type": "GTC",
+    "associate_trades": ["trade-1", "trade-2"],
+    "created_at": 1700000000
+  },
+  "encoded_buy": {"makerAmount": "5200000", "takerAmount": "10000000"},
+  "empty_final_page": {"limit": 100, "next_cursor": "LTE=", "count": 0, "data": []}
+}

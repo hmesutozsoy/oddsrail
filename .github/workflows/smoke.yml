@@ -36,7 +36,9 @@ jobs:
 
       - name: A paper pass still runs end to end
         run: |
-          guest=$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          # A fixed guest id, so four passes a day do not mint four ledgers a
+          # day and make the usage numbers look like strangers.
+          guest=00000000000000000000000000000001
           out=$(curl -fsS --max-time 180 -X POST https://mcp.oddsrail.app/run \
             -H 'content-type: application/json' -H 'origin: https://oddsrail.app' \
             -d "{\"guest\":\"$guest\",\"config\":{\"topics\":[\"all\"],\"on\":{\"report\":true}}}")

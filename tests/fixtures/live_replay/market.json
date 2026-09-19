@@ -1,0 +1,23 @@
+{
+  "gamma": [{
+    "conditionId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "clobTokenIds": "[\"123\",\"456\"]",
+    "active": true,
+    "closed": false,
+    "archived": false,
+    "acceptingOrders": true,
+    "enableOrderBook": true,
+    "negRisk": false,
+    "orderMinSize": 1,
+    "feesEnabled": true,
+    "feeSchedule": {"rate": "0.02", "exponent": 2, "takerOnly": true}
+  }],
+  "clob": {
+    "t": [{"t": "123", "o": "Yes"}, {"t": "456", "o": "No"}],
+    "mts": "0.01",
+    "mos": "5",
+    "mbf": 0,
+    "tbf": 200,
+    "fd": {"r": "0.02", "e": 2, "to": true}
+  }
+}
