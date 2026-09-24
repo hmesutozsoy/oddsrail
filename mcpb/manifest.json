@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "oddsrail",
   "display_name": "OddsRail",
-  "version": "0.18.1",
+  "version": "0.19.0",
   "description": "Polymarket tools for Claude, with local signing and operator-set spending limits.",
   "long_description": "OddsRail gives Claude live Polymarket and Kalshi market data, costed fills and order routing, operator-set spending limits and a separate check_order tool to review a proposal before submission. Ask Claude to run that check before each order.\n\nIt starts in paper trading, filled against the live order book, so nothing real is sent until you untick Paper trading. Your wallet key is optional, is stored in your operating system's keychain by Claude Desktop and used by the local server to sign. Live orders need an existing funded Polymarket account with trading approvals. This is a local tool connection, not an always-on runner for website strategies. Open source, MIT; OddsRail adds no trading fee. Venue fees may apply.",
   "author": {

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.0 (2026-09-25)
 
 - Repository split. The MCP server stays open source at
   github.com/hmesutozsoy/oddsrail. The hosted service, the website and the
@@ -8,6 +8,24 @@
   `oddsrail.live`, `oddsrail.perps` and `oddsrail.market_selection` no longer
   ship in the published package. Setting `ODDSRAIL_HOSTED=1` without the
   hosted service now fails with a clear message instead of an import error.
+- Perps market making. A second bot kind rests a post-only bid and ask
+  around the mark, sized as half of capital times leverage per side, with a
+  requote distance, a position cap (only the reducing side rests at the
+  cap), a loss limit that pulls both quotes and closes at market, and
+  orphan cleanup after an interrupted tick. The page gets a bot-type switch,
+  bid and ask lines on the chart, and bot cards with a live profit figure,
+  entry and mark, exits with their dollar estimates, a stop-to-target range
+  bar, and the venue's own words when a command is refused.
+- Perps page starts at the account panel: authorization state as a chip,
+  the days left with a Renew button (a renewal deletes the previous key on
+  the exchange), account figures in a grid, and a note on what expiry
+  means. Bot cards show whether the exchange holds the exits, entry prices
+  come from the exchange's average fill instead of the limit that was
+  sent, and Remove on a finished bot archives it instead of doing nothing.
+- Perps prices are rounded to what the venue accepts (market decimals, at
+  most five significant figures) on the server and in the page; the first
+  live entry had been refused for six-figure exits. A refused entry is
+  marked as not executed instead of showing a planned entry price.
 - Perps bots (pilot). A new Perps page sets up one rule-based bot per
   Polymarket Perps market on a chart: enter long or short now or at a trigger
   price, a capital limit, isolated leverage capped at 5x, and exchange-held

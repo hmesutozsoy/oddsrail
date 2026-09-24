@@ -1,6 +1,6 @@
 [project]
 name = "oddsrail-claude-desktop"
-version = "0.18.1"
+version = "0.19.0"
 description = "Claude Desktop bundle for oddsrail; installs the published package."
 requires-python = ">=3.11"
-dependencies = ["oddsrail==0.18.1"]
+dependencies = ["oddsrail==0.19.0"]

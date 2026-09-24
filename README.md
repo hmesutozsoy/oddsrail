@@ -32,7 +32,7 @@ wallets, trading limits and developer notes.
 
 ## Claude Desktop: install without Python
 
-[Download OddsRail 0.18.1 for Claude Desktop](https://github.com/hmesutozsoy/oddsrail/releases/download/v0.18.1/oddsrail-0.18.1.mcpb).
+[Download OddsRail 0.19.0 for Claude Desktop](https://github.com/hmesutozsoy/oddsrail/releases/download/v0.19.0/oddsrail-0.19.0.mcpb).
 Open the file in Claude Desktop, or install it from Settings, Extensions.
 A current Claude Desktop version with MCPB/uv support supplies the local
 Python runtime. The extension starts with **Paper trading ticked** and needs
@@ -85,7 +85,7 @@ overshoot signal on the favorite"*.
 
 | Client | How |
 |---|---|
-| Claude Desktop (local tools, default simulation) | [Download the extension](https://github.com/hmesutozsoy/oddsrail/releases/download/v0.18.1/oddsrail-0.18.1.mcpb). No Python installation needed. |
+| Claude Desktop (local tools, default simulation) | [Download the extension](https://github.com/hmesutozsoy/oddsrail/releases/download/v0.19.0/oddsrail-0.19.0.mcpb). No Python installation needed. |
 | Claude web or desktop, nothing to install (hosted, paper trading) | Settings, Connectors, Add custom connector, URL `https://mcp.oddsrail.app/mcp`, then sign in with your email. See [Hosted](#hosted-nothing-to-install). |
 | Claude Code (hosted, paper trading) | `claude mcp add --transport http oddsrail https://mcp.oddsrail.app/mcp` |
 | Claude Code (plugin, with the four workflow skills) | `claude plugin marketplace add hmesutozsoy/oddsrail` then `claude plugin install oddsrail@oddsrail` |
