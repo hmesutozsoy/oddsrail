@@ -1,0 +1,51 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install fixed dependency tool
+        run: python -m pip install --isolated --index-url https://pypi.org/simple uv==0.12.13
+
+      - name: Create clean environment from hashed lock
+        run: |
+          uv venv .ci-venv --python "$(command -v python)" --no-python-downloads
+          uv pip sync --python .ci-venv/bin/python --require-hashes --only-binary :all: --default-index https://pypi.org/simple requirements/ci.lock
+          uv pip install --python .ci-venv/bin/python --no-deps --no-build-isolation --offline -e ".[dev,cloud]"
+          uv pip check --python .ci-venv/bin/python
+          .ci-venv/bin/python tools/check_ci_environment.py
+
+      - name: Run tests
+        # Local test servers, subprocess crash tests and synthetic replay only.
+        # No exchange credentials or funded live-order integration is used.
+        run: .ci-venv/bin/python -m pytest -q --strict-markers --timeout=30 --junitxml=test-results.xml
+
+      - name: Retain final test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-python-${{ matrix.python-version }}
+          path: test-results.xml
+          if-no-files-found: ignore
+          retention-days: 14

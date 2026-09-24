@@ -1,0 +1,49 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "app.oddsrail/polymarket-kalshi-trading",
+  "description": "Cross-venue prediction markets for AI agents: Polymarket + Kalshi, costed and attributed",
+  "repository": {
+    "url": "https://github.com/hmesutozsoy/oddsrail",
+    "source": "github"
+  },
+  "version": "0.18.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "oddsrail",
+      "version": "0.18.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "ODDSRAIL_DRY_RUN",
+          "description": "1 (default) simulates orders; 0 enables real trading",
+          "isRequired": false
+        },
+        {
+          "name": "ODDSRAIL_BUILDER_CODE",
+          "description": "bytes32 Polymarket builder code for on-chain attribution",
+          "isRequired": false
+        },
+        {
+          "name": "POLYMARKET_PRIVATE_KEY",
+          "description": "operator wallet key; only needed for real trading",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "POLYMARKET_WALLET_ADDRESS",
+          "description": "proxy/deposit wallet address, if used",
+          "isRequired": false
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.oddsrail.app/mcp"
+    }
+  ]
+}

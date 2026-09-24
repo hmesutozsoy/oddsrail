@@ -1,0 +1,519 @@
+# Changelog
+
+## Unreleased
+
+- Repository split. The MCP server stays open source at
+  github.com/hmesutozsoy/oddsrail. The hosted service, the website and the
+  live and Perps engines moved to a private repository, and `oddsrail.cloud`,
+  `oddsrail.live`, `oddsrail.perps` and `oddsrail.market_selection` no longer
+  ship in the published package. Setting `ODDSRAIL_HOSTED=1` without the
+  hosted service now fails with a clear message instead of an import error.
+- Perps bots (pilot). A new Perps page sets up one rule-based bot per
+  Polymarket Perps market on a chart: enter long or short now or at a trigger
+  price, a capital limit, isolated leverage capped at 5x, and exchange-held
+  take profit and stop loss attached to a fill-or-kill entry. The server holds
+  a proxy signer the owner authorizes with one wallet signature; it trades and
+  reads the account but cannot move collateral. Pause and Close position are
+  separate actions, results after a close include fees and funding, and an
+  uncertain entry is reconciled before any retry. Entries that round under
+  the market minimum round up to it within five percent of the capital
+  limit; the page prefills exits from the live price and says why Arm is
+  disabled. See docs/perps.md.
+- Live venue: an order Polymarket no longer returns (404, or 200 with a
+  null body, as seen for quotes the exchange dropped after a balance fall)
+  is settled from the trade pages after a two-minute grace period and a
+  second look, instead of blocking reconciliation forever. Activation
+  failures now carry their cause, restores keep trying for an hour (four
+  quick attempts, then every five minutes) and report progress in the
+  status payload and on the dashboard.
+- Hosted live quoting pilot. A new Polymarket venue signs Deposit Wallet
+  orders locally with a stored session key (ERC-7739 wrap plus the
+  session-signer envelope), submits each order once as post-only GTC with the
+  builder code, reconciles against the authenticated order and trade
+  endpoints, reads funding from the chain and the CLOB, and keeps the venue
+  heartbeat alive. `/trading/live/start`, `/stop` and `/status` run one
+  supervised Quote-both-sides agent per wallet, behind the wallet sign-in
+  and an owner allowlist (`ODDSRAIL_HOSTED_LIVE=1`, `ODDSRAIL_LIVE_OWNERS`).
+- The activation check reports real funding, permission and runner
+  readiness when the pilot is enabled, and the build page shows start and
+  stop controls with live status on a ready draft.
+- Minimum order sizes are shares. The planner used to read Gamma's
+  `orderMinSize` as a dollar minimum and refused every quote under five
+  dollars; the CLOB documents the minimum in shares and live books carry
+  five-share orders worth under two dollars. The larger share minimum from
+  Gamma and the CLOB now applies. Start also plans the first pair from the
+  current books and refuses limits that can never quote, with the numbers.
+- Book freshness follows connection liveness instead of per-token change
+  times. The first live agent placed two acknowledged quotes and was halted
+  11 seconds later because neither book had changed for five seconds. The
+  feed now pings every two seconds, any delivered frame keeps an unchanged
+  book current, the hosted runner cross-checks the top of book against the
+  REST endpoint and reconnects on repeated disagreement, and halts are logged
+  with feed diagnostics that the status route also reports.
+- Book snapshots are stamped with their last change, not with delivery, so a
+  quiet market's snapshot no longer counts as delayed data; only change events
+  carry delivery lag. The hosted runner warms the feed up before activation,
+  resumes on its own after transient feed or metadata halts (bounded), and
+  the build page confirms a start inline instead of with a browser dialog.
+- After the fourth hosted start, the first reconciliation on an in-play
+  sports market failed validation for twenty seconds and the halt loop
+  re-cancelled three times a second. The order reads now accept the documented
+  delay-window statuses, every validation failure is recorded with its own
+  message in the venue status and the halt log, a blocked account gets one
+  cancellation pass every two seconds, the first halt reason is kept, and
+  transient reconciliation halts resume on their own once the orders are final.
+- A server restart brings back every hosted agent its owner left running,
+  through the same recover, reconcile and verified start, so deploys no longer
+  end a session; a restore that fails is recorded and shown as stopped.
+- Documented Polymarket's credential scoping: the app's Open orders tab does
+  not list the hosted agent's quotes and the agent cannot see app-placed
+  orders; the live panel says so and the status is the record of its orders.
+- The dashboard shows the hosted agent: an Agent figure next to Balance in
+  the header and on the overview with the money it is handling (resting
+  quotes plus settled fills), and a card on the Agents tab with the market,
+  its open quotes and its fills. The status route now carries the market
+  title, outcome labels, the money figures and the fills.
+- The quoting distance can go down to a tenth of a cent (0.001), which joins
+  the best bid on one-cent markets; the activation panel shows a server-verified
+  session permission as active.
+
+## 0.18.1 (2026-09-21)
+
+- Claude Desktop extension: install a version-pinned local server with a
+  settings form, secure private-key storage and simulation enabled by default.
+- The installer defaults to $25 per order and $100 submitted per process
+  session; restarting the server resets the session budget.
+- Builder handoff: download the extension and take the exact strategy settings
+  to Claude for review. It does not automatically run website strategy rules.
+- Concurrent local orders now reserve their shared session budget atomically;
+  uncertain submissions keep their reservation. Open-order counts are checked
+  before both Polymarket and Kalshi submission.
+- Authenticated cash reads replace the misleading public holdings lookup in
+  `my_balance`. Cash is separate from the unverified amount available to trade.
+- Empty optional wallet fields no longer pass an invalid address to the SDK.
+- Bundle tests no longer require the optional image-generation dependency.
+  Pillow loads only when rebuilding the extension icon.
+
+
+- The `attribution_ledger` tool description pointed agents at
+  oddsrail.app/attribution, which was removed and now returns 404. It now
+  names Polymarket's own public builder feed, where the figures can be
+  checked.
+- Site: the six notes on the venue APIs are reachable again from the
+  navigation's More menu, and the run permalink page no longer tells visitors
+  to press a Run button that the builder redesign removed.
+- The launch post describes the product as it is now: markets and a builder
+  that saves drafts on the site, paper trading by chat through the Claude
+  connector, and live trading self-hosted. Every reference to the removed
+  attribution page and the old one-click paper pass is gone.
+
+## 0.18.0 (2026-09-11)
+
+- **`my_balance`**: the operator's real Polymarket collateral, so an agent
+  can size against the account rather than a number it assumed. Kalshi had
+  one; Polymarket did not. 42 tools.
+- A dry-run order now reports `accepted`, like every other path. A paper
+  account that could not fund the order used to return a top level that read
+  like success.
+- `daily_review` works on a fresh install: it starts with `server_info` and
+  routes to the paper ledger when the live tools have nothing to report, and
+  every no-key answer now names the tool that does have data.
+- The guardrail note says which rules apply in dry-run. Two of the four are
+  live-only by nature, and claiming otherwise gave false confidence.
+- A mark that cannot be refreshed for twelve hours stops counting toward
+  equity and is listed as stale, instead of being carried forever.
+- One inbox is one account: plus-addressing and gmail dots normalise, which
+  also closes the hole under the board's new activity rules.
+- **Six notes** at `/notes/`, one page per venue-API footgun, each with its
+  own title, description, structured data and share card, linked from the
+  home page, the navigation, the sitemap and llms.txt.
+- CI: the site is checked for parse errors, em dashes in prose, internal
+  links that go nowhere and a sitemap that lists missing pages. A scheduled
+  workflow smoke-tests the hosted server every six hours.
+
+## 0.17.1 (2026-09-11)
+
+- A `market_id` from a search now works in the tools that describe a market.
+  `find_markets` and `search_markets` hand back a CLOB token id, while
+  `resolution_criteria`, `dispute_risk`, `settlement_audit` and `get_market`
+  used to accept only a slug or a Gamma id, so chaining two tools failed with
+  "invalid integer" from the venue. All of them now take any of the three,
+  and say so in their descriptions.
+
+## 0.17.0 (2026-09-10)
+
+More fixes from the adversarial audit, verified by reproduction.
+
+- `check_order` no longer reads the word "fade" as the NO side. Fading a
+  drop means buying YES, so the flagship workflow was being blocked when an
+  operator described it in plain words.
+- The paper ledger no longer crashes when a token is delisted: a market
+  lookup that comes back empty is handled, so one dead position cannot take
+  down a whole ledger read or drop an agent off the board.
+- Resting paper orders fill only the depth that actually crosses them, at
+  the maker's own price, and keep resting for the remainder. They used to
+  fill their whole size on any touch.
+- `cancel_all_orders` clears resting paper orders in dry-run, which is the
+  only place orders exist there. The kill switch left them alive.
+- Signing out revokes a connector's OAuth token, not just a website session.
+- Scheduled hourly passes store a permalink like manual ones do.
+- The book-watch window respects the number you set, up to a minute.
+- Arena: an entry is ranked only after 10 fills, 6 passes and 12 hours; the
+  rest are listed with the reason. A registered agent cannot reset its own
+  ledger. Reserved words cannot be worn inside a name.
+- Tests are hermetic (an operator's own environment cannot turn them red),
+  the settle and value strategies and take profit have coverage, and a test
+  now keeps the published tool count honest.
+- Site: share cards on every page, the home page leads with the demo, and
+  the sitemap no longer advertises two parameterless share shells. The
+  registry entry advertises the hosted endpoint.
+
+## 0.16.0 (2026-09-10)
+
+- **Shareable passes.** Every hosted pass gets a permalink: `/run?id=...`
+  on the site, served from `GET /runs/<id>.json`, showing the decisions,
+  the verdicts and the switches behind them, with a button to build the
+  same agent. Anonymous runs are kept 30 days; runs belonging to an
+  account are kept.
+- **A public page per agent** at `/agent?name=...`, from
+  `GET /arena/agent/<name>.json`: strategy, equity curve from the recorded
+  run history, the last pass in full, and a permalink to it. Names on the
+  arena board link to it.
+- The account API accepts the OAuth access token a connector already holds,
+  not only a website session, so the same account works from either side.
+- Housekeeping prunes expired anonymous runs.
+
+## 0.15.0 (2026-09-08)
+
+Fixes from an eight-lens adversarial audit of the hosted runner, the
+builder and the operations around them.
+
+- Runner: the daily loss limit no longer blocks stop-loss and take-profit
+  exits; the exposure cap counts what is already held; two-sided quotes are
+  refreshed each pass instead of stacking and respect the positions cap;
+  the fill-quality rule walks the whole book, refuses real slippage and
+  sets the limit to the deepest level touched (never more than five points
+  through the book); two pieces cannot buy both sides of one market in a
+  pass; fades act only on jumps fresh by the clock and price fair value
+  from the series' own retrace; sells carry the position's real outcome;
+  every risk number is bounded.
+- Paper ledger: positions in resolved markets settle at the payout (1 or 0)
+  as a recorded fill instead of being valued at zero; a missing book
+  carries the last mark.
+- Hosted server: pass deadlines for requests (120 s) and scheduled runs
+  (180 s); a scheduler heartbeat on /healthz; hourly housekeeping (expired
+  tokens and links, guest ledgers idle for 30 days); /run/reset never
+  creates files for unknown ids and is rate limited; the connector sign-in
+  page no longer claims an email was sent when mail is not configured.
+- Deploy: nightly backups (sqlite plus ledgers, 14 kept), a watchdog timer
+  that restarts a dead app or a stale scheduler, resource caps on the unit.
+- Builder: hero and copy sell the Run path; the Connect panel is collapsed;
+  the always-on rules state honestly how cautions are handled; the starter
+  preset no longer switches on two-sided quoting; Run waits for the server
+  probe and a fixed Run bar appears on phones; expired sessions are
+  reported; Keep this agent is hidden until mail delivery is live;
+  accessibility labels on switches, inputs and tabs; Open Graph and
+  Twitter card tags with a share image on the home, builder and arena pages.
+- Server URL is now https://mcp.oddsrail.app.
+
+## 0.14.0 (2026-09-07)
+
+- **Keep this agent.** Email sign-in on the builder's Run tab: the link
+  turns the browser's guest ledger into the account's, hands the page a
+  bearer session, and unlocks naming the agent, putting it on the arena
+  board and running it hourly. Endpoints `/claim/start`, `/claim/verify`,
+  `/me`, `/agents`, `/logout`; `/run` and `/run/ledger` use the account's
+  ledger when a session is present.
+- **Hourly scheduling.** A loop inside the hosted server runs every kept
+  agent whose schedule is hourly, one at a time on its own ledger, and
+  stores a result summary on the agent (`oddsrail.cloud.scheduler`).
+- Launch post: the Show HN title and first comment rewritten for the
+  builder and the arena.
+
+## 0.13.3 (2026-09-06)
+
+- Builder and runner: markets are chosen by ticking categories (everything,
+  crypto, politics, geopolitics, economy and the Fed, business, football,
+  esports, tennis, US sports, motorsport), any number at once, plus an
+  optional keyword. Categories map to Polymarket's own tags
+  (`polymarket.markets_by_tag`), fetched in parallel, merged and
+  de-duplicated, most traded first. The run record's universe summary
+  names the categories and keyword used.
+
+## 0.13.2 (2026-09-06)
+
+- Runner universe: an empty topic now means the whole venue, ordered by 24h
+  volume (`polymarket.top_markets`); a topic reads 40 search results
+  instead of 12 before the filters; up to 15 candidates per pass. Each
+  strategy logs what it checked and why nothing qualified, and the run
+  record carries a `universe` summary (scanned, candidates, dropped).
+- Builder: topic quick picks, a starter preset on first visit, and an
+  explanation of an empty pass in the panel instead of a bare zero.
+  Stylesheet and scripts are versioned in the page so a cached old
+  stylesheet cannot break the layout.
+
+## 0.13.1 (2026-09-06)
+
+- Runner: `check_order` cautions about the resolution source or liquidity
+  are advisory unless the matching hygiene switch is on (dispute risk,
+  refuse bad fills), and fill checks do not apply to resting quotes. The
+  accepted cautions are recorded on the decision. Everything else that is
+  not ok still stops the order.
+
+## 0.13.0 (2026-09-06)
+
+- **The runner** (`oddsrail.cloud.runner`): a deterministic paper pass for a
+  builder configuration. Scans the universe, computes the signal each
+  strategy names (overshoot, closing-soon resolution, momentum, stated
+  probabilities, two-sided quotes), sizes with Kelly, applies the risk rules
+  to what is held (stop loss, take profit, daily loss limit, exposure caps,
+  never add to a loser), runs `check_order` on every order and paper-fills
+  against the live book. No model is consulted; every decision is returned
+  with its verdict and reason.
+- Hosted endpoints `POST /run`, `GET /run/ledger`, `POST /run/reset` with a
+  guest ledger per browser, CORS for the site, rate limits, and a lock per
+  ledger. The builder page gets a Run tab: press Run, read the pass, no
+  account, nothing installed.
+- `paper.forced_ledger`: a context variable that points every paper call at
+  one file for the duration of a task; the arena board and the runner use it.
+
+## 0.12.0 (2026-09-06)
+
+- **Paper arena** on the hosted server: `arena_register`, `arena_unregister`
+  and `arena_status` tools (hosted profile only) put an account's paper
+  ledger on a public board under a display name; `GET /arena/paper.json`
+  serves the board, recomputed at most every five minutes, with the house
+  paper agent as an unranked reference row (`ODDSRAIL_ARENA_HOUSE_LEDGER`).
+- Site: the agent builder page (`/build`, tickable strategy fragments and
+  risk rules composing an editable prompt for Claude) and the arena page
+  (`/arena`, paper and live divisions from public data, live-division
+  registry in `site/arena/agents.json`).
+
+## 0.11.0 (2026-09-06)
+
+- **Hosted server** (`oddsrail.cloud`, `oddsrail/hosted.py`): the same
+  server as a remote MCP endpoint over streamable HTTP with OAuth 2.1
+  accounts (dynamic client registration, PKCE, magic-link sign-in by email,
+  rotating tokens). Runs at `https://mcp.oddsrail.app/mcp`; add it in Claude
+  as a custom connector or with `claude mcp add --transport http`. Each
+  account gets its own paper ledger.
+- The hosted profile (`ODDSRAIL_HOSTED=1`) holds no keys, forces dry-run,
+  papers every order against the live Polymarket book, hides the
+  account-scoped and relayer tools, and does not serve Kalshi (its API
+  Developer Agreement limits API use to a member's own trading). Twenty-one
+  tools remain. `server_info` reports `hosted` and the signed-in `account`.
+- `paper.ledger_resolver`: a hook a multi-tenant host installs to map the
+  current request to its account's ledger; local single-operator behaviour
+  is unchanged.
+- Deployment files in `deploy/cloud/` (systemd unit, Caddyfile, env
+  template). Privacy policy at oddsrail.app/privacy.
+- Tests: the hosted flow end to end against a real local process
+  (`tests/test_cloud.py`). 143 tests.
+- Docs: tool count corrected to 41 (32 read-only, 9 trading).
+
+## 0.10.2 (2026-09-06)
+
+- **`check_order`**: deterministic pre-trade verification of a proposed order
+  against the operator's intent, the live market and the guardrails. Checks
+  that the market exists and is open, that the intent's words match the
+  market and the YES/NO side, that the price is sane against the book, the
+  size and Polymarket's $1 minimum, the guardrails, liquidity within the
+  limit, and the resolution source. Returns ok / caution / block with
+  evidence and a one-line read-back. No second model; nothing is sent. The
+  `find_fade_setup` prompt (and skill) now calls it before `place_order`.
+
+- Claude Code plugin (`.claude-plugin/plugin.json`, marketplace manifest,
+  `.mcp.json`) and four skills generated from the MCP prompts
+  (`skills/*/SKILL.md`, `scripts/gen_skills.py`, drift test). One-click
+  install links for Cursor and VS Code; `npx skills add` support.
+- `examples/paper_agent`: reference quote-and-settle agent in paper mode
+  with a public journal; running hourly on the maintainer's VPS since
+  2026-09-03.
+- `examples/footguns.py`: six venue-API footguns reproduced live, no keys.
+
+- Live proof of the relayer path: a 1 USDC split and merge through the
+  relayer with the operator's own key, recorded with relayer ids and Polygon
+  hashes in `docs/live-proof.md`. Redeem remains unproven until the test
+  account holds a resolved position.
+- `dump()` now converts SDK dataclasses (the relayer `TransactionOutcome`)
+  to plain fields instead of a repr string.
+
+## 0.10.1 (2026-09-02)
+
+Credibility release, ahead of the announcement.
+
+- **Attribution ledger**: `attribution_ledger` tool and the public page at
+  oddsrail.app/attribution. Every trade carrying the code, per Sunday-start
+  week and per wallet, with the maintainer's own wallets subtracted into an
+  "external" line. The page and the tool compute the same thing from the same
+  public feed so either can be checked against the other.
+- **Competitor table rewritten** against the products that actually compete
+  today (pmxt, Simmer, Polymarket's agent-skills), verified from their own
+  docs and dated. Crosswire and Parsec are gone from the table.
+- **Registry rename**: `app.oddsrail/polymarket-kalshi-trading`. The README
+  says `compare_venues` is not an arbitrage scanner, so the name should not
+  say arbitrage either. The old name's versions are deprecated, not deleted.
+- `ODDSRAIL_MAINTAINER_WALLETS` for operators running the ledger against
+  their own code.
+
+## 0.10.0 (2026-09-02)
+
+The operator-safety and rehearsal release: the things anyone handing keys to
+an agent asks for before anything else.
+
+**New**
+- **Guardrails** (`oddsrail/guard.py`): `ODDSRAIL_MAX_ORDER_NOTIONAL`,
+  `ODDSRAIL_MAX_SESSION_NOTIONAL`, `ODDSRAIL_MAX_OPEN_ORDERS`,
+  `ODDSRAIL_ALLOWED_MARKETS`. Enforced before any request on both venues, in
+  dry-run too; refusals are structured and name the rule, limit and request.
+  `server_info` reports them.
+- **Paper trading** (`oddsrail/paper.py`): dry-run Polymarket orders fill
+  against the live book within the limit, rest otherwise, and fill when
+  crossed. `paper_positions` (cash, marks, realized/unrealized P&L),
+  `paper_reset`. Honest caveat in the README: no queue, no impact, no fees.
+- **`watch_book`**: bounded realtime streaming of one token's market events
+  via the SDK websocket.
+- **`redeemable_positions`** and the **`settle_resolved`** prompt: what the
+  wallet can redeem or merge now, chained into the gasless tools.
+- Failure class `local_tls` with a fix-it hint: a missing CA bundle (python.org
+  macOS installs) used to be misreported as "unreachable".
+
+**Notes**
+- 39 tools (30 read-only / 9 destructive), 4 prompts, 111 offline tests.
+- Kalshi dry-run orders are not papered yet.
+
+## 0.9.0 (2026-09-02)
+
+Gasless position management. Three new trading tools go through Polymarket's
+relayer with the operator's own Relayer API key, the self-hosted pattern
+Polymarket's builder team recommended when the oddsrail profile was verified.
+
+**New**
+- `split_position` (USDC → full YES+NO set), `merge_positions` (YES+NO →
+  USDC, or `max`), `redeem_positions` (resolved winners → USDC). Dry-run by
+  default; return the relayer transaction id/hash and the terminal outcome.
+- `POLYMARKET_RELAYER_API_KEY` + `POLYMARKET_RELAYER_API_KEY_ADDRESS`. Both
+  halves required. Without them the tools return a structured "not
+  configured" answer and send nothing, there is deliberately no fallback to a
+  gas-paying EOA broadcast.
+- `server_info` reports `relayer_key_configured` and lists the gasless tools.
+
+**Notes**
+- 35 tools (27 read-only / 8 destructive). 17 new offline tests (98 total)
+  pin dry-run, the not-configured guard, USDC base-unit conversion, and input
+  validation.
+- The relayer path is dry-run and validation tested only; no live
+  split/merge/redeem has been sent from this code yet (README says so).
+- Builder profile Verified in Polymarket's program (2026-09-02); attribution
+  pattern for self-hosted tools confirmed by their builder team.
+
+## 0.8.1 (2026-09-01)
+
+Jurisdiction awareness. The geography story was wrong in shape: the docs
+framed geoblocking as a connectivity problem, when for most restricted
+jurisdictions Polymarket's restriction is enforced at ORDER PLACEMENT, reads
+answer normally and the failure arrives at the trade. Kalshi restricts a
+heavily overlapping country list, so it is not a general fallback either.
+
+**Docs**
+- README "Network note" replaced by "Where this works": Polymarket's three
+  restriction tiers and Kalshi's Member Agreement §VI, with as-of dates and
+  the authority URLs, plus the polymarket.us distinction (not supported) and
+  the network-filter case. Same story in llms.txt. Removed the advice to "run
+  oddsrail somewhere the venue is reachable".
+- The untested-Kalshi-order caveat now states its real reason (no funded
+  account) instead of letting readers infer a geographic one.
+
+**New**
+- `oddsrail/geo.py`: failure classifier (geo_blocked / geo_suspected /
+  unreachable / intercepted), agent-facing hints, an ADVISORY Polymarket
+  geoblock preflight (documented endpoint; never gates a trade), and per-host
+  reachability probes. Caches expire after 5 minutes and results carry
+  `checked_at`.
+- `server_info` now reports geography: the preflight verdict, per-host
+  reachability, and an explicit disclaimer that an IP verdict is not a
+  compliance check. Kalshi publishes no equivalent endpoint; server_info says
+  so rather than leaving anyone hunting.
+
+**Fixes**
+- `_err` recovers the HTTP status from Polymarket-SDK-shaped exceptions
+  (`.status`/`.code`), which it previously dropped; the URL is reported for
+  connection-level errors too, and error handling can no longer itself raise
+  on httpx exceptions with an unset `.request`.
+- ~20 tools that previously surfaced a bare "Error executing tool X" under
+  network failure now return structured errors with a failure class and hint.
+- `find_markets` no longer reports a total venue outage as an empty market
+  list; it distinguishes outage / partial / genuinely-empty.
+- `trading.py`: the client handshake moved inside the try on every
+  non-idempotent order tool (a block at auth previously produced a bare MCP
+  error on a tool where blind retry can double a position); an order response
+  the SDK version does not recognise now reads as NOT-confirmed rather than
+  accepted; timeout wording is honest ("the order MAY still have posted").
+- Kalshi request paths (including cancel) raise a named error when an ISP
+  interstitial answers 200-with-HTML instead of surfacing
+  "Expecting value: line 1 column 1".
+- Geo classes are venue-scoped: a Kalshi 403 keeps its credentials hint
+  instead of inheriting Polymarket's jurisdiction verdict, and the SDK's
+  TransportError is classified by its CAUSE so a slow venue (ReadTimeout) is
+  never labelled "unreachable", nor does any hint claim "nothing was sent"
+  on a possibly-post-send failure.
+- 34 new offline tests (81 total) covering the classifier, the verdict tiers,
+  `_err` status recovery, order-response interpretation, and the
+  find_markets outage/partial notes.
+
+## 0.8.0 (2026-08-31)
+
+Launch-readiness pass. A fresh-eyes audit found the code was in better shape
+than the packaging around it; this release fixes the packaging.
+
+**Honesty**
+- Added 47 offline tests (`tests/test_money_paths.py`) + CI on Python
+  3.11/3.12/3.13. The README previously claimed the Kalshi order translation
+  was unit-tested when no tests existed, the claim is now true.
+- Replaced the builder-leaderboard figures, which were 2–7x stale against the
+  server's own `builder_stats` output, and stamped them with a pull date.
+- Rewrote the "Status" section, which described a 10-tool project three
+  releases out of date, and now states plainly that the Kalshi *order* path
+  has never been exercised against a real account.
+
+**First run**
+- `oddsrail --help` / `--version` print something. They previously produced
+  zero output and exit 0, which reads as a broken package.
+- `serverInfo` reports a version instead of an empty string.
+- Read tools return `{error, error_type, http_status, url, hint}` instead of a
+  bare "Error executing tool X" an agent cannot act on.
+
+**Fixes**
+- Kalshi search returned *closed* markets as top hits: an open event can
+  contain closed markets, and only the event was being filtered.
+- `find_markets` / `closing_soon` silently returned empty for an unrecognised
+  `venues` value; they now say what the valid values are.
+- `builder_stats` presented the bundled default code's trades to every user
+  under `my_trades`. They are now labelled `bundled_default_code_trades` with
+  a note, unless the operator has set their own code.
+- Documented that only `0`, `false` and `no` disable dry-run; everything else,
+  including typos, stays safe.
+
+**Repo hygiene**
+- Removed committed build artifacts and a private outreach folder; moved the
+  maintainer runbook to `docs/maintainers/`.
+- `requirements.txt` was missing `cryptography`, which Kalshi signing needs.
+
+## 0.7.0
+Workflow prompts (`find_fade_setup`, `check_cross_venue_edge`,
+`daily_review`), live `settlement_audit`, fractional-Kelly `position_size`.
+
+## 0.6.0
+Order lifecycle and discovery: `order_status`, `my_fills`, `my_positions`,
+`cancel_all_orders`, `resolution_criteria`, `closing_soon`.
+
+## 0.5.0
+Cross-venue layer: `find_markets`, `quote_cost`, `compare_venues`.
+
+## 0.4.0
+Fixed four agent-facing defects: `cancel_order` was unusable in live mode,
+rejections were reported as successes, `order_type` was silently ignored, and
+the orderbook was returned worst-first.
+
+## 0.3.0
+Kalshi as second venue.

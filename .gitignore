@@ -1,0 +1,22 @@
+.venv/
+.ci-venv/
+test-results.xml
+__pycache__/
+*.pyc
+.env
+*.log
+outreach/
+dist/
+build/
+*.egg-info/
+*.sqlite3
+*.sqlite3-*
+cloud-data/
+
+work/
+.wrangler/
+.DS_Store
+
+# coverage data, including the per-process files parallel mode writes
+.coverage
+.coverage.*

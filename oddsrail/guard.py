@@ -1,0 +1,185 @@
+"""Operator guardrails: hard limits the agent cannot argue with.
+
+Anyone handing keys to an agent wants three things before anything else: a
+cap on how big one order can be, a cap on how much can go out in a session,
+and a way to fence the agent into specific markets. These are set by the
+OPERATOR through environment variables and enforced before any network call,
+in dry-run as well as live, so an agent discovers the fence in rehearsal
+rather than in production.
+
+  ODDSRAIL_MAX_ORDER_NOTIONAL    max USDC notional per order (price * size)
+  ODDSRAIL_MAX_SESSION_NOTIONAL  max cumulative USDC notional of LIVE orders
+                                 submitted by this server process
+  ODDSRAIL_MAX_OPEN_ORDERS       max resting orders on the account (live only;
+                                 checked against the venue before placing)
+  ODDSRAIL_ALLOWED_MARKETS       comma-separated Polymarket token ids and/or
+                                 Kalshi tickers; when set, anything else is
+                                 refused
+
+Unset means unlimited. A refusal is a structured answer, never an exception,
+and it names the rule, the limit and the request so the agent can report
+rather than retry. The session counter lives in this process: restarting the
+server resets it, which is the operator's call to make.
+
+When each rule applies. MAX_ORDER_NOTIONAL and ALLOWED_MARKETS are checked on
+every order, dry-run included, so an agent meets the fence in rehearsal.
+MAX_SESSION_NOTIONAL counts only orders that actually went to the venue, and
+MAX_OPEN_ORDERS reads the live account, so both are live-only by nature: a
+rehearsal that consumed the session budget would be worse than useless.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import math
+import os
+import threading
+import weakref
+
+_session_notional = 0.0
+_session_orders = 0
+_session_lock = threading.RLock()
+_submission_locks = weakref.WeakKeyDictionary()
+
+
+def submission_lock(venue: str) -> asyncio.Lock:
+    """Serialize account count + submit on this server's event loop.
+
+    Locks are scoped to the event loop so independent server/test loops never
+    reuse a lock bound to a closed loop. The budget itself is process-wide.
+    """
+    loop = asyncio.get_running_loop()
+    with _session_lock:
+        locks = _submission_locks.setdefault(loop, {})
+        return locks.setdefault(venue, asyncio.Lock())
+
+
+def _f(name: str) -> float | None:
+    v = os.environ.get(name, "").strip()
+    if not v:
+        return None
+    try:
+        x = float(v)
+    except ValueError:
+        return None
+    return x if x > 0 else None
+
+
+def _i(name: str) -> int | None:
+    x = _f(name)
+    return int(x) if x is not None else None
+
+
+def allowed_markets() -> set[str] | None:
+    raw = os.environ.get("ODDSRAIL_ALLOWED_MARKETS", "").strip()
+    if not raw:
+        return None
+    return {m.strip() for m in raw.split(",") if m.strip()}
+
+
+def status() -> dict:
+    """What server_info reports."""
+    return {
+        "max_order_notional_usd": _f("ODDSRAIL_MAX_ORDER_NOTIONAL"),
+        "max_session_notional_usd": _f("ODDSRAIL_MAX_SESSION_NOTIONAL"),
+        "max_open_orders": _i("ODDSRAIL_MAX_OPEN_ORDERS"),
+        "allowed_markets": sorted(allowed_markets()) if allowed_markets() else None,
+        "session_notional_used_usd": round(_session_notional, 2),
+        "session_live_orders": _session_orders,
+        "note": ("operator-set via ODDSRAIL_MAX_ORDER_NOTIONAL, "
+                 "ODDSRAIL_MAX_SESSION_NOTIONAL, ODDSRAIL_MAX_OPEN_ORDERS, "
+                 "ODDSRAIL_ALLOWED_MARKETS; unset means unlimited. The per-order "
+                 "cap and the allowed-markets list are enforced on every order, "
+                 "dry-run included. The session cap counts only orders that went "
+                 "to the venue and the open-order cap reads the live account, so "
+                 "both apply to live trading only."),
+    }
+
+
+def _refusal(rule: str, limit, requested, dry: bool, detail: str = "") -> dict:
+    return {
+        "dry_run": dry, "accepted": False, "blocked_by": "guardrail",
+        "execution_state": "not_submitted",
+        "rule": rule, "limit": limit, "requested": requested,
+        "note": (f"refused by an operator-set guardrail ({rule}). {detail}"
+                 "Nothing was sent. The agent cannot change this limit; "
+                 "report it to the operator.").replace("  ", " "),
+    }
+
+
+def unverified_open_orders(limit: int) -> dict:
+    """Refuse a live order when the configured account cap cannot be checked."""
+    return {**_refusal("max_open_orders", limit, None, False,
+                      "The complete live open-order count could not be verified. "),
+            "reason": "open_orders_unavailable"}
+
+
+def check_order(venue: str, market_id: str, notional_usd: float,
+                dry: bool, open_orders_now: int | None = None) -> dict | None:
+    """Return a refusal dict if any guardrail blocks this order, else None.
+
+    open_orders_now is supplied by the caller only in live mode (it costs a
+    venue call); None skips that check during the initial local checks. Live
+    callers with a configured cap must fetch the complete count before
+    submission, or return unverified_open_orders if that fetch fails.
+    """
+    if not math.isfinite(notional_usd) or notional_usd <= 0:
+        raise ValueError("order notional must be finite and positive")
+    allowed = allowed_markets()
+    if allowed is not None and str(market_id) not in allowed:
+        return _refusal("allowed_markets", sorted(allowed), str(market_id), dry,
+                        f"{venue} market {market_id!r} is not on the operator's "
+                        "ODDSRAIL_ALLOWED_MARKETS list. ")
+    cap = _f("ODDSRAIL_MAX_ORDER_NOTIONAL")
+    if cap is not None and notional_usd > cap:
+        return _refusal("max_order_notional", cap, round(notional_usd, 2), dry,
+                        f"order notional ${notional_usd:,.2f} exceeds the "
+                        f"per-order cap ${cap:,.2f}. ")
+    scap = _f("ODDSRAIL_MAX_SESSION_NOTIONAL")
+    if scap is not None and not dry and _session_notional + notional_usd > scap:
+        return _refusal("max_session_notional", scap,
+                        round(_session_notional + notional_usd, 2), dry,
+                        f"${_session_notional:,.2f} already submitted this "
+                        f"session; this order would take it to "
+                        f"${_session_notional + notional_usd:,.2f}. ")
+    ocap = _i("ODDSRAIL_MAX_OPEN_ORDERS")
+    if ocap is not None and open_orders_now is not None and open_orders_now >= ocap:
+        return _refusal("max_open_orders", ocap, open_orders_now, dry,
+                        f"{open_orders_now} orders already rest on the account. ")
+    return None
+
+
+def record_live_submission(notional_usd: float) -> None:
+    """Call after a LIVE order was handed to the venue (accepted or not — the
+    intent went out, and a rejected order can still be resubmitted)."""
+    global _session_notional, _session_orders
+    if not math.isfinite(notional_usd) or notional_usd <= 0:
+        raise ValueError("order notional must be finite and positive")
+    with _session_lock:
+        _session_notional += float(notional_usd)
+        _session_orders += 1
+
+
+def reserve_live_submission(venue: str, market_id: str, notional_usd: float,
+                            open_orders_now: int | None = None) -> dict | None:
+    """Atomically recheck limits and charge an imminent venue submission.
+
+    Call only after local setup and account reads succeed, immediately before
+    entering the order request. No await may separate this check and charge.
+    Keep the charge on rejection, cancellation or an uncertain response: a
+    timeout is not evidence that an order never reached the venue.
+    """
+    with _session_lock:
+        block = check_order(venue, market_id, notional_usd, False,
+                            open_orders_now=open_orders_now)
+        if block is not None:
+            return block
+        record_live_submission(notional_usd)
+    return None
+
+
+def reset_session() -> None:
+    global _session_notional, _session_orders
+    with _session_lock:
+        _session_notional = 0.0
+        _session_orders = 0

@@ -1,0 +1,8 @@
+# A local test run with `uv run` leaves a virtual environment and a lock file
+# here. The bundle must stay a few kilobytes: Claude Desktop builds its own
+# environment from pyproject.toml on install.
+.venv/
+uv.lock
+__pycache__/
+*.pyc
+.DS_Store

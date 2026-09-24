@@ -1,0 +1,89 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oddsrail"
+version = "0.18.1"
+description = "MCP server giving AI trading agents access to prediction markets (Polymarket, Kalshi) with on-chain builder-code attribution and trading signals."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "oddsrail" }]
+keywords = [
+    "mcp", "model-context-protocol", "prediction-markets", "polymarket",
+    "kalshi", "ai-agents", "trading", "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "mcp[cli]>=2.0.0",
+    "httpx>=0.28",
+    # Wallet derivation and legacy execution are validated against this SDK.
+    # Session permissions use a separately reviewed raw API; do not silently
+    # migrate legacy execution when changing that integration.
+    "polymarket-client==0.6.0",
+    "cryptography>=42.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-timeout>=2.4"]
+# The hosted server (oddsrail.cloud): remote MCP over streamable HTTP with
+# OAuth accounts. Starlette ships with mcp; uvicorn serves it. The hosted
+# service itself lives in the private repository and is excluded from the
+# built distribution below; the extra stays declared so one CI lock covers it.
+cloud = ["uvicorn>=0.30", "python-multipart>=0.0.9", "eth-account>=0.13,<0.14", "websockets>=15.0.1,<16", "certifi>=2024.7.4"]
+
+[tool.coverage.run]
+source = ["oddsrail"]
+# The hosted tests drive a real `python -m oddsrail.cloud.app`, because the
+# hosted profile is a process-wide mode and must not be switched on inside the
+# suite's own interpreter. Coverage therefore has to follow that child:
+# parallel writes one data file per process, and sigterm makes the child save
+# its data when the fixture stops it. Run `coverage combine` before reporting.
+parallel = true
+sigterm = true
+concurrency = ["thread", "multiprocessing"]
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[project.urls]
+Homepage = "https://github.com/hmesutozsoy/oddsrail"
+Repository = "https://github.com/hmesutozsoy/oddsrail"
+Issues = "https://github.com/hmesutozsoy/oddsrail/issues"
+
+[project.scripts]
+oddsrail = "oddsrail.server:main"
+
+[tool.hatch.build]
+# The published package is the MCP server only. The hosted service, the live
+# and Perps engines and the hosted market selection are private and must not
+# ship in a wheel or sdist even when one is built from the private repository.
+exclude = [
+    "/oddsrail/cloud/",
+    "/oddsrail/live/",
+    "/oddsrail/perps/",
+    "/oddsrail/market_selection.py",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["oddsrail"]
+
+[tool.hatch.build.targets.sdist]
+# Anchored to the project root: unanchored names also matched site/llms.txt
+# and deploy/cloud/README.md.
+include = ["/oddsrail", "/README.md", "/LICENSE", "/server.json", "/llms.txt"]
