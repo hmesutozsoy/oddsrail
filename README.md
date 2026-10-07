@@ -4,6 +4,8 @@
 
 **Give your AI agent Polymarket tools, with local signing and spending limits.**
 
+If oddsrail is useful to you, a ⭐ on this repo helps other people find it.
+
 oddsrail is an open-source MCP server. It gives Claude, Cursor or any MCP
 client live market data, costed fills and order routing on Polymarket.
 Operator-set guards enforce order limits. A separate deterministic
