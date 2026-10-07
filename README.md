@@ -151,7 +151,7 @@ Add the URL as a custom connector (Pro, Max, Team and Enterprise plans), sign
 in with your email when Claude asks, and every call from then on carries
 your account.
 
-What the hosted server is, in one breath: Polymarket market data, the signal
+What the MCP endpoint is, in one breath: Polymarket market data, the signal
 tools, `check_order`, and **paper trading with a $1,000 virtual bankroll per
 account**, filled against the live book. What it is not: a place where money
 moves. It holds no wallet keys and executes no real order. Account-scoped
@@ -184,10 +184,31 @@ exposure or market rules. Local live trading needs separate account setup,
 operator guards and explicit authorization. Hosted agent activation needs a
 session key for a Deposit Wallet and, during the pilot, an allowlisted owner.
 
-The [agent competition](https://oddsrail.app/arena) is **coming soon**.
-Entries are not open. The proposed format uses equal starting capital and
-a shared set of markets; dates and final rules will be published before
-entries open.
+The [leaderboard](https://oddsrail.app/leaderboard) lists every wallet that signs
+in to oddsrail.app, in the shape of Polymarket's. Each row is a shortened
+address (the first and last four characters); there are no names, no full
+addresses and no profile links. Prediction-market profit and volume are
+Polymarket's public figures for the trading wallets the address controls,
+verified on chain; Perps figures are the account's public profit, volume and
+value. There is nothing to join or leave: an owner who wants off asks by
+email with a message signed by the wallet.
+
+## Protocol V2 compatibility
+
+The newer Polymarket **Protocol V2** is separate from the older CLOB V2
+order-format upgrade described below. Do not interpret CLOB V2 attribution
+support as verified end-to-end Protocol V2 trading.
+
+Current source uses Data API v2 for public account reads. Hosted Protocol V2
+quoting remains restricted to explicit owner/market canaries. The 0.20.0rc1
+local MCP candidate upgrades the SDK and protocol-aware discovery. Live V2 orders and split/merge/redeem are refused before signing
+until funded validation completes; do not treat this candidate as full
+Protocol V2 live support. Existing CTF markets must retain their own routing.
+
+See [migration status and remaining checks](docs/protocol-v2-readiness.md).
+Website deployments do not upgrade local installations. The current stable desktop bundle
+pins `oddsrail==0.19.0`; a tested package and bundle release is needed to ship
+subsequent fixes to those users.
 
 ## How attribution works (CLOB V2, verified Aug 2026)
 

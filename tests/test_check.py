@@ -1,6 +1,7 @@
 """check_order: the deterministic answer to 'the agent hallucinated'."""
 
 import datetime as dt
+from types import SimpleNamespace
 
 import pytest
 
@@ -80,6 +81,19 @@ def test_closed_or_expired_market_blocks():
     assert statuses(res)["market_open"] == "block"
 
 
+@pytest.mark.parametrize("seconds_until_end,expected", [
+    (3600, "ok"),
+    (3599, "caution"),
+    (0, "block"),
+    (-1, "block"),
+])
+def test_market_end_boundaries(seconds_until_end, expected):
+    market = {**MARKET, "end_date": (NOW + dt.timedelta(seconds=seconds_until_end)).isoformat()}
+    res = check.evaluate(order(), market, BOOK, "bitcoin 72,000", None, NOW)
+    assert statuses(res)["market_open"] == expected
+    assert res["verdict"] == expected
+
+
 def test_missing_market_blocks_immediately():
     res = check.evaluate(order(), None, None, "anything", None, NOW)
     assert res["verdict"] == "block" and res["checks"][0]["check"] == "market_exists"
@@ -120,6 +134,16 @@ def test_thin_liquidity_and_missing_resolution_are_cautions():
 # --------------------------------------------------------------------------- #
 
 async def test_check_order_end_to_end_polymarket(monkeypatch):
+    class FixedDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW.astimezone(tz) if tz is not None else NOW.replace(tzinfo=None)
+
+    # Pin only the check module's clock: the fixed market must not age into
+    # the near-expiry caution or expiration block as the test suite gets older.
+    monkeypatch.setattr(check, "dt", SimpleNamespace(
+        datetime=FixedDatetime, timezone=dt.timezone, timedelta=dt.timedelta))
+
     async def fake_market(token_id, full=False):
         return {"question": MARKET["title"], "slug": "btc-72k", "id": "1",
                 "outcomes": {"yes": {"token_id": "tok-yes"}, "no": {"token_id": "tok-no"}},
@@ -137,7 +161,7 @@ async def test_check_order_end_to_end_polymarket(monkeypatch):
     guard.reset_session()
 
     ok = await check.check_order("polymarket", "tok-yes", "buy", 0.62, 10, "buy 10 yes on bitcoin above 72,000")
-    assert ok["verdict"] == "ok" and ok["dry_run"] is True
+    assert ok["verdict"] == "ok" and ok["dry_run"] is True, ok
 
     wrong_side = await check.check_order("polymarket", "tok-no", "buy", 0.40, 10, "buy yes on bitcoin above 72,000")
     assert wrong_side["verdict"] == "block"

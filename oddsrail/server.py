@@ -26,7 +26,7 @@ from . import polymarket as pm
 from . import signals
 from . import trading
 
-VERSION = "0.19.0"
+VERSION = "0.20.0rc1"
 
 HOSTED_INSTRUCTIONS = (
     "Hosted oddsrail: Polymarket market data, signals, deterministic order "
@@ -329,7 +329,7 @@ async def open_orders() -> str:
            annotations=READ, structured_output=False)
 async def builder_stats(time_period: str = "WEEK") -> str:
     try:
-        out = {"leaderboard": await pm.builder_leaderboard(time_period)}
+        out = {"leaderboard": await pm.builder_leaderboard(time_period), "volume_unit": "shares"}
     except Exception as e:
         return _err(e, host="the Polymarket API")
     code = trading.builder_code()
@@ -354,7 +354,7 @@ async def builder_stats(time_period: str = "WEEK") -> str:
                       "per wallet, with the maintainer's own wallets split out "
                       "into an honest 'external' line. Built from Polymarket's "
                       "own public builder feed, so any figure it reports can be "
-                      "checked at data-api.polymarket.com/v1/builders/leaderboard.",
+                      "checked at data-api.polymarket.com/v2/builders/leaderboard.",
            annotations=READ, structured_output=False)
 async def attribution_ledger() -> str:
     code = trading.builder_code()

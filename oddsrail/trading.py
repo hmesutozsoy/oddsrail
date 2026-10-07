@@ -37,6 +37,7 @@ Safety model:
 import asyncio
 import math
 import os
+import re
 
 from . import geo, guard, hosted, paper
 
@@ -184,6 +185,17 @@ async def _count_open_orders(client, cap: int) -> int:
     raise RuntimeError("open-order pagination exceeded the page limit")
 
 
+def _v2_not_ready(intent):
+    return {"dry_run": False, "accepted": False, "execution_state": "not_submitted",
+            "error_type": "ProtocolV2NotEnabled", "submitted": intent,
+            "note": "Local Protocol V2 live execution is not enabled until funded validation completes. Nothing was submitted. Existing CTF markets remain supported."}
+
+
+def _is_v2_asset(asset_id):
+    from polymarket._internal.protocol import is_v2_position_id
+    return is_v2_position_id(asset_id)
+
+
 async def place_order(token_id: str, side: str, price: float, size: float,
                       post_only: bool = False):
     side = side.upper()
@@ -219,6 +231,8 @@ async def place_order(token_id: str, side: str, price: float, size: float,
                 out["note"] = p.get("refused") or p.get("error")
         return out
 
+    if _is_v2_asset(token_id):
+        return _v2_not_ready(intent)
     from .polymarket import dump
     submission_started = False
     try:
@@ -408,16 +422,14 @@ async def my_fills(limit: int = 25):
     wallet = operator_wallet()
     if not wallet:
         return {"note": _NO_KEY_NOTE}
-    import httpx
-    async with httpx.AsyncClient(timeout=20.0) as h:
-        r = await h.get("https://data-api.polymarket.com/activity",
-                        params={"user": wallet, "limit": limit, "type": "TRADE"})
-        r.raise_for_status()
-        acts = r.json()
+    from .polymarket import _data_rows
+    acts = await _data_rows("activity", {"user": wallet, "limit": limit, "type": "TRADE"})
+    if any(str(a.get("proxy_wallet", "")).lower() != wallet.lower() for a in acts):
+        raise ValueError("Activity wallet mismatch")
     return {"wallet": wallet, "fills": [
         {"time": a.get("timestamp"), "side": a.get("side"),
          "size": a.get("size"), "price": a.get("price"),
-         "market": str(a.get("title"))[:80], "tx": a.get("transactionHash")}
+         "market": str(a.get("title"))[:80], "tx": a.get("transaction_hash")}
         for a in (acts if isinstance(acts, list) else [])]}
 
 
@@ -458,8 +470,20 @@ async def _relayed(action: str, intent: dict, run):
     if not relayer_configured():
         return {"dry_run": False, "accepted": False, "submitted": intent,
                 "error": _RELAYER_NOT_CONFIGURED}
+    from . import polymarket as pm
     from .polymarket import dump
     try:
+        # Protocol V2 condition identifiers have 31 bytes. Market-ID calls
+        # need public metadata; never guess a protocol or sign on an outage.
+        condition = intent.get("condition_id")
+        if condition and re.fullmatch(r"0x[0-9a-fA-F]{62}", condition):
+            return _v2_not_ready(intent)
+        if intent.get("market_id"):
+            market = await pm.get_market(intent["market_id"], full=True)
+            if market.get("version") == "v2":
+                return _v2_not_ready(intent)
+            if market.get("version") != "v1":
+                raise ValueError("Market protocol could not be verified; nothing submitted")
         client = await _client()
         handle = await run(client)
     except Exception as e:

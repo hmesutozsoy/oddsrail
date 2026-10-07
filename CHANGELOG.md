@@ -1,7 +1,333 @@
 # Changelog
 
+## 0.20.0rc1 (2026-10-07)
+
+- Upgrade the reviewed Polymarket SDK to 0.12.0 with an exact hashed dependency lock.
+- Select outcome IDs by market version and resolve V2 position IDs without falling back to CTF token IDs. Missing or unsupported versions expose no trading IDs.
+- Refuse local Protocol V2 live orders and position transactions before signing while funded validation remains pending. Existing CTF execution and dry-run defaults remain supported. This candidate is not a declaration of end-to-end V2 live readiness.
+- Include Data API v2 migration and existing execution-safety fixes in the local MCP candidate.
+
 ## 0.19.0 (2026-09-25)
 
+- Perps bots spend less of the shared request budget on history. A running
+  grid, market maker or DCA, and a Scale with a loss stop, used to recount its
+  realized result from fill and funding history every 30 seconds, each from
+  its own market: about 80 of the 214 tokens a minute measured for two idle
+  bots and an open Perps page. It now recounts when one of its orders fills,
+  when its position size changes, while a failed recount is retried (every 30
+  seconds) and before its first count, and otherwise at each five-minute UTC
+  boundary, when an owner with two or more bots that recount there has its
+  fills and funding read once in every market and each bot keeps its own
+  market's rows. The venue lists a fill a moment after the position changes,
+  so after a fill or a size change the bot also recounts its own market every
+  30 seconds for two minutes, and a loss stop or profit target sees that
+  fill's result as soon as before. Loss stops and profit targets use the last
+  realized result plus the live unrealized one, so funding, and a trade in the
+  bot's market that leaves its position size as it was without one of its
+  orders filling (a round trip by hand), can be up to five minutes late in the
+  realized result. In a ten-minute test with two idle bots, history reads fell
+  from 840 tokens (84 a minute) to 120.
+- The admin page shows where the Perps request budget goes. Every Perps
+  request is logged with where it came from (each bot kind, the bots' shared
+  account, price and history reads, the Perps page, owner commands, the
+  leaderboard) and its method and path without ids. Under the budget meter, a
+  table gives each source's tokens a minute and share over the last 10
+  minutes, and a second one the eight busiest requests; both scroll inside
+  their card on a phone.
+- The admin page has a Daily activity section: the last 7 days in four
+  tiles and a table with one row per UTC day for 30 or 90 days (visitors,
+  wallets signed in, new wallets, Perps authorizations, bots created,
+  session keys, MCP registrations and paper runs). Wallets that sign in are
+  counted once a day against a hash held in memory under a key that is never
+  saved and changes every day, so nothing saved can be matched to an
+  address, and the count is written in the background so it never slows a
+  sign-in. The day counting starts is marked as incomplete, new wallets are
+  the wallets added to the leaderboard, and the bots tile counts each person
+  who created bots once. The admin wallets are left out. Writes to the admin
+  database now give up after 50 ms when another process holds it, instead of
+  holding up the server for 5 seconds.
+- Last review round before release. A paused TWAP, Scale or Chase keeps its
+  stop loss (a fill just before the pause is guarded while paused), and the
+  exits keeper never guards a position the owner flipped by hand. An order
+  the venue accepts without a usable order id is found by client id instead
+  of sent again (TWAP slices, grid starting orders, DCA base orders, limit
+  entries, resting orders). Cancelling a bot's orders also cancels the ones
+  it tracks that a lagging open-orders read left out, and delete or close
+  waits a few seconds after an order was sent. A limit entry that filled in
+  part is never entered a second time; if it leaves the book, the filled
+  part is the position and gets its exits.
+- A TWAP whose slices would round under the market minimum takes one slice
+  fewer instead of refusing: the ticket's default $40 run at BTC 83,000 goes
+  in three slices of about $13 (four $10 slices round to $9.99).
+- Three order types for Perps, worked on the server the way Hyperliquid's
+  are and chosen under Pro in the ticket. TWAP sends a size in equal
+  immediate-or-cancel slices over a running time (5 minutes to 7 days, 30
+  minutes to start): as many slices as the size allows at the market
+  minimum, never closer than 30 seconds, catch-up slices of up to three
+  normal ones, Randomize, a trigger price that starts the run and a max or
+  min price that ends it. Scale rests a ladder of post-only limits spread
+  evenly between a start and an end price (2 to 20 orders; a size skew
+  from 0.25 to 4, the ratio of the end order's size to the start order's;
+  an optional loss stop), moves the optional exits to the average as rungs
+  fill, and leaves out a rung the venue refuses as crossed. Chase rests one
+  post-only limit one tick inside the best bid or ask and re-prices it
+  every tick as the book moves, so it fills as a maker; once the price has
+  moved the max chase distance (0.5% to start) it stops following and rests
+  as a plain limit, and at the end of its running time (1 hour to start)
+  the order is cancelled. All three take the Buy / Long | Sell / Short
+  control, capital and leverage, a take profit and stop loss as percentages
+  from the average fill (2% and 1% to start), pump protection (TWAP and
+  Scale, opening runs only), and Reduce only, which closes the whole
+  position on the market instead of opening one, needs no free margin, is
+  never held by pump protection, settles as soon as its closing fills are
+  listed, and is refused while another bot manages that market. An
+  opening run is refused with `position_exists` when the market already
+  holds a position on either side, because the exits are placed for the
+  whole position. A finished run is
+  watched until the position is flat, like a directional bot's, and its
+  progress shows on the bot card and in Bot history. The engine reads the
+  best bid and ask once a tick from the venue's `bbo` route. docs/perps.md
+  has each one's settings, tick, settlement and limits.
+- Rules the three order types keep, from the review before release. An
+  order that left the book is asked about by its client id up to three
+  times before it counts as unfilled (`order_lookup_failed`), so a
+  throttled look-up never reports a fill as gone. A command the venue may
+  have taken (a timeout, an outage, a 200 the engine could not read) keeps
+  its intent and is reconciled after the grace period; only a refusal
+  drops it. Delete refuses while a TWAP slice is in flight and pulls a
+  ladder's or chase's orders. A paused TWAP, Scale or Chase gets
+  the paused time back on resume: the whole clock shifts, so the run
+  continues at pace and ends that much later. A Chase's clock starts on
+  the first tick, its max distance is measured against the run's own
+  starting price (a fresh one only after a resume), and post-only
+  refusals do not count toward the five that end a chase. TWAP slices are
+  never priced past the Max or Min price, and Randomize stays within the
+  three-slice cap. A Scale rung pulled after a partial fill keeps its
+  remainder, and `ladder_done` is logged only when every rung filled
+  (`scale_stopped` otherwise).
+- More rules for the three order types, from the second review. An order
+  stays tracked until the venue says it is gone: a cancel the venue
+  refuses keeps the order tracked (`cancel_refused`) and is asked again,
+  and a finished TWAP, Scale or Chase cancels anything of its own still
+  resting before it settles, so no order outlives a run. An order the
+  venue still reports open with nothing filled (a batch it admitted after
+  a timeout, an order one open-orders read left out) is adopted again
+  under its order id rather than placed a second time; a grid and a DCA
+  bot share that plumbing and keep the same two rules. A percentage take
+  profit or stop loss that a finished run should hold and does not is
+  looked for on the venue and otherwise placed again, every 30 seconds
+  while the position is watched (`exit_restored`). An opening run refused
+  with `position_exists` on its first tick never changes the market's
+  leverage: the position is read before the leverage is touched. A TWAP
+  claims a position it counted no fill for only when it is on the run's
+  own side and no larger than its target; anything else was opened by hand
+  and is left alone. A reduce-only TWAP run whose position was flipped by
+  hand ends closed at once and leaves the hand position alone. A
+  reduce-only Chase closes a residue under the market minimum with one
+  reduce-only taker order at the touch (`chase_residue`), since the venue
+  may refuse to rest it as a limit. The average is marked as estimated
+  (`average_estimated`) when the venue did not report the fill price and
+  the limit that was sent stands in; the bot card and Bot history then
+  read "about" before the figure and say why on hover.
+- More rules for the three order types and the engine they share, from the
+  third review. The engine reads a bot again under its lock before each
+  step, and Pause, Resume, Close position and Delete read it inside the same
+  lock, so a pause, a close or a delete is never undone by a step that
+  started from older facts. One exits keeper holds the percentage take
+  profit and stop loss of a TWAP, Scale or Chase from the first fill on, not
+  only once the run is done: the stop loss first, moved as later fills move
+  the average, looked for on the venue before anything is sent
+  (`exit_restored` for one found or placed, `exit_moved`, `exit_missing` for
+  one the venue refused), each exit on its own so a refusal of one never
+  stops the other, and at most every 30 seconds unless a fill just landed.
+  An exit whose level the price has already passed cannot rest, so the
+  position is closed at market in its place (`exit_passed`) and the bot ends
+  with the reason `stop_passed` or `target_passed`. Exits the owner sets or
+  clears by hand in the position panel are left alone: the bot neither moves
+  them with its average nor places one back. A bot that is closing and still
+  holds a position sends its reduce-only close again, after eight seconds
+  and then every 30 (`close_retried`), and a loss stop whose close timed out
+  is picked up the same way. A finished run does not settle while an order
+  of its own still rests: the closing sweep repeats on every tick, up to 20
+  times, before the run settles over it (`sweep_incomplete`). Pause, Delete
+  and a Close position that finds no position answer `cancel_failed` when the
+  venue refuses a cancel and leave the bot in the state it had; a TWAP rests
+  nothing, so its pause pulls nothing. Delete of a TWAP, Scale, Chase, market
+  maker, grid or DCA bot reads the position after its cancel and answers
+  `bot_active` when an order filled since the last check, and its `bot_busy`
+  refusal for an order in flight now applies to a running TWAP only. A
+  leverage change the venue refuses five times fails the bot with
+  `leverage_rejected`, for a market maker, a grid and a DCA bot as well. An
+  order the venue accepted without naming an order id stays tracked and is
+  found by its client id; an order the venue still lists as open or pending
+  is adopted again whatever it has filled, and its fill is counted when it
+  leaves the book; a look-up that was throttled or timed out holds the bot's
+  other look-ups until the next tick. A Chase never outbids its own order:
+  while its order is the best bid or ask it stays where it is. A reduce-only
+  TWAP lifts a slice that closes only part of the position to the market
+  minimum, never past what the position still holds; only the exact
+  remainder may go under it, like a close.
+- The Perps ticket takes Hyperliquid's shape: Market | Limit | Pro, where
+  Pro is a select with the stop entries, the webhook signal, TWAP, Scale,
+  Chase, Market make, Grid, DCA and Channel, in place of the five-tab strip
+  and the "Set up a bot" heading. A chosen Pro option shows its name in the
+  tab and the address bar carries it (`?mode=` for a kind, `?pro=` for a
+  stop entry or the signal), so every ticket can be linked to. One Buy /
+  Long | Sell / Short control serves directional, TWAP, Scale, Chase and
+  DCA orders (DCA's own radio pair is gone); market making, grid and
+  channel keep their own direction controls. An Advanced row under the
+  exit tools shows the stop trigger, pump protection and each order type's
+  extra settings (TWAP trigger and limit price, Chase distance and end
+  time, Scale loss stop, market-making requote); off, they are hidden and
+  left out of the order, and the browser remembers the choice.
+- Perps ticket defaults, with the reasoning in the tooltips. Capital $20
+  (was $6), which at 2x clears the $10 market minimum with room for
+  rounding for a market, limit, stop or signal entry, a TWAP, a Chase and
+  a market-making pair; Scale, Grid and DCA need the minimum for every
+  order, so the ticket lifts the capital to the least that fits when one
+  is chosen (about $28 for a five-order Scale, $33 for a six-rung grid,
+  $45 for a DCA with three safety orders) and the server refuses less.
+  Suggested exits when a switch is turned on: a take profit 2% from the
+  mark against a stop loss 1% from it, a 2 : 1 reward to risk (was 1.5%
+  and 1%); a TWAP, Scale or Chase starts at the same 2% and 1% as
+  percentages from the average fill; signal bots keep 1% and 0.5%. The grid and
+  market-making loss stop is blank and means 30% of capital, rounded to
+  the nearest half dollar and at least $0.50, filled the same on the page
+  and the server: room for the ladder to breathe, and a stop well before
+  the margin is gone. DCA starts with a 1.5% price step (was 1%), a 1.2
+  step multiplier (was 1) and a 1.5% take profit (was 1%), so the first
+  safety order sits clear of ordinary noise, the later ones spread wider
+  and the take profit clears the taker fee on every leg; the server's
+  fallbacks for a create request that leaves those keys out are the same,
+  so its ladder is deeper and a stop loss must sit below it (docs/perps.md
+  says how). TWAP: 30 minutes,
+  Randomize and Reduce only off, no trigger or limit price. Scale: 5
+  orders, skew 1.00, a range 0.5% to 2% under the mark for a buy (mirrored
+  for a sell), loss stop blank. Chase: max distance 0.5% on, ends after one
+  hour. Leverage (2x), the trailing stop, stop trigger and pump protection
+  (1%, 1%, 3%), the grid (6 rungs, 3% either side), market making (20 bps,
+  a 2x cap, a quarter of the spread) and the channel settings are
+  unchanged.
+- Perps page controls in Hyperliquid's proportions with OddsRail's own
+  accent: 8px corners on the arm button, inputs, selects and the segmented
+  tracks, 5px on the pressed side pill, 32px tall inputs, side buttons and
+  arm button, no hover lift inside the ticket, and Market | Limit | Pro as
+  underline tabs. The purple accent and the green and red sides stay.
+- A bot's result waits for the closing fill. The venue lists a fill a
+  moment after the position is gone, and a result counted at once missed
+  it (one channel trade showed -$0.07 for a -$2.22 stop). The engine now
+  counts a result once the fills since the entry net to zero, trying again
+  each check for up to two minutes, then counts what is listed and logs a
+  `settle_incomplete` event. A reduce-only TWAP, Scale or Chase settles as
+  soon as its closing fills are listed, without that wait.
+- The Perps page is denser, in the way of the exchanges people already
+  use: 13px text, 12px tables, tighter panels, a 60px header, and the
+  ticket and tables fit without sideways scrolling from 1000px up (a
+  ticket input could push the page wider). Market names in every account
+  table open that market. Bot history shows Result, Fees and Funding as
+  their own columns and names channel bots (it printed "undefined"). The
+  "How the bots trade" text and the pilot note left the page; the risk
+  line is a hover on the Perps account heading and the docs keep the rest.
+- The Perps chart looks like Hyperliquid's: fills are B and S dots at their
+  own time and price (hover for size, price, profit and fee), the position
+  line carries a profit and size tag, and the exchange-held TP and SL show
+  whenever there is a position. The bin also hides the bots' lines on that
+  market; a bot's Show on chart brings them back. The stop loss is on by
+  default in the Directional ticket.
+- Channel orders follow their lines in finer steps (a twentieth of a narrow
+  channel, at least 0.005%), and the ticket says how often they move. The
+  Perps chart opens on 15-minute candles.
+- The leaderboard marks your own row "(your wallet)" when your wallet is
+  connected; the page compares the shortened addresses itself and sends
+  nothing.
+- The leaderboard ranks every row by the chosen figure, best first,
+  including the market-making wallet.
+- Channel bots end: an "Ends after" setting (1 hour to 1 week, 1 day by
+  default, or never) stops new trades after that time, and the lines on
+  the chart stop there instead of running off the edge.
+- Channel bots can rest post-only limit orders on the lines instead of
+  waiting for a touch (on by default in the ticket). The limits follow the
+  lines, the nearer line always has one and the other one does when the
+  account has margin for both, and the take profit rests as a limit on the
+  other line; limits pay the maker fee and fill on a quick wick. A fill
+  pulls what is left and takes its exits within one check; a price that
+  gaps through a line still trades at market; pause, delete and breakouts
+  pull the limits.
+- The leaderboard lists every wallet that signs in to oddsrail.app, with no
+  joining and no names: each row is a shortened address (the first and last
+  four characters), the board data carries no full address, and no row links
+  to a Polymarket profile. Perps figures now come from Polymarket Perps'
+  public per-address data (profit, fills, account value), so no Perps
+  authorization is needed. The join, entry and leave routes are gone, the
+  earlier entries carried over without their names, and the privacy page
+  says so. docs/leaderboard.md has the details and how to remove an address
+  on request.
+- Wallet sign-in says why it failed: a request already waiting in the
+  wallet, an account the wallet has not allowed, a wallet that cannot sign,
+  or the wallet's own error text, instead of one generic message.
+- The leaderboard drops its Paper tab; the paper arena keeps its own board
+  for agents at /arena/paper.json.
+- The leaderboard's reference market-making row shows a shortened address
+  (0x69cd…d48d) instead of a name, has no link to a Polymarket profile, and
+  the board data no longer carries its full address.
+- Channel bots for Perps: draw a channel on the chart (two points for one
+  line, a third for the parallel line) and the bot sells when the mark
+  touches the upper line and buys at the lower line, with an exchange-held
+  take profit toward the other line and a stop just past the touched line.
+  The lines extend through time and the exits move with them while a trade
+  is open. After a take profit it waits for the next touch; a stop, or the
+  price leaving the channel by the stop distance, ends the bot. Buy-only
+  and sell-only channels, a take profit short of the other line, and pump
+  protection are options. A drawn channel can be adjusted by dragging a
+  line or an end point, and the ticket offers Redraw and Remove. The
+  narrowest channel allowed is set by fees: the take profit must sit at
+  least 0.12% from the entry line. Nothing rests on the book: the bot checks
+  the price against where each line is at that moment, and the ticket shows
+  each line's price now and an hour ahead. Details and limits are in
+  docs/perps.md.
+- The Perps bot types sit in one compact row, and chart drawings made on
+  one candle interval now stay in place on another.
+- Perps exit tools, one switch each in the ticket: take profit, stop loss,
+  trailing stop, a stop trigger that starts the trailing stop only after a
+  set gain, a trailing take profit for DCA bots, a profit target for grid
+  and market-making bots, and pump protection for every type, which holds
+  new orders that add to the position while the price swings more than a
+  set percentage within five minutes. Details are in docs/perps.md.
+- Perps abuse limits: six new bots per owner every ten minutes and thirty
+  a day (removed ones count), ten creation tries a minute per address, a
+  new bot must be covered by the account's available margin, service caps
+  of 60 active bots and 25 owners, and a webhook limit per address.
+- Dragging a grid's upper or lower line on the Perps chart no longer runs
+  away from the cursor: the price scale holds still while a line moves and
+  re-fits when it is released.
+- The leaderboard drops its biggest-wins panel, and the server no longer
+  reads closed positions for it.
+- The scheduled smoke test prints the site's response headers when a page
+  is not a 200 and treats a Cloudflare bot challenge on the GitHub runner
+  as a warning instead of a failure.
+- A private admin panel at oddsrail.app/admin for the site owner:
+  warnings that need attention, traffic (visitors and page views today, 7
+  and 30 days, a daily chart, top pages and referrers), refused requests by
+  kind with their sources, product counts (sign-ins, paper accounts and
+  agents, hosted agents, session keys, Perps authorizations and bots,
+  leaderboard entries), OddsRail's volume and rank on Polymarket's builder
+  leaderboard, PyPI downloads, GitHub stars, and server health (disk,
+  memory, load, certificates, the Perps feed, engine and request budget).
+  Only wallets in `ODDSRAIL_ADMIN_WALLETS` can read it; everyone else gets a
+  404. Pages now send one first-party page-view beacon with no cookie and no
+  identifier; unique visitors are counted per day with a salted hash whose
+  salt is deleted daily. The privacy policy says so. See docs/admin.md.
+- A real leaderboard at oddsrail.app/arena, in the shape of Polymarket's,
+  replaces the "coming soon" page. Tabs for Predictions, Perps and Paper;
+  Today, Weekly, Monthly and All periods; sorting by profit or volume
+  (account value for Perps, return and fills for Paper); search by name;
+  pages of 20; and medals for the top three. Owners join from the page with a display name
+  and choose which records to show. Prediction figures are Polymarket's
+  own per wallet and period, for the trading wallets the owner controls,
+  verified on Polygon at join time. Perps figures come from the account's
+  fills and funding, stored once and read incrementally. The house market maker is
+  shown for reference and never ranked. New routes: `/leaderboard/me`,
+  `/leaderboard/join`, `/leaderboard/leave` and `/leaderboard/board.json`.
 - Repository split. The MCP server stays open source at
   github.com/hmesutozsoy/oddsrail. The hosted service, the website and the
   live and Perps engines moved to a private repository, and `oddsrail.cloud`,
@@ -16,6 +342,134 @@
   bid and ask lines on the chart, and bot cards with a live profit figure,
   entry and mark, exits with their dollar estimates, a stop-to-target range
   bar, and the venue's own words when a command is refused.
+- Perps service on a request budget. Polymarket allows 1,000 weighted
+  request tokens per minute per IP address, and the service was spending
+  most of them on one user: an unfiltered open-orders read (20 tokens)
+  plus order, fill and funding history on every account refresh, and an
+  HTTP tickers read on every three-second engine tick. Now the engine
+  takes tickers from the Perps WebSocket (`tickers::all`, which costs no
+  tokens) and reads them over HTTP only while the socket is stale; the
+  account route reads open orders per market with a position or a live
+  bot (1 token each) and runs the unfiltered sweep once a minute; history
+  is cached for 90 seconds; the engine ticks every five seconds; the page
+  polls every ten. The status route reports the feed's state. Rough
+  effect: from one or two concurrent authorized users per IP to about
+  fifteen, or about thirty unattended bots.
+- Portfolio shows a Perps card with the Perps account value next to
+  Cash, Holdings and Unrealized P&L when the wallet has authorized Perps
+  trading. The Create agent button leaves the header: it sits above the
+  refresh control on Markets, next to Explore markets on Portfolio, and
+  stays on the leaderboard. The Markets and Portfolio page descriptions
+  are gone.
+- The header shows a Perps figure next to Balance for a wallet that has
+  authorized Perps trading: the Perps account value (collateral plus open
+  positions, which lives on the Perps exchange apart from the
+  prediction-market balance), refreshed every 30 seconds and linking to
+  the Perps page.
+- Perps Bots tab shows active bots only: a bot that closes, is cancelled
+  or stops leaves the tab on its own and stays in Bot history. "Show
+  inactive bots" brings the finished ones back as cards with their
+  results, and "Set up again" on any bot card or Bot history row copies
+  that bot's market and settings into the ticket (kind, side, entry type
+  and price, leverage, capital, exits, trailing stop, grid, DCA and quoting
+  parameters) for review before placing a new order.
+- Perps market picker in the shape of Hyperliquid's: the market name in
+  the top bar opens a panel with a search box, category tabs (all,
+  favorites, crypto, index, equity, commodity), and a sortable table of
+  every market with last price, 24h change, funding, 24h volume and open
+  interest. Arrow keys and Enter pick a market, Esc closes, Cmd K or
+  Ctrl K opens it, stars mark favorites (kept in the browser), and the
+  chosen market goes into the page address. Open interest sorts the list
+  by default because it comes with the tickers; the 24h figures load only
+  for the rows in view, two at a time with a pause on a rate limit, and are
+  cached in the browser for five minutes.
+- Perps page: a wallet outside the pilot saw "Cannot access 'chip' before
+  initialization" instead of its account state; fixed. The message for
+  such a wallet now says the wallet is not on the pilot list and links to
+  Support, and the deposit hint says to activate Perps on Polymarket. The
+  footer's "Built in the open" link is gone from every page.
+- Perps page uses the whole screen, in the shape of Hyperliquid and
+  Binance: the header and the page run edge to edge, a market bar with the
+  live statistics sits on top, the chart fills the left with the order
+  book and recent trades in a column beside it, the order ticket and the
+  account block stack on the right, and the positions, open orders, bots
+  and history tabs sit under the chart. Bots are a tab there now (with a
+  live count, like Positions and Open orders), the page switches to it
+  after an order is placed, and the ticket button authorizes Perps trading
+  directly when that is the only thing missing. Narrow screens stack the
+  columns; phones get a single column.
+- Perps page shows sizes in dollars: the positions table, the ticket
+  facts, the bot cards, the drawer, the fill markers and the summary rows
+  all lead with the dollar value at the mark, and the coin amount sits in
+  the hover tooltip. Renew and Revoke leave the account panel: the
+  Authorized chip opens a small menu with both, and a visible Renew pill
+  appears on its own only inside the last week. The Isolated tooltip is
+  one line: "Only the capital you commit is at risk".
+- Perps page: "arm" is gone from the wording (Place order, Waiting,
+  Resting, Cancel); the DCA safety orders, take profit and stop can be
+  dragged on the chart and the ladder rescales to follow; the account
+  panel gains Order history, Funding and Bot history tabs next to Trade
+  history (the account route returns recent orders and funding payments,
+  and a new bots/history route lists finished bots including removed ones).
+- Perps order ticket in the shape traders know: Market and Limit entry
+  tabs with stop entries and the webhook signal under Pro, Buy/Long and
+  Sell/Short buttons, isolated margin and a leverage button with its own
+  presets and slider, available margin and the current position shown,
+  take profit and stop loss as an optional section with gain and loss
+  percentages that convert to prices and back, and a compact summary
+  (order value, margin, entry, liquidation, exits) instead of prose; the
+  button itself says what blocks it. A limit entry rests as a post-only
+  order and its exits attach once it fills; exits are optional for every
+  directional bot. Pick-on-chart buttons, the EMA toggles and the market
+  meta line are gone.
+- Perps chart drawings: a trend line tool and a position tool (entry,
+  target, stop) that shows size, gain, loss and the reward-to-risk ratio
+  for the ticket's capital and leverage, drawn on an overlay and kept per
+  market in the browser, with one click to load the drawn position into
+  the ticket; a clear-drawings tool.
+- Perps page: explanations move from paragraphs into hover tooltips on
+  the controls themselves (row actions, drawer buttons, presets, bot-type
+  tabs, chart tools, authorization buttons), rendered from one floating
+  element so scrolling tables cannot clip them.
+- Perps positions table in the shape traders know: size, value, entry,
+  mark, PnL with return on margin, liquidation, margin, funding, close
+  actions and the exchange-held take profit and stop loss. A row opens a
+  drawer to close all or part of the position at market or with a
+  reduce-only limit, to set or replace position-scoped exits (with quick
+  return-on-margin presets), and to reach the bot managing that market.
+  Two new commands back it: `/perps/position/close` and
+  `/perps/position/exits`; a bot on the market adopts new exits.
+- Perps chart tools: a tool strip beside the chart (draw a level, measure
+  between two points, fit, jump to the latest candle, logarithmic scale,
+  expand), draggable form lines (trigger, take profit, stop loss, grid
+  range, quotes) that write back into the form, and a bot's exchange-held
+  lines shown only while its card is selected. Capital and leverage get
+  sliders; the capital slider runs from the kind's minimum to the account's
+  available margin.
+- Perps: two more bot kinds and two directional options. A grid bot
+  rests rungs across a range and answers each fill one level away, with
+  neutral, long and short variants and a loss limit. A DCA bot sends a
+  base order, rests safety orders at multiplied steps, keeps a reduce-only
+  take profit on the exchange's average entry and an optional stop, and
+  can repeat. A directional bot can trail its stop (new stop placed before
+  the old one is cancelled) and can be triggered by a private webhook
+  ("enter long", "enter short", "close", "pause"), taking its exits as
+  percentages from the fill. The page gets Grid and DCA tabs, the signal
+  trigger, percentage exits, a trailing field, range picks on the chart,
+  rung and safety levels drawn on it, and cards for every kind.
+- Perps chart: TradingView's open-source Lightweight Charts (Apache 2.0,
+  vendored under site/vendor) replaces the hand-drawn canvas. Candles with
+  volume, crosshair, zoom and pan, older history loaded as you scroll
+  left, 4h and 1D intervals, EMA 20 and EMA 50, your trigger, take profit,
+  stop loss or quotes as dashed lines, your live entry and exchange-held
+  exits as solid lines, your fills as markers, and Pick on chart buttons
+  that set the trigger, take profit or stop loss from a click.
+- Perps page: a market stats strip above the chart (mark, index, 24h
+  change and volume, open interest, funding with a countdown, max
+  leverage), a compact order book and recent trades from the public feed,
+  Positions, Open orders and Fills tabs on the account panel (the account
+  route now returns recent fills), the chart stretched to the form height,
+  and less prose.
 - Perps page starts at the account panel: authorization state as a chip,
   the days left with a Renew button (a renewal deletes the previous key on
   the exchange), account figures in a grid, and a note on what expiry

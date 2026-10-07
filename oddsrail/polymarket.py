@@ -10,6 +10,7 @@ sub-objects rather than at the top level.
 """
 
 from decimal import Decimal
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -40,6 +41,25 @@ def dump(obj):
     return obj
 
 
+_IMAGE_HOSTS = {"polymarket-upload.s3.us-east-2.amazonaws.com",
+                "polymarket-upload.s3.amazonaws.com", "images.polymarket.com"}
+
+
+def market_image_url(value: object) -> str | None:
+    """Allow venue-hosted public images only; never fetch a supplied image here."""
+    if (not isinstance(value, str) or len(value) > 2048
+            or any(ord(ch) <= 32 or ord(ch) == 127 for ch in value) or "\\" in value):
+        return None
+    try:
+        url = urlsplit(value)
+        if (url.scheme == "https" and url.hostname in _IMAGE_HOSTS
+                and url.netloc.lower() == url.hostname):
+            return value
+    except ValueError:
+        pass
+    return None
+
+
 def slim_market(m: dict) -> dict:
     """Reduce a dumped Market model to what an agent needs to decide."""
     outs = m.get("outcomes") or {}
@@ -50,14 +70,16 @@ def slim_market(m: dict) -> dict:
 
     def leg(key):
         o = outs.get(key) or {}
-        return {"label": o.get("label"), "token_id": o.get("token_id"),
+        return {"label": o.get("label"), "token_id": o.get("position_id" if m.get("version") == "v2" else "token_id") if m.get("version") in ("v1", "v2") else None,
                 "price": o.get("price")}
 
     return {
         "id": m.get("id"),
         "slug": m.get("slug"),
         "question": m.get("question"),
+        "image_url": market_image_url(m.get("image")) or market_image_url(m.get("icon")),
         "condition_id": m.get("condition_id"),
+        "version": m.get("version"),
         "outcomes": {"yes": leg("yes"), "no": leg("no")} if outs else None,
         "best_bid": prices.get("best_bid"),
         "best_ask": prices.get("best_ask"),
@@ -162,19 +184,25 @@ async def get_market(id_or_slug: str, full: bool = False):
 
 
 async def get_market_by_token(token_id: str, full: bool = False):
-    """Resolve a market from a CLOB token id.
-
-    get_market() takes a slug or numeric id, so passing a 77-digit token id
-    there 422s. Gamma can filter markets by clob_token_ids, which is the only
-    way back from "the thing you trade" to "the thing that describes it" —
-    needed to read a market's fee schedule when all you hold is a token id.
-    """
+    """Resolve an exact CTF token or V2 position ID without crossing protocols."""
+    if not isinstance(token_id, str) or not token_id.isascii() or not token_id.isdecimal() or not 0 < int(token_id) < 2**256:
+        raise ValueError("asset ID must be a positive decimal uint256 string")
     c = await public()
-    page = await c.list_markets(clob_token_ids=token_id, page_size=1).first_page()
-    items = dump(list(page.items))
-    if not items:
-        return None
-    return items[0] if full else slim_market(items[0])
+    for version, field, outcome_field in (("v1", "clob_token_ids", "token_id"),
+                                           ("v2", "position_ids", "position_id")):
+        page = await c.list_markets(**{field: token_id}, page_size=2).first_page()
+        matches = []
+        for item in dump(list(page.items)):
+            if item.get("version") != version:
+                continue
+            outcomes = item.get("outcomes") or {}
+            if any(str((outcomes.get(side) or {}).get(outcome_field)) == token_id for side in ("yes", "no")):
+                matches.append(item)
+        if len(matches) > 1:
+            raise ValueError("asset ID resolves to multiple markets")
+        if matches:
+            return matches[0] if full else slim_market(matches[0])
+    return None
 
 
 async def get_orderbook(token_id: str):
@@ -220,25 +248,59 @@ async def get_orderbook(token_id: str):
 async def price_history(token_id: str, hours: float = 6.0,
                         fidelity_minutes: int = 1):
     """Returns (times, prices) oldest->newest."""
-    c = await public()
-    interval = "1h" if hours <= 1 else "6h" if hours <= 6 else \
-               "1d" if hours <= 24 else "1w"
-    pts = dump(await c.get_price_history(token_id=token_id, interval=interval,
-                                         fidelity=fidelity_minutes))
-    times, prices = [], []
-    for p in pts:
-        t = p.get("t", p.get("timestamp"))
-        v = p.get("p", p.get("price"))
-        if t is not None and v is not None:
-            times.append(float(t))
-            prices.append(float(v))
-    return times, prices
+    import math
+    if type(fidelity_minutes) is not int or not 1 <= fidelity_minutes <= 1440:
+        raise ValueError("Invalid price history resolution")
+    interval = "1h" if hours <= 1 else "6h" if hours <= 6 else "1d" if hours <= 24 else "1w"
+    params = {"token_id": token_id, "interval": interval, "bucket_seconds": max(fidelity_minutes * 60, 300 if interval == "1w" else 60), "limit": 1000}
+    times, prices, seen = [], [], set()
+    for _ in range(20):
+        raw = await _data_read("prices-history", params)
+        rows = raw.get("data") if isinstance(raw, dict) else None
+        pagination = raw.get("pagination") if isinstance(raw, dict) else None
+        if not isinstance(rows, list) or not isinstance(pagination, dict) or "next_cursor" not in pagination:
+            raise ValueError("Invalid price history response")
+        for point in rows:
+            if not isinstance(point, dict):
+                raise ValueError("Invalid price history point")
+            t, price = point.get("timestamp"), point.get("price")
+            if type(t) is not int or type(price) not in (int, float) or not math.isfinite(price) or not 0 <= price <= 1 or (times and t <= times[-1]):
+                raise ValueError("Invalid price history point")
+            times.append(float(t)); prices.append(float(price))
+        cursor = pagination["next_cursor"]
+        if cursor is None:
+            return times, prices
+        if type(cursor) is not str or not cursor or len(cursor) > 8192 or cursor in seen:
+            raise ValueError("Invalid price history cursor")
+        seen.add(cursor)
+        params = {"token_id": token_id, "cursor": cursor}
+    raise ValueError("Price history pagination exceeded its limit")
+
+
+
+async def _data_read(path: str, params: dict):
+    # Fixed internal paths only; no user-controlled destination.
+    if path not in {"positions", "builders/leaderboard", "value", "activity", "prices-history"}:
+        raise ValueError("Unsupported Data API route")
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
+        response = await client.get("https://data-api.polymarket.com/v2/" + path, params=params)
+        response.raise_for_status()
+        return response.json()
+
+
+async def _data_rows(path: str, params: dict):
+    raw = await _data_read(path, params)
+    rows = raw.get("data") if isinstance(raw, dict) else None
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("Invalid Data API response")
+    return rows
 
 
 async def get_positions(address: str, limit: int = 25):
-    c = await public()
-    page = await c.list_positions(user=address, page_size=limit).first_page()
-    return dump(list(page.items))
+    rows = await _data_rows("positions", {"user": address, "limit": limit})
+    if any(str(row.get("proxy_wallet", "")).lower() != address.lower() for row in rows):
+        raise ValueError("Position wallet mismatch")
+    return [{**row, "size": row.get("current_size"), "cur_price": row.get("current_price")} for row in rows]
 
 
 # The SDK accepts only these; agents will say "weekly"/"7d"/"week", so map.
@@ -250,13 +312,16 @@ _PERIODS = {"day": "DAY", "daily": "DAY", "1d": "DAY", "24h": "DAY",
 
 async def portfolio_value(address: str) -> dict:
     """What this wallet's open Polymarket positions are worth right now."""
-    import httpx
-    async with httpx.AsyncClient(timeout=20.0) as c:
-        r = await c.get("https://data-api.polymarket.com/value", params={"user": address})
-        r.raise_for_status()
-        rows = r.json()
-    value = float(rows[0]["value"]) if isinstance(rows, list) and rows else 0.0
-    return {"positions_value_usd": round(value, 4), "source": "data-api.polymarket.com/value"}
+    import math
+    raw = await _data_read("value", {"user": address})
+    row = raw.get("data") if isinstance(raw, dict) else None
+    if not isinstance(row, dict) or str(row.get("proxy_wallet", "")).lower() != address.lower():
+        raise ValueError("Portfolio value unavailable")
+    value = row.get("value")
+    if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+        raise ValueError("Invalid portfolio value")
+    return {"positions_value_usd": round(value, 4), "source": "data-api.polymarket.com/v2/value"}
+
 
 
 def normalize_period(p: str) -> str:
@@ -264,11 +329,7 @@ def normalize_period(p: str) -> str:
 
 
 async def builder_leaderboard(time_period: str = "WEEK", limit: int = 25):
-    c = await public()
-    period = normalize_period(time_period)
-    page = await c.list_builder_leaderboard(
-        time_period=period, page_size=limit).first_page()
-    return dump(list(page.items))
+    return await _data_rows("builders/leaderboard", {"time_period": normalize_period(time_period).lower(), "limit": limit})
 
 
 async def builder_trades(builder_code: str):
@@ -289,6 +350,7 @@ async def resolution_criteria(id_or_slug: str) -> dict:
     return {
         "venue": "polymarket",
         "question": m.get("question"),
+        "image_url": market_image_url(m.get("image")) or market_image_url(m.get("icon")),
         "description": m.get("description"),
         "resolution_source": res.get("source") or "(none named)",
         "resolved_by": res.get("resolved_by"),

@@ -20,3 +20,5 @@ work/
 # coverage data, including the per-process files parallel mode writes
 .coverage
 .coverage.*
+
+node_modules/
