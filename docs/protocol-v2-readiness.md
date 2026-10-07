@@ -76,7 +76,7 @@ remaining funded checks above pass.
 Data API v1 retirement is October 24, 2026. The existing
 `/v1/accounting/snapshot` is explicitly exempt from that retirement.
 
-## Open-source MCP review — October 7
+## Open-source MCP review: October 7
 
 PyPI and the desktop bundle currently identify version 0.19.0 with
 `polymarket-client==0.6.0`. A website deployment does not update those copies.
@@ -100,7 +100,7 @@ Recommended next release scope:
 
 This review did not upgrade dependencies or enable additional live trading.
 
-## Candidate implementation — 0.20.0rc1
+## Candidate implementation: 0.20.0rc1
 
 The local MCP now pins SDK 0.12.0 and the hashed CI lock changes only that
 package. Discovery selects per-outcome `position_id` for v2 and `token_id`
