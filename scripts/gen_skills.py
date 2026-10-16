@@ -2,7 +2,7 @@
 
 The prompts are the source of truth for the workflows (the ORDER of
 operations that keeps an agent out of trouble). Skills are the same text in
-the shape Claude Code plugins and skills.sh expect, so the two can never
+the shape agent plugins and skills.sh expect, so the two can never
 drift: tests/test_skills_sync.py regenerates into a temp dir and diffs.
 
     python scripts/gen_skills.py            # writes skills/
@@ -36,8 +36,8 @@ SKILLS = [
 ]
 
 PREAMBLE = ("Use the tools of the `oddsrail` MCP server (install: `pip install oddsrail`, "
-            "then `claude mcp add --transport stdio oddsrail -- oddsrail`, or enable the "
-            "oddsrail plugin). Prices are implied probabilities in (0,1). Trading tools are "
+            "then configure your MCP client with local stdio command `oddsrail` and "
+            "no arguments). Prices are implied probabilities in (0,1). Trading tools are "
             "dry-run unless the operator has set ODDSRAIL_DRY_RUN=0; never assume an order "
             "was placed without checking the `dry_run` field of the result.\n\n")
 

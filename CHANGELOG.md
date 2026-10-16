@@ -551,12 +551,12 @@
 
 ## 0.18.1 (2026-09-21)
 
-- Claude Desktop extension: install a version-pinned local server with a
+- Desktop MCP extension: install a version-pinned local server with a
   settings form, secure private-key storage and simulation enabled by default.
 - The installer defaults to $25 per order and $100 submitted per process
   session; restarting the server resets the session budget.
 - Builder handoff: download the extension and take the exact strategy settings
-  to Claude for review. It does not automatically run website strategy rules.
+  to your AI client for review. It does not automatically run website strategy rules.
 - Concurrent local orders now reserve their shared session budget atomically;
   uncertain submissions keep their reservation. Open-order counts are checked
   before both Polymarket and Kalshi submission.
@@ -575,7 +575,7 @@
   navigation's More menu, and the run permalink page no longer tells visitors
   to press a Run button that the builder redesign removed.
 - The launch post describes the product as it is now: markets and a builder
-  that saves drafts on the site, paper trading by chat through the Claude
+  that saves drafts on the site, paper trading by chat through the MCP
   connector, and live trading self-hosted. Every reference to the removed
   attribution page and the old one-click paper pass is gone.
 
@@ -757,7 +757,7 @@ builder and the operations around them.
   serves the board, recomputed at most every five minutes, with the house
   paper agent as an unranked reference row (`ODDSRAIL_ARENA_HOUSE_LEDGER`).
 - Site: the agent builder page (`/build`, tickable strategy fragments and
-  risk rules composing an editable prompt for Claude) and the arena page
+  risk rules composing an editable prompt for an AI client) and the arena page
   (`/arena`, paper and live divisions from public data, live-division
   registry in `site/arena/agents.json`).
 
@@ -766,8 +766,7 @@ builder and the operations around them.
 - **Hosted server** (`oddsrail.cloud`, `oddsrail/hosted.py`): the same
   server as a remote MCP endpoint over streamable HTTP with OAuth 2.1
   accounts (dynamic client registration, PKCE, magic-link sign-in by email,
-  rotating tokens). Runs at `https://mcp.oddsrail.app/mcp`; add it in Claude
-  as a custom connector or with `claude mcp add --transport http`. Each
+  rotating tokens). Runs at `https://mcp.oddsrail.app/mcp`; add it as a remote HTTP server in an MCP client with OAuth support. Each
   account gets its own paper ledger.
 - The hosted profile (`ODDSRAIL_HOSTED=1`) holds no keys, forces dry-run,
   papers every order against the live Polymarket book, hides the
@@ -794,7 +793,7 @@ builder and the operations around them.
   evidence and a one-line read-back. No second model; nothing is sent. The
   `find_fade_setup` prompt (and skill) now calls it before `place_order`.
 
-- Claude Code plugin (`.claude-plugin/plugin.json`, marketplace manifest,
+- Agent plugin (plugin configuration, marketplace manifest,
   `.mcp.json`) and four skills generated from the MCP prompts
   (`skills/*/SKILL.md`, `scripts/gen_skills.py`, drift test). One-click
   install links for Cursor and VS Code; `npx skills add` support.

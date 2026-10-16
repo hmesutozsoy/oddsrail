@@ -6,8 +6,8 @@
 
 If oddsrail is useful to you, a ⭐ on this repo helps other people find it.
 
-oddsrail is an open-source MCP server. It gives Claude, Cursor or any MCP
-client live market data, costed fills and order routing on Polymarket.
+oddsrail is an open-source MCP server. It gives your MCP-compatible AI client
+live market data, costed fills and order routing on Polymarket.
 Operator-set guards enforce order limits. A separate deterministic
 `check_order` tool reviews the market, outcome and price before submission;
 ask your agent to call it before each order. It cannot guarantee that an
@@ -32,31 +32,10 @@ opposite side of the trade, and nothing would have told it.
 Read the [OddsRail documentation](https://oddsrail.app/docs) for setup,
 wallets, trading limits and developer notes.
 
-## Claude Desktop: install without Python
+## Choose your setup
 
-[Download OddsRail 0.19.0 for Claude Desktop](https://github.com/hmesutozsoy/oddsrail/releases/download/v0.19.0/oddsrail-0.19.0.mcpb).
-Open the file in Claude Desktop, or install it from Settings, Extensions.
-A current Claude Desktop version with MCPB/uv support supplies the local
-Python runtime. The extension starts with **Paper trading ticked** and needs
-no wallet key to explore markets or simulate orders.
-
-For real orders, use an existing funded Polymarket account with trading
-approvals. Enter its signer private key only in the extension's settings,
-never in a chat or the website, and enter the trading account's public wallet
-address. Claude Desktop stores sensitive settings using its secure storage;
-the local OddsRail process receives the key for signing. Review your account,
-limits and proposed order before deliberately unticking Paper trading.
-
-The defaults are $25 per order and $100 of submitted order notional per local
-server session. Restarting the extension resets the session budget. These
-are not daily loss or account-wide limits. Venue fees may apply.
-
-The extension gives Claude local trading tools. Website strategy drafts can
-be [handed to Claude for review](https://oddsrail.app/build); installing the
-extension does not import those rules or start an autonomous background
-agent. Keep Claude Desktop and your computer running while using the tools.
-Hosted website trading is a limited pilot: a Deposit Wallet session key plus an
-owner allowlist on the server, quoting one market at a time.
+Use the local MCP server with your preferred AI client, including Codex or Cursor. Installation connects tools; it does not start an agent.
+See [Developer quickstart](#developer-quickstart) for client-neutral setup.
 
 ## Developer quickstart
 
@@ -66,9 +45,15 @@ Python 3.11+ required.
 pip install oddsrail
 ```
 
-```bash
-claude mcp add --transport stdio oddsrail -- oddsrail
+Configure a local stdio MCP server in your client with command `oddsrail`
+and no arguments. For clients using JSON configuration:
+
+```json
+{"mcpServers":{"oddsrail":{"command":"oddsrail","args":[]}}}
 ```
+
+The configuration format varies by client; the command and arguments stay
+the same. Start with `server_info` to verify the connection and dry-run mode.
 
 Or from a clone, without installing:
 
@@ -76,22 +61,19 @@ Or from a clone, without installing:
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
-```bash
-claude mcp add --transport stdio oddsrail -- /abs/path/to/oddsrail/.venv/bin/python -m oddsrail.server
-```
+Use command `/abs/path/to/oddsrail/.venv/bin/python` and arguments
+`["-m", "oddsrail.server"]` in your client's local MCP configuration.
 
 Then ask the agent: *"search markets about the World Cup final and run the
 overshoot signal on the favorite"*.
 
-## Install in one step
+## Client-specific installation
+
+<details>
+<summary>Installation commands and links by client</summary>
 
 | Client | How |
 |---|---|
-| Claude Desktop (local tools, default simulation) | [Download the extension](https://github.com/hmesutozsoy/oddsrail/releases/download/v0.19.0/oddsrail-0.19.0.mcpb). No Python installation needed. |
-| Claude web or desktop, nothing to install (hosted, paper trading) | Settings, Connectors, Add custom connector, URL `https://mcp.oddsrail.app/mcp`, then sign in with your email. See [Hosted](#hosted-nothing-to-install). |
-| Claude Code (hosted, paper trading) | `claude mcp add --transport http oddsrail https://mcp.oddsrail.app/mcp` |
-| Claude Code (plugin, with the four workflow skills) | `claude plugin marketplace add hmesutozsoy/oddsrail` then `claude plugin install oddsrail@oddsrail` |
-| Claude Code (server only) | `claude mcp add --transport stdio oddsrail -- uvx oddsrail` |
 | Any agent that reads skills | `npx skills add hmesutozsoy/oddsrail` |
 | Cursor | [Install oddsrail in Cursor](https://cursor.com/en/install-mcp?name=oddsrail&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyJvZGRzcmFpbCJdfQ==) |
 | VS Code | [Install oddsrail in VS Code](vscode:mcp/install?%7B%22name%22%3A%22oddsrail%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22oddsrail%22%5D%7D) |
@@ -101,6 +83,8 @@ The plugin and the one-click links launch the server with `uvx`, so they
 need [uv](https://docs.astral.sh/uv/) on the machine. Without uv, `pip
 install oddsrail` gives you an `oddsrail` command to point any client at.
 Everything starts in dry-run.
+
+</details>
 
 The four skills (`skills/*/SKILL.md`) are generated from the server's own
 MCP prompts by `scripts/gen_skills.py`, and a test fails if they drift, so a
@@ -148,10 +132,9 @@ code is in use. No fee tiers, no paywalled tools, no account required.
 ## Hosted: nothing to install
 
 `mcp.oddsrail.app` runs the same server as a remote MCP endpoint with
-accounts, so an agent inside Claude can use it without a machine of its own.
-Add the URL as a custom connector (Pro, Max, Team and Enterprise plans), sign
-in with your email when Claude asks, and every call from then on carries
-your account.
+accounts. Use an MCP client that supports remote HTTP connections and OAuth.
+Add `https://mcp.oddsrail.app/mcp`, then sign in with your email when your
+client requests authorization. Subsequent calls use that account.
 
 What the MCP endpoint is, in one breath: Polymarket market data, the signal
 tools, `check_order`, and **paper trading with a $1,000 virtual bankroll per
@@ -163,10 +146,10 @@ server they would describe nobody's account. Twenty-four tools remain: the
 public-data and paper tools plus `arena_register`, `arena_unregister` and
 `arena_status`, which put the account's paper ledger on the public board.
 
-Live trading from Claude stays self-hosted: `pip install oddsrail` with your own
+Live trading through MCP stays self-hosted: `pip install oddsrail` with your own
 key, and the same `place_order` posts real orders when you set
 `ODDSRAIL_DRY_RUN=0`. The hosted runner is a separate service.
-The paper ledger you build up in Claude is yours to reset with
+The paper ledger you build up through MCP is yours to reset with
 `paper_reset`; nothing else about the account exists. Privacy policy:
 [oddsrail.app/privacy](https://oddsrail.app/privacy). This repository holds
 the MCP server; `oddsrail/hosted.py` lists what the hosted profile removes.
@@ -176,11 +159,12 @@ repository.
 ## Builder page and competition
 
 [Build your agent](https://oddsrail.app/build) by choosing strategies,
-markets and risk limits. The final step saves the draft and opens
-[Claude Desktop setup](https://oddsrail.app/advanced), with the installer
+markets and risk limits. Hosted quoting has a separate account-check and
+start flow. For a local strategy, save the draft and open
+[AI client setup](https://oddsrail.app/advanced) for connection instructions
 and a strategy brief that preserves your settings.
 
-The brief asks Claude for read-only review. It does not install a strategy,
+The brief asks your AI client for read-only review. It does not install a strategy,
 start an autonomous runner or enforce the builder's requested daily-loss,
 exposure or market rules. Local live trading needs separate account setup,
 operator guards and explicit authorization. Hosted agent activation needs a
@@ -264,8 +248,7 @@ environment and commands.
 **Release verification:** the installer launch command installed the
 published PyPI package and completed a real MCP session. Default and
 unexpected mode settings stayed in simulation. No funded orders were
-placed during that release check; installation through Claude Desktop's
-interface and funded trading still need testing.
+placed during that release check; installation through the desktop host interface and funded trading still need testing.
 
 Earlier Polymarket integration checks, including attributed orders and
 gasless position management, are recorded in

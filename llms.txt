@@ -55,7 +55,8 @@ the operator's own API key for private endpoints; read tools do not.
 ## Install
 
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-claude mcp add --transport stdio oddsrail -- /abs/path/oddsrail/.venv/bin/python -m oddsrail.server
+Configure your MCP client with command /abs/path/oddsrail/.venv/bin/python
+and arguments ["-m", "oddsrail.server"] using its local stdio settings.
 
 ## Notes for agents
 

@@ -5,7 +5,7 @@ description: "Decide whether a Polymarket vs Kalshi price difference is a real e
 
 # check cross venue edge
 
-Use the tools of the `oddsrail` MCP server (install: `pip install oddsrail`, then `claude mcp add --transport stdio oddsrail -- oddsrail`, or enable the oddsrail plugin). Prices are implied probabilities in (0,1). Trading tools are dry-run unless the operator has set ODDSRAIL_DRY_RUN=0; never assume an order was placed without checking the `dry_run` field of the result.
+Use the tools of the `oddsrail` MCP server (install: `pip install oddsrail`, then configure your MCP client with local stdio command `oddsrail` and no arguments). Prices are implied probabilities in (0,1). Trading tools are dry-run unless the operator has set ODDSRAIL_DRY_RUN=0; never assume an order was placed without checking the `dry_run` field of the result.
 
 Investigate whether '$ARGUMENTS' offers a genuine cross-venue edge.
 

@@ -4,7 +4,7 @@ MCP server exposing Polymarket market data, order routing with on-chain
 builder-code attribution (CLOB V2), and premium signal tools (overshoot,
 dispute risk). Self-hosted and non-custodial: keys never leave the machine.
 
-Run (stdio, for Claude Code / Desktop / any MCP client):
+Run (stdio, for any MCP-compatible AI client):
     .venv/bin/python -m oddsrail.server
 """
 
@@ -1088,7 +1088,8 @@ markets (Polymarket + Kalshi).
 This is NOT an interactive CLI. It speaks the Model Context Protocol over
 stdio, so it is meant to be launched by an MCP client:
 
-    claude mcp add --transport stdio oddsrail -- oddsrail
+    command: oddsrail
+    arguments: []
 
 Then ask your agent: "find markets about the world cup and quote the cost of
 100 shares on the favourite".

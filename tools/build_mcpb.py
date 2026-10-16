@@ -40,14 +40,14 @@ def manifest(v: str) -> dict:
         "name": "oddsrail",
         "display_name": "OddsRail",
         "version": v,
-        "description": "Polymarket tools for Claude, with local signing and operator-set spending limits.",
+        "description": "Polymarket tools for AI agents, with local signing and operator-set spending limits.",
         "long_description": (
-            "OddsRail gives Claude live Polymarket and Kalshi market data, costed fills and order "
+            "OddsRail provides live Polymarket and Kalshi market data, costed fills and order "
             "routing, operator-set spending limits and a separate check_order tool to review a "
-            "proposal before submission. Ask Claude to run that check before each order.\n\n"
+            "proposal before submission. Ask your agent to run that check before each order.\n\n"
             "It starts in paper trading, filled against the live order book, so nothing real is "
             "sent until you untick Paper trading. Your wallet key is optional, is stored in your "
-            "operating system's keychain by Claude Desktop and used by the local server to sign. "
+            "operating system's keychain by the desktop host and used by the local server to sign. "
             "Live orders need an existing funded Polymarket account with trading approvals. "
             "This is a local tool connection, not an always-on runner for website strategies. "
             "Open source, MIT; OddsRail adds no trading fee. Venue fees may apply."),
@@ -87,7 +87,7 @@ def manifest(v: str) -> dict:
             "polymarket_private_key": {
                 "type": "string", "title": "Polymarket wallet private key",
                 "description": ("Optional. Use the signer key for your funded Polymarket account, only in these "
-                                "settings. Claude Desktop stores it securely; the local server uses it to sign. "
+                                "settings. The desktop host stores it securely; the local server uses it to sign. "
                                 "Never paste it in a chat. Leave empty to browse and simulate."),
                 "sensitive": True, "required": False},
             "polymarket_wallet_address": {
@@ -112,7 +112,7 @@ def pyproject(v: str) -> str:
     return f'''[project]
 name = "oddsrail-claude-desktop"
 version = "{v}"
-description = "Claude Desktop bundle for oddsrail; installs the published package."
+description = "Desktop MCP bundle for oddsrail; installs the published package."
 requires-python = ">=3.11"
 dependencies = ["oddsrail=={v}"]
 '''
