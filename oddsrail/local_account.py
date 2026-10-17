@@ -1,6 +1,6 @@
 """Read authenticated collateral without mistaking holdings for trading cash.
 
-polymarket-client 0.6.0 exposes ``client.wallet`` and
+The pinned polymarket-client SDK exposes ``client.wallet`` and
 ``get_balance_allowance(asset_type="COLLATERAL")``. Its BalanceAllowance
 model holds integer base units; pUSD has six decimals. This module takes an
 existing client and only calls that read endpoint. It never provisions a
@@ -101,7 +101,7 @@ async def read_cash_balance(client: Any) -> dict:
 async def read_configured_cash(private_key: str, wallet: str) -> dict:
     """Authenticate a balance read without the SDK's wallet deployment step.
 
-    The pinned 0.6.0 public create() calls _ensure_wallet_ready(), which can
+    The pinned 0.12.0 public create() calls _ensure_wallet_ready(), which can
     deploy an account. Its lower-level factory authenticates and resolves the
     supplied wallet only. Keep this boundary explicit and tested on SDK updates.
     Never provide relayer credentials to this read client.

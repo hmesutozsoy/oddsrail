@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.0rc2 (2026-10-17, release preparation)
+
+- Align source installs with the reviewed unified Polymarket SDK 0.12.0 pin and check source requirements against the tested dependency lock in CI.
+- Preserve the Protocol V2 live-order and position-transaction gates from rc1. Funded V2 validation is deferred; this candidate does not enable it.
+- Hosted cancellation now waits for this engine's current account operation instead of losing the cancellation attempt to `account_busy`. Other workers still require the durable account lease, and start/submit operations remain fail-fast under contention.
+
 ## 0.20.0rc1 (2026-10-07)
 
 - Upgrade the reviewed Polymarket SDK to 0.12.0 with an exact hashed dependency lock.

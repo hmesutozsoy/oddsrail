@@ -67,6 +67,11 @@ def check(root: Path = ROOT) -> list[str]:
     manifest = tomllib.loads((root / "pyproject.toml").read_text())
     config = manifest["project"]
     declared = list(config["dependencies"])
+    # The documented source-install path must accept the same tested runtime.
+    # Otherwise requirements.txt can silently keep users on an older SDK even
+    # while package metadata and the CI lock agree on the migration candidate.
+    declared.extend(line.strip() for line in (root / "requirements.txt").read_text().splitlines()
+                    if line.strip() and not line.lstrip().startswith("#"))
     for group in ("dev", "cloud"):
         declared.extend(config["optional-dependencies"][group])
     declared.extend(manifest["build-system"]["requires"])

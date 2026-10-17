@@ -46,7 +46,7 @@ Do not enable the adapter gate based on signing tests alone. Before enabling:
    account. Retain regression coverage for CTF orders and holdings.
 5. Review ExchangeV3 fill rounding before extending the hosted buy-only pilot
    to SELLs. SELL support also requires PositionManager approval.
-6. Update raw discovery/selection and the legacy SDK-backed local execution and
+6. Update raw discovery/selection and the SDK-backed local execution and
    redemption path together before advertising end-to-end V2 strategy support.
    The local MCP candidate now pins SDK 0.12.0; funded V2 execution remains disabled.
 
@@ -117,3 +117,68 @@ The release candidate is suitable for reviewing migrated data and discovery
 and regression-testing existing CTF workflows. It is not full funded V2
 support. Before removing the local gate, verify BUY/SELL settlement, approvals,
 cancellation and position management with an explicitly approved test budget.
+
+## Unified SDK announcement review: October 17
+
+The project already uses the official unified Python package,
+`polymarket-client`; it does not need a replacement of deprecated CLOB or
+relayer packages. SDK migration and Protocol V2 activation are separate work.
+
+Verified against package metadata and the deployed interpreter:
+
+- PyPI stable OddsRail 0.19.0 still requires SDK 0.6.0. GitHub exposes
+  0.20.0rc1 as a prerelease, not the latest stable release.
+- The production server has SDK 0.6.0 installed. Its hosted execution adapter
+  uses raw API/signing code; upgrading the SDK alone does not upgrade that path.
+- Candidate metadata and the hashed CI lock pin SDK 0.12.0, meeting the
+  documented V2 minimum. The source-install requirements now match that pin.
+- The latest SDK on PyPI is 0.13.0. Review its changes separately before
+  changing the tested pin; read-only account construction uses an internal
+  SDK method to avoid automatic wallet deployment.
+- A read-only Gamma request with `version=v2` returned weather canaries with
+  explicit `v2` metadata and `positionIds`. Availability does not establish
+  funded order, settlement or redemption compatibility.
+
+The supplied Polymarket announcement targets November 2 for net-new V2
+markets. Treat that as a rollout target, not a guaranteed deadline. Existing
+CTF holdings retain their original protocol. Perps are a separate integration.
+
+Next steps are to validate and publish the MCP candidate, review a production
+dependency upgrade, and complete the funded checks above before enabling V2.
+This review does not publish a package, upgrade production, change permissions,
+or enable trading on canaries.
+
+The initial focused audit found an intermittent `account_busy` failure in
+cancellation recovery. The follow-up below resolves the same-engine contention
+that caused it.
+
+Additional sources:
+
+- https://docs.polymarket.com/migrate/clob-sdk-to-unified-sdk
+- https://docs.polymarket.com/migrate/polymarket-v2/sdk-integrations
+- https://pypi.org/pypi/oddsrail/json
+- https://pypi.org/pypi/polymarket-client/json
+
+## Candidate preparation: 0.20.0rc2
+
+Cancellation and halts now wait behind an operation already owned by the same
+engine, including asynchronous lease cleanup. Start and submission operations
+still fail immediately on contention; other engines/processes still need the
+durable, fenced account lease. A cancelled waiter does not execute later.
+Unconfirmed cancellations still retain their exposure until reconciliation.
+
+Source installs, package metadata and CI all use the reviewed SDK 0.12.0.
+The CI environment guard now checks source-install requirements too. The
+read-only account factory remains separate from automatic wallet deployment.
+Package, registry, plugin and desktop candidate metadata identify 0.20.0rc2;
+stable download links stay on the published release until publication.
+
+Validation: 2,448 Python tests passed on each of Python 3.11, 3.12 and 3.13;
+618 UI tests passed. The original cancellation regression passed ten consecutive
+runs with both active and inactive permission (20 cases). Replay coverage still
+checks stale-feed heartbeat suppression, confirmed cancellation, partial-fill
+exposure and absence of duplicate submissions.
+
+Funded V2 tests are explicitly deferred. Neither the local V2 execution gate
+nor the hosted owner/market allowlist has been relaxed. Preparing this candidate
+does not publish it, deploy the hosted fix, or upgrade a user's installed MCP.

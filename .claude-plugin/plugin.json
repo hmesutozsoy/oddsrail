@@ -1,6 +1,6 @@
 {
   "name": "oddsrail",
-  "version": "0.20.0rc1",
+  "version": "0.20.0rc2",
   "description": "Polymarket and Kalshi MCP integration: live books, costed fills, settlement audits, guardrails, paper trading, and non-custodial order routing. Read tools need no keys.",
   "author": {
     "name": "Mesut Ozsoy",

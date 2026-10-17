@@ -33,6 +33,7 @@ def inventory(tmp_path, monkeypatch, guard):
                 "editables": "0.5"}
     (requirements / "ci.lock").write_text("\n".join(f"{name}=={version}{HASH}" for name, version in versions.items()) + "\n")
     (requirements / "ci-tooling.in").write_text("hatchling\neditables\n")
+    (tmp_path / "requirements.txt").write_text("httpx>=0.28\npolymarket-client==0.6.0\n")
     (tmp_path / "pyproject.toml").write_text('''
 [build-system]
 requires = ["hatchling"]
@@ -117,3 +118,9 @@ def test_new_ci_tooling_dependency_requires_an_updated_lock(guard, inventory):
     tooling = root / "requirements/ci-tooling.in"
     tooling.write_text(tooling.read_text() + "\n# Newly needed build hook\nnew-build-hook>=1\n")
     assert "Declared dependency missing from tested lock: new-build-hook" in guard.check(root)
+
+
+def test_source_install_cannot_silently_pin_an_untested_sdk(guard, inventory):
+    root, _ = inventory
+    (root / "requirements.txt").write_text("httpx>=0.28\npolymarket-client==0.5.0\n")
+    assert "Declared dependency missing from tested lock: polymarket-client" in guard.check(root)

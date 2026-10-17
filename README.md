@@ -186,7 +186,7 @@ order-format upgrade described below. Do not interpret CLOB V2 attribution
 support as verified end-to-end Protocol V2 trading.
 
 Current source uses Data API v2 for public account reads. Hosted Protocol V2
-quoting remains restricted to explicit owner/market canaries. The 0.20.0rc1
+quoting remains restricted to explicit owner/market canaries. The 0.20.0rc2
 local MCP candidate upgrades the SDK and protocol-aware discovery. Live V2 orders and split/merge/redeem are refused before signing
 until funded validation completes; do not treat this candidate as full
 Protocol V2 live support. Existing CTF markets must retain their own routing.
@@ -448,7 +448,7 @@ the expertise, which a flat tool list cannot convey.
 
 ## Stack notes
 
-- Official unified SDK `polymarket-client` (0.6.x): `AsyncPublicClient` for
+- Official unified SDK `polymarket-client` (0.12.0 in this release candidate): `AsyncPublicClient` for
   data, `AsyncSecureClient.place_limit_order(..., builder_code=...)` for
   attributed orders. The legacy `py-clob-client` is archived and cannot
   attach builder codes. Do not use it.
