@@ -9,10 +9,10 @@ Use the tools of the `oddsrail` MCP server (install: `pip install oddsrail`, the
 
 Investigate whether '$ARGUMENTS' offers a genuine cross-venue edge.
 
-1. compare_venues('$ARGUMENTS') — candidates only. It returns nothing for most
+1. compare_venues('$ARGUMENTS'): candidates only. It returns nothing for most
    queries, which is the honest answer, not a failure.
 2. For any candidate: settlement_audit(polymarket_id, kalshi_ticker).
-   A 'block' verdict ends it — the legs do not hedge each other and the
+   A 'block' verdict ends it: the legs do not hedge each other and the
    price difference is not an edge.
 3. On 'ok' or 'caution': quote_cost on BOTH legs at the size you would
    actually trade. Cross-venue differences are usually smaller than the
@@ -21,5 +21,5 @@ Investigate whether '$ARGUMENTS' offers a genuine cross-venue edge.
    not mean identical settlement.
 5. Only then size the trade.
 
-State plainly if the conclusion is 'no edge here' — that is the usual and
+State plainly if the conclusion is 'no edge here'. That is the usual and
 correct outcome.

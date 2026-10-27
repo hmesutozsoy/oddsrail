@@ -1,8 +1,8 @@
 """oddsrail — the rail AI agents use to trade prediction markets.
 
 MCP server exposing Polymarket market data, order routing with on-chain
-builder-code attribution (CLOB V2), and premium signal tools (overshoot,
-dispute risk). Self-hosted and non-custodial: keys never leave the machine.
+builder-code attribution (CLOB V2), and signal tools (overshoot, dispute
+risk). Self-hosted and non-custodial: keys never leave the machine.
 
 Run (stdio, for any MCP-compatible AI client):
     .venv/bin/python -m oddsrail.server
@@ -10,9 +10,11 @@ Run (stdio, for any MCP-compatible AI client):
 
 import json
 import os
+from typing import Annotated
 
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from . import audit as au
 from . import check as ck
@@ -28,15 +30,22 @@ from . import trading
 
 VERSION = "0.20.0rc2"
 
+# Said in both profiles: what the outputs are, who decides, and who we are not.
+DISCLOSURE = (
+    "Analysis, signal and sizing outputs are informational and are not "
+    "financial advice; the user decides every order. OddsRail is independent "
+    "and is not affiliated with or endorsed by Polymarket or Kalshi."
+)
+
 HOSTED_INSTRUCTIONS = (
     "Hosted oddsrail: Polymarket market data, signals, deterministic order "
-    "checks (check_order) and PAPER trading, per signed-in account. The "
-    "server holds no keys and never sends a real order: place_order fills "
+    "checks (check_order) and PAPER trading, per signed-in account. These "
+    "tools use no wallet keys and never send a real order: place_order fills "
     "against the live book into your account's paper ledger and "
     "paper_positions shows the P&L. Prices are implied probabilities in "
     "(0,1). Kalshi is not served here (self-host for it). Live trading is "
     "self-hosted: pip install oddsrail. Call server_info to see the "
-    "signed-in account and the server's venue reachability."
+    "signed-in account and the server's venue reachability. " + DISCLOSURE
 )
 
 
@@ -63,9 +72,11 @@ srv = MCPServer(
         "Prediction-market rail for trading agents. Read tools need no keys. "
         "place_order defaults to dry-run; the operator must set "
         "ODDSRAIL_DRY_RUN=0 and POLYMARKET_PRIVATE_KEY to trade. Prices are "
-        "implied probabilities in (0,1). Orders carry the operator's builder "
-        "code (ODDSRAIL_BUILDER_CODE) signed into the order for on-chain "
-        "attribution. Kalshi tools are prefixed kalshi_ and need the "
+        "implied probabilities in (0,1). Orders carry OddsRail's own builder "
+        "code by default (0 bps, so no fee is added), signed into the order "
+        "for on-chain attribution; when the operator sets "
+        "ODDSRAIL_BUILDER_CODE, their code is used instead. Kalshi tools are "
+        "prefixed kalshi_ and need the "
         "operator's own API key for private endpoints; Kalshi prices are "
         "probabilities in (0,1) here, translated to its YES-book bid/ask "
         "internally. Both venues restrict trading by jurisdiction and read "
@@ -79,7 +90,8 @@ srv = MCPServer(
         "Polymarket orders are papered against the live book and "
         "paper_positions shows the simulated P&L. Operator guardrails "
         "(per-order and per-session notional caps, allowed markets) are "
-        "enforced before any request and cannot be changed by the agent."
+        "enforced before any request and cannot be changed by the agent. "
+        + DISCLOSURE
     ),
 )
 
@@ -94,11 +106,31 @@ def _j(x) -> str:
 # second copy is unusable, so turn it off rather than pay for it.
 READ = ToolAnnotations(read_only_hint=True, destructive_hint=False,
                        idempotent_hint=True, open_world_hint=True)
+# Pure local arithmetic: no network, no state, same answer every time.
+LOCAL_READ = ToolAnnotations(read_only_hint=True, destructive_hint=False,
+                             idempotent_hint=True, open_world_hint=False)
 # Trading tools are NOT read-only and NOT idempotent: retrying a place_order
 # after a timeout can double a position. Clients use these hints to decide
 # what needs confirmation.
 TRADE = ToolAnnotations(read_only_hint=False, destructive_hint=True,
                         idempotent_hint=False, open_world_hint=True)
+# Wipes the paper ledger and nothing else; a second reset changes nothing more.
+LEDGER_RESET = ToolAnnotations(read_only_hint=False, destructive_hint=True,
+                               idempotent_hint=True, open_world_hint=False)
+# Reads the live book, fills crossed resting paper orders and saves the ledger.
+LEDGER_SETTLE = ToolAnnotations(read_only_hint=False, destructive_hint=False,
+                                idempotent_hint=False, open_world_hint=True)
+
+# geo's "unreachable" hint ends by sending the agent to open_orders, which the
+# hosted connector hides, and asks the user to check DNS from a machine that
+# is ours. Hosted orders are paper, so there is nothing to look up either.
+HOSTED_UNREACHABLE_HINT = (
+    "Could not get a response from {host}: the connection from the hosted "
+    "server failed (DNS, TLS, reset, or refused). That is a network problem "
+    "between the server and the venue, not anything about the request. Do "
+    "not retry in a loop; try again later. Orders on this connector are "
+    "paper only and never reach the venue."
+)
 
 
 def _err_obj(e: Exception, hint: str = "", host: str = "") -> dict:
@@ -137,7 +169,9 @@ def _err_obj(e: Exception, hint: str = "", host: str = "") -> dict:
     cls = geo.classify(e, status, venue)
     if cls:
         out["failure_class"] = cls
-        out["hint"] = geo.HINTS[cls].format(host=host or "the venue")
+        text = (HOSTED_UNREACHABLE_HINT if cls == "unreachable" and hosted.enabled()
+                else geo.HINTS[cls])
+        out["hint"] = text.format(host=host or "the venue")
     elif getattr(e, "hint", None):
         out["hint"] = e.hint
     elif hint:
@@ -154,6 +188,7 @@ def _err(e: Exception, hint: str = "", host: str = "") -> str:
 @srv.tool(description="Search Polymarket markets by text (Gamma public-search "
                       "under the hood); empty query lists open markets. "
                       "Returns token ids, prices, metrics, resolution info.",
+           title="Search Polymarket markets",
            annotations=READ, structured_output=False)
 async def search_markets(query: str = "", limit: int = 10) -> str:
     try:
@@ -168,28 +203,31 @@ async def search_markets(query: str = "", limit: int = 10) -> str:
                       "(the market_id that find_markets and search_markets "
                       "return), so a token id from a search can be passed "
                       "straight in.",
+           title="Get a Polymarket market",
            annotations=READ, structured_output=False)
 async def get_market(id_or_slug: str) -> str:
     try:
         return _j(await pm.get_market(id_or_slug))
     except Exception as e:
-        return _err(e, "no market with that slug or id — run search_markets first "
+        return _err(e, "no market with that slug or id: run search_markets first "
                       "and use the `slug` field", host="the Polymarket API")
 
 
 @srv.tool(description="Get the live orderbook (bids/asks) for a CLOB token id.",
+           title="Polymarket order book",
            annotations=READ, structured_output=False)
 async def get_orderbook(token_id: str) -> str:
     try:
         return _j(await pm.get_orderbook(token_id))
     except Exception as e:
         return _err(e, "token_id is the long numeric CLOB id from a market's "
-                      "outcomes.yes.token_id — not the slug or condition_id",
+                      "outcomes.yes.token_id, not the slug or condition_id",
                     host="the Polymarket CLOB")
 
 
 @srv.tool(description="Recent price history for a CLOB token id: hours back, "
                       "at fidelity_minutes resolution.",
+           title="Polymarket price history",
            annotations=READ, structured_output=False)
 async def price_history(token_id: str, hours: float = 6.0,
                         fidelity_minutes: int = 1) -> str:
@@ -203,6 +241,7 @@ async def price_history(token_id: str, hours: float = 6.0,
 
 
 @srv.tool(description="Current positions for a wallet address.",
+           title="Polymarket positions for a wallet",
            annotations=READ, structured_output=False)
 async def get_positions(address: str, limit: int = 25) -> str:
     try:
@@ -212,12 +251,13 @@ async def get_positions(address: str, limit: int = 25) -> str:
                     host="the Polymarket data API")
 
 
-# ------------------------------ signals (premium) --------------------------- #
+# ------------------------------ signals ------------------------------------ #
 
-@srv.tool(description="PREMIUM SIGNAL — overshoot/fade detector. Analyzes a "
-                      "token's recent price series for fresh panic jumps and "
-                      "reports whether a fade setup is active plus this "
-                      "market's historical reversion tendency.",
+@srv.tool(description="Overshoot and fade detector. Analyzes a token's recent "
+                      "price series for fresh panic jumps and reports whether "
+                      "a fade setup is active, plus the median reversion of "
+                      "earlier jumps in the same window.",
+           title="Polymarket overshoot signal",
            annotations=READ, structured_output=False)
 async def overshoot_signal(token_id: str, hours: float = 6.0,
                            threshold: float = 0.05,
@@ -233,17 +273,18 @@ async def overshoot_signal(token_id: str, hours: float = 6.0,
                                        threshold=threshold))
 
 
-@srv.tool(description="PREMIUM SIGNAL — dispute-risk triage. Scores 0-100 how "
-                      "likely a market's resolution gets contested (UMA "
-                      "dispute risk) with transparent reasons. Takes the "
+@srv.tool(description="Dispute-risk triage: a heuristic 0-100 score for how "
+                      "likely a market's resolution is to be contested (UMA "
+                      "dispute risk), with the reasons behind it. Takes the "
                       "market slug, the Gamma id, or a CLOB token id (the "
                       "market_id a search returns).",
+           title="Polymarket dispute risk",
            annotations=READ, structured_output=False)
 async def dispute_risk(id_or_slug: str) -> str:
     try:
         market = await pm.get_market(id_or_slug, full=True)
     except Exception as e:
-        return _err(e, "no market with that slug or id — run search_markets first",
+        return _err(e, "no market with that slug or id: run search_markets first",
                     host="the Polymarket API")
     flat = dict(market)
     # V2 model nests resolution info; surface it for the heuristic
@@ -259,35 +300,52 @@ async def dispute_risk(id_or_slug: str) -> str:
 
 # ------------------------------ trading ------------------------------------ #
 
-@srv.tool(description="CHECK BEFORE YOU PLACE: deterministic verification of "
-                      "a proposed order against the operator's intent, the "
-                      "live market and the guardrails. Pass the operator's own "
-                      "words as `intent`. Returns ok / caution / block with "
-                      "the evidence per check (market exists and is open, "
-                      "intent matches the market and the YES/NO side, price "
-                      "is sane vs the book, size and $1 minimum, guardrails, "
-                      "liquidity, resolution source) plus a one-line "
-                      "read-back. No model judges anything; nothing is sent.",
+# check.py matches these words to the market title and reads YES/NO from them,
+# so a paraphrase of the order is all it needs; nothing else from the chat.
+INTENT_DESC = ("A short paraphrase of the order the user asked for, naming the "
+               "market and the outcome (YES or NO), e.g. 'buy YES on Spain to "
+               "win the World Cup'. Size and price go in their own parameters. "
+               "Include no other conversation content.")
+
+
+@srv.tool(description="Pre-trade check, to run before place_order: "
+                      "deterministic verification of a proposed order against "
+                      "the order the user asked for, the live market and the "
+                      "guardrails. Pass a short paraphrase of the requested "
+                      "order as `intent` (the market and the outcome) and no "
+                      "other conversation content. Returns ok / "
+                      "caution / block with the evidence per check (market "
+                      "exists and is open, intent matches the market and the "
+                      "YES/NO side, price is sane vs the book, size and $1 "
+                      "minimum, guardrails, liquidity, resolution source) "
+                      "plus a one-line read-back. No model judges anything; "
+                      "nothing is sent.",
+           title="Pre-trade order check",
            annotations=READ, structured_output=False)
 async def check_order(venue: str, market_id: str, side: str, price: float,
-                      size: float, intent: str = "", outcome: str = "") -> str:
+                      size: float, intent: Annotated[str, Field(description=INTENT_DESC)] = "",
+                      outcome: str = "") -> str:
     if hosted.enabled() and str(venue).lower() == "kalshi":
         return _j({"verdict": "block", "error": hosted.KALSHI_NOTE})
     try:
         return _j(await ck.check_order(venue, market_id, side, price, size, intent, outcome))
     except Exception as e:
-        return _err(e, "market_id is the Polymarket token id or the Kalshi ticker",
+        return _err(e, "market_id is the Polymarket token id" if hosted.enabled()
+                    else "market_id is the Polymarket token id or the Kalshi ticker",
                     host="the venue")
 
 
 @srv.tool(description="Place a limit order. DRY-RUN by default: returns the "
                       "order it would post. Real trading needs "
                       "ODDSRAIL_DRY_RUN=0 and POLYMARKET_PRIVATE_KEY. The "
-                      "operator's builder code is signed into the order. "
+                      "order carries OddsRail's own 0 bps builder code (no "
+                      "fee added) for attribution, or the operator's code "
+                      "when ODDSRAIL_BUILDER_CODE is set. "
                       "price is the implied probability in (0,1); size is in "
                       "SHARES (notional = price * size), and the exchange "
                       "enforces a $1 minimum notional on marketable orders. "
                       "post_only=True rejects rather than crosses the book.",
+           title="Place a Polymarket order",
            annotations=TRADE, structured_output=False)
 async def place_order(token_id: str, side: str, price: float, size: float,
                       post_only: bool = False) -> str:
@@ -297,22 +355,24 @@ async def place_order(token_id: str, side: str, price: float, size: float,
     except Exception as e:
         # trading.place_order structures its own network failures; what can
         # reach here is input validation, config, or response processing.
-        return _err(e, "order NOT confirmed either way — call open_orders to "
+        return _err(e, "order NOT confirmed either way: call open_orders to "
                        "see whether anything rests before retrying",
                     host="the Polymarket CLOB")
 
 
 @srv.tool(description="Cancel an open order by id (respects dry-run).",
+           title="Cancel a Polymarket order",
            annotations=TRADE, structured_output=False)
 async def cancel_order(order_id: str) -> str:
     try:
         return _j(await trading.cancel_order(order_id))
     except Exception as e:
-        return _err(e, "cancellation not confirmed — call open_orders to see "
+        return _err(e, "cancellation not confirmed: call open_orders to see "
                        "whether it still rests", host="the Polymarket CLOB")
 
 
 @srv.tool(description="List the operator wallet's open orders.",
+           title="Open Polymarket orders",
            annotations=READ, structured_output=False)
 async def open_orders() -> str:
     try:
@@ -324,8 +384,10 @@ async def open_orders() -> str:
 # ------------------------------ builder ------------------------------------ #
 
 @srv.tool(description="Builder attribution stats: the public builder "
-                      "leaderboard, and (if ODDSRAIL_BUILDER_CODE is set) "
-                      "matched trades attributed to this operator's code.",
+                      "leaderboard, plus matched trades for the builder code "
+                      "in use (the operator's when ODDSRAIL_BUILDER_CODE is "
+                      "set, otherwise OddsRail's own default code).",
+           title="Polymarket builder stats",
            annotations=READ, structured_output=False)
 async def builder_stats(time_period: str = "WEEK") -> str:
     try:
@@ -342,7 +404,7 @@ async def builder_stats(time_period: str = "WEEK") -> str:
             out[f"{key}_error"] = str(e)
         if not own:
             out["note"] = ("these trades belong to the BUNDLED oddsrail builder "
-                           "code, not to you — they are whatever flow the "
+                           "code, not to you: they are whatever flow the "
                            "default has attributed project-wide. Set "
                            "ODDSRAIL_BUILDER_CODE to your own code to track "
                            "yours.")
@@ -355,6 +417,7 @@ async def builder_stats(time_period: str = "WEEK") -> str:
                       "into an honest 'external' line. Built from Polymarket's "
                       "own public builder feed, so any figure it reports can be "
                       "checked at data-api.polymarket.com/v2/builders/leaderboard.",
+           title="Builder attribution ledger",
            annotations=READ, structured_output=False)
 async def attribution_ledger() -> str:
     code = trading.builder_code()
@@ -373,6 +436,7 @@ async def attribution_ledger() -> str:
                       "endpoint, so this pages open markets and filters on "
                       "title/ticker; auto-generated MVE combo shards are "
                       "excluded. Prices are dollar strings, not cents.",
+           title="Search Kalshi markets",
            annotations=READ, structured_output=False)
 async def kalshi_search_markets(query: str = "", limit: int = 10,
                                 min_volume: float = 0.0) -> str:
@@ -384,6 +448,7 @@ async def kalshi_search_markets(query: str = "", limit: int = 10,
 
 
 @srv.tool(description="Get one Kalshi market by ticker.",
+           title="Get a Kalshi market",
            annotations=READ, structured_output=False)
 async def kalshi_get_market(ticker: str) -> str:
     try:
@@ -396,6 +461,7 @@ async def kalshi_get_market(ticker: str) -> str:
 @srv.tool(description="Kalshi orderbook for a ticker, normalised to a YES-book "
                       "bid/ask view (Kalshi publishes bid ladders only; asks "
                       "are derived as 1 - NO bid). Raw ladders included.",
+           title="Kalshi order book",
            annotations=READ, structured_output=False)
 async def kalshi_get_orderbook(ticker: str, depth: int = 10) -> str:
     try:
@@ -406,6 +472,7 @@ async def kalshi_get_orderbook(ticker: str, depth: int = 10) -> str:
 
 
 @srv.tool(description="Recent public trades for a Kalshi ticker.",
+           title="Recent Kalshi trades",
            annotations=READ, structured_output=False)
 async def kalshi_get_trades(ticker: str, limit: int = 50) -> str:
     try:
@@ -416,6 +483,7 @@ async def kalshi_get_trades(ticker: str, limit: int = 50) -> str:
 
 
 @srv.tool(description="Kalshi account balance (needs the operator's API key).",
+           title="Kalshi account balance",
            annotations=READ, structured_output=False)
 async def kalshi_balance() -> str:
     try:
@@ -426,6 +494,7 @@ async def kalshi_balance() -> str:
 
 
 @srv.tool(description="Kalshi positions (needs the operator's API key).",
+           title="Kalshi positions",
            annotations=READ, structured_output=False)
 async def kalshi_positions(limit: int = 50) -> str:
     try:
@@ -436,6 +505,7 @@ async def kalshi_positions(limit: int = 50) -> str:
 
 
 @srv.tool(description="Kalshi resting orders (needs the operator's API key).",
+           title="Open Kalshi orders",
            annotations=READ, structured_output=False)
 async def kalshi_open_orders(limit: int = 50) -> str:
     try:
@@ -449,6 +519,7 @@ async def kalshi_open_orders(limit: int = 50) -> str:
                       "outcome yes|no, action buy|sell, price = probability of "
                       "THAT outcome in (0,1). Translated to Kalshi's YES-book "
                       "bid/ask internally. DRY-RUN by default.",
+           title="Place a Kalshi order",
            annotations=TRADE, structured_output=False)
 async def kalshi_place_order(ticker: str, outcome: str, action: str,
                              price: float, count: float,
@@ -457,18 +528,19 @@ async def kalshi_place_order(ticker: str, outcome: str, action: str,
         return _j(await kx.place_order(ticker, outcome, action, price, count,
                                        time_in_force))
     except Exception as e:
-        return _err(e, "order not confirmed — call kalshi_open_orders to see "
+        return _err(e, "order not confirmed: call kalshi_open_orders to see "
                        "whether anything rests before retrying",
                     host="the Kalshi API")
 
 
 @srv.tool(description="Cancel a Kalshi order by id (respects dry-run).",
+           title="Cancel a Kalshi order",
            annotations=TRADE, structured_output=False)
 async def kalshi_cancel_order(order_id: str) -> str:
     try:
         return _j(await kx.cancel_order(order_id))
     except Exception as e:
-        return _err(e, "cancellation not confirmed — call kalshi_open_orders "
+        return _err(e, "cancellation not confirmed: call kalshi_open_orders "
                        "to see whether it still rests", host="the Kalshi API")
 
 
@@ -480,6 +552,7 @@ async def kalshi_cancel_order(order_id: str) -> str:
                       "as probabilities in (0,1), best bid/ask, spread, 24h "
                       "volume, close time. Use this instead of the per-venue "
                       "search tools when you do not already know the venue.",
+           title="Find markets across venues",
            annotations=READ, structured_output=False)
 async def find_markets(query: str, limit: int = 10,
                        venues: str = "both") -> str:
@@ -512,25 +585,29 @@ async def find_markets(query: str, limit: int = 10,
     live = [m for m in out if "error" not in m]
     live.sort(key=lambda m: -(m.get("volume_24h") or 0))
     errs = [m for m in out if "error" in m]
-    note = ("prices are implied probabilities in (0,1) on both "
-            "venues; pass market_id to the tool named in "
-            "trade_with. If kalshi_scan.truncated is true, the "
-            "Kalshi side is incomplete — it has no text search, "
-            "so absence there is not evidence of absence.")
+    if want == "polymarket":
+        note = ("prices are implied probabilities in (0,1); pass market_id "
+                "to the tool named in trade_with.")
+    else:
+        note = ("prices are implied probabilities in (0,1) on both "
+                "venues; pass market_id to the tool named in "
+                "trade_with. If kalshi_scan.truncated is true, the "
+                "Kalshi side is incomplete: it has no text search, "
+                "so absence there is not evidence of absence.")
     # An outage must never read as "no such market exists" — this is the tool
     # the server tells agents to prefer, so say it loudly, first. "Every venue
     # errored" is only claimable when it is true: one venue erroring while the
     # other legitimately returns nothing is a PARTIAL result, not an outage.
     venues_queried = (want == "both") + 1
     if len(errs) == venues_queried:
-        note = ("NO MARKETS RETURNED BECAUSE EVERY QUERIED VENUE ERRORED — "
+        note = ("NO MARKETS RETURNED BECAUSE EVERY QUERIED VENUE ERRORED: "
                 "this is a failed search, not an empty result. See "
                 "venue_errors, and call server_info for reachability. Do not "
                 "report to the operator that no such market exists. " + note)
     elif errs:
         missing = ", ".join(sorted({str(m.get("venue")) for m in errs}))
         note = (f"PARTIAL RESULT: the {missing} side errored and its markets "
-                "are missing — absence from this list is not evidence of "
+                "are missing, so absence from this list is not evidence of "
                 "absence. " + note)
     return _j({"markets": live[: limit * 2], "venue_errors": errs or None,
                "kalshi_scan": kalshi_scan,
@@ -542,8 +619,9 @@ async def find_markets(query: str, limit: int = 10,
                       "matches are candidates from title similarity plus a "
                       "close-date check, and a price difference between two "
                       "candidates is not profit. Identical wording does not "
-                      "mean identical resolution criteria — read both, and run "
+                      "mean identical resolution criteria. Read both, and run "
                       "quote_cost on each leg, before acting.",
+           title="Cross-venue market candidates",
            annotations=READ, structured_output=False)
 async def compare_venues(query: str, limit: int = 10,
                          min_similarity: float = 0.5,
@@ -582,9 +660,10 @@ async def compare_venues(query: str, limit: int = 10,
 @srv.tool(description="What a given size would ACTUALLY cost, by walking the "
                       "order book rather than reading the top level. Returns "
                       "average fill price, slippage vs best, notional, and the "
-                      "levels consumed — plus the venue's fee schedule where "
+                      "levels consumed, plus the venue's fee schedule where "
                       "it publishes one. Call this before sizing any trade, "
                       "and on both legs before acting on a cross-venue gap.",
+           title="Quote the cost of an order",
            annotations=READ, structured_output=False)
 async def quote_cost(venue: str, market_id: str, side: str,
                      size: float) -> str:
@@ -642,6 +721,7 @@ async def quote_cost(venue: str, market_id: str, side: str,
 @srv.tool(description="Status of one Polymarket order: resting, partially "
                       "filled, filled, or gone. The lifecycle answer an agent "
                       "needs after place_order.",
+           title="Polymarket order status",
            annotations=READ, structured_output=False)
 async def order_status(order_id: str) -> str:
     try:
@@ -650,8 +730,9 @@ async def order_status(order_id: str) -> str:
         return _err(e, host="the Polymarket CLOB")
 
 
-@srv.tool(description="Recent executions (fills) for the operator wallet — "
-                      "confirms what actually traded, with tx hashes.",
+@srv.tool(description="Recent executions (fills) for the operator wallet. "
+                      "Confirms what actually traded, with tx hashes.",
+           title="Recent Polymarket fills",
            annotations=READ, structured_output=False)
 async def my_fills(limit: int = 25) -> str:
     try:
@@ -662,6 +743,7 @@ async def my_fills(limit: int = 25) -> str:
 
 @srv.tool(description="The operator's current Polymarket positions (uses the "
                       "configured wallet; no address needed).",
+           title="My Polymarket positions",
            annotations=READ, structured_output=False)
 async def my_positions(limit: int = 50) -> str:
     w = trading.operator_wallet()
@@ -677,21 +759,23 @@ async def my_positions(limit: int = 50) -> str:
                       "value; available-to-trade remains unknown until outstanding "
                       "orders and unsettled fills are reconciled. Requires local "
                       "account credentials. In simulation use paper_positions.",
+           title="Polymarket cash and allowance",
            annotations=READ, structured_output=False)
 async def my_balance() -> str:
     return _j(await trading.my_balance())
 
 
 
-@srv.tool(description="KILL SWITCH — cancel every resting Polymarket order on "
-                      "the operator account at once. Use when exposure must "
-                      "go to zero fast. Respects dry-run.",
+@srv.tool(description="Emergency stop: cancel every resting Polymarket order "
+                      "on the operator account at once. Use when exposure "
+                      "must go to zero fast. Respects dry-run.",
+           title="Cancel all open Polymarket orders",
            annotations=TRADE, structured_output=False)
 async def cancel_all_orders() -> str:
     try:
         return _j(await trading.cancel_all_orders())
     except Exception as e:
-        return _err(e, "cancellations not confirmed — call open_orders to "
+        return _err(e, "cancellations not confirmed: call open_orders to "
                        "see what still rests", host="the Polymarket CLOB")
 
 
@@ -707,6 +791,7 @@ async def cancel_all_orders() -> str:
                       "POLYMARKET_RELAYER_API_KEY_ADDRESS (polymarket.com -> "
                       "Settings -> Relayer API keys). DRY-RUN by default. "
                       "Never falls back to a gas-paying broadcast.",
+           title="Split USDC into YES and NO shares",
            annotations=TRADE, structured_output=False)
 async def split_position(condition_id: str, amount_usdc: float) -> str:
     try:
@@ -721,6 +806,7 @@ async def split_position(condition_id: str, amount_usdc: float) -> str:
                       "via the relayer. amount is in shares, or 'max' for the "
                       "largest balanced amount held. Needs the operator's "
                       "relayer key. DRY-RUN by default.",
+           title="Merge YES and NO shares into USDC",
            annotations=TRADE, structured_output=False)
 async def merge_positions(condition_id: str, amount: str = "max") -> str:
     try:
@@ -734,6 +820,7 @@ async def merge_positions(condition_id: str, amount: str = "max") -> str:
                       "USDC, GASLESS via the relayer. Pass exactly one of "
                       "condition_id or market_id. Needs the operator's "
                       "relayer key. DRY-RUN by default.",
+           title="Redeem resolved Polymarket shares",
            annotations=TRADE, structured_output=False)
 async def redeem_positions(condition_id: str = "", market_id: str = "") -> str:
     try:
@@ -752,7 +839,8 @@ async def redeem_positions(condition_id: str = "", market_id: str = "") -> str:
                       "them). Dry-run Polymarket orders are papered against "
                       "the live book automatically. Simulated: no queue, no "
                       "impact, no fees, so results are an upper bound.",
-           annotations=READ, structured_output=False)
+           title="Paper positions",
+           annotations=LEDGER_SETTLE, structured_output=False)
 async def paper_positions() -> str:
     if not paper.enabled():
         return _j({"enabled": False, "note": "ODDSRAIL_PAPER=0 disables the paper ledger"})
@@ -766,7 +854,8 @@ async def paper_positions() -> str:
                       "bankroll (ODDSRAIL_PAPER_BANKROLL, default 1000 USDC). "
                       "Deletes simulated fills and positions; touches nothing "
                       "real.",
-           annotations=TRADE, structured_output=False)
+           title="Reset the paper ledger",
+           annotations=LEDGER_RESET, structured_output=False)
 def paper_reset() -> str:
     return _j(paper.reset())
 
@@ -779,6 +868,7 @@ def paper_reset() -> str:
                       "Use after get_orderbook when you need to see the book "
                       "MOVE before acting; a quiet market may deliver only "
                       "the initial snapshot.",
+           title="Watch a Polymarket order book",
            annotations=READ, structured_output=False)
 async def watch_book(token_id: str, seconds: float = 10.0,
                      max_events: int = 100) -> str:
@@ -793,6 +883,7 @@ async def watch_book(token_id: str, seconds: float = 10.0,
                       "redeemable (resolved, winning) positions and mergeable "
                       "(hold both YES and NO) positions, with the ids the "
                       "gasless tools take. Uses the configured wallet.",
+           title="Redeemable and mergeable positions",
            annotations=READ, structured_output=False)
 async def redeemable_positions(limit: int = 200) -> str:
     try:
@@ -801,12 +892,14 @@ async def redeemable_positions(limit: int = 200) -> str:
         return _err(e, host="the Polymarket data API")
 
 
-@srv.tool(description="READ BEFORE TRUSTING A PRICE: the full resolution "
-                      "contract for a market — what exactly resolves YES, who "
-                      "resolves it, from which sources. venue is 'polymarket' "
+@srv.tool(description="The full resolution contract for a market, worth "
+                      "reading before trusting its price: what exactly "
+                      "resolves YES, who resolves it, from which sources. "
+                      "venue is 'polymarket' "
                       "(pass the slug, the Gamma id, or the market_id a "
                       "search returned, which is a CLOB token id) or 'kalshi' "
                       "(pass the ticker).",
+           title="Market resolution criteria",
            annotations=READ, structured_output=False)
 async def resolution_criteria(venue: str, market_id: str) -> str:
     v = str(venue or "").lower()
@@ -826,7 +919,8 @@ async def resolution_criteria(venue: str, market_id: str) -> str:
 
 
 @srv.tool(description="Markets closing within N hours on either venue, by "
-                      "volume — where trading activity concentrates.",
+                      "volume, where trading activity concentrates.",
+           title="Markets closing soon",
            annotations=READ, structured_output=False)
 async def closing_soon(hours: float = 24.0, limit: int = 10,
                        venues: str = "both") -> str:
@@ -862,6 +956,7 @@ async def closing_soon(hours: float = 24.0, limit: int = 10,
                       "the market_id a search returned (a CLOB token id); "
                       "kalshi_ticker takes the ticker. Run this before "
                       "treating any cross-venue price difference as an edge.",
+           title="Cross-venue settlement audit",
            annotations=READ, structured_output=False)
 async def settlement_audit(polymarket_id: str, kalshi_ticker: str,
                            notional_usd: float = 0.0) -> str:
@@ -881,9 +976,10 @@ async def settlement_audit(polymarket_id: str, kalshi_ticker: str,
 @srv.tool(description="Fractional-Kelly position size for a binary contract, "
                       "given your bankroll, the market price, and YOUR fair "
                       "value estimate. Caps at a fraction of full Kelly and "
-                      "refuses negative-edge bets. Returns its assumptions — "
+                      "refuses negative-edge bets. Returns its assumptions; "
                       "subtract quote_cost before trusting the number.",
-           annotations=READ, structured_output=False)
+           title="Fractional Kelly position size",
+           annotations=LOCAL_READ, structured_output=False)
 def position_size(bankroll_usd: float, price: float, fair_value: float,
                   max_fraction_of_kelly: float = 0.25) -> str:
     return _j(au.kelly_size(bankroll_usd, price, fair_value,
@@ -901,23 +997,62 @@ def find_fade_setup(query: str = "", bankroll_usd: str = "100") -> str:
     return f"""Find a fade setup on prediction markets{f' related to: {query}' if query else ''}.
 
 Work in this order and stop if a step fails:
-1. find_markets({query!r}) — pick liquid candidates (volume_24h > 10000).
-2. For each candidate, overshoot_signal(token_id) — you want
+1. find_markets({query!r}): pick liquid candidates (volume_24h > 10000).
+2. For each candidate, overshoot_signal(token_id): you want
    fade_setup_active=true AND median_reversion_120s > 0.2. If
    median_reversion_120s is null, the series had no measurable history:
    treat that as no signal, not as a weak one.
-3. get_orderbook(token_id) — confirm the book is two-sided. bids/asks are
+3. get_orderbook(token_id): confirm the book is two-sided. bids/asks are
    already best-first here.
-4. quote_cost(venue, market_id, side, size) — the reversion must beat
+4. quote_cost(venue, market_id, side, size): the reversion must beat
    slippage + fees, not just the headline move. Most setups die here.
-5. resolution_criteria — a market that resolves ambiguously can strand the
+5. resolution_criteria: a market that resolves ambiguously can strand the
    position regardless of price action.
 6. position_size(bankroll_usd={bankroll_usd}, price, fair_value) where
    fair_value is the pre-jump price if you believe it fully reverts.
-7. check_order(venue, market_id, side, price, size, intent=<the operator's
-   words>) — a 'block' ends it; read any 'caution' back to the operator.
-8. place_order(...) — dry-run first and read back the intent before setting
+7. check_order(venue, market_id, side, price, size, intent=<a short
+   paraphrase of the order naming the market and the outcome>). A 'block'
+   ends it; read any 'caution' back to the operator.
+8. place_order(...): dry-run first and read back the intent before setting
    ODDSRAIL_DRY_RUN=0.
+
+Report the candidates you rejected and why; a rejected setup is a result."""
+
+
+# The hosted connector registers this in place of find_fade_setup: its orders
+# are paper only and Kalshi is not served, so there is no dry-run switch to
+# flip and only one venue to pass. Not decorated here, so the local prompt
+# (which scripts/gen_skills.py renders into skills/) stays the registered one.
+HOSTED_FADE_DESC = ("Find and evaluate a fade (mean-reversion) setup on "
+                    "Polymarket, end to end, with a paper order.")
+
+
+def hosted_find_fade_setup(query: str = "", bankroll_usd: str = "100") -> str:
+    return f"""Find a fade setup on Polymarket{f' related to: {query}' if query else ''}.
+
+Orders on this connector are paper only: place_order fills against the live
+Polymarket book into your account's paper ledger and nothing real is sent.
+
+Work in this order and stop if a step fails:
+1. find_markets({query!r}): pick liquid candidates (volume_24h > 10000).
+2. For each candidate, overshoot_signal(token_id): you want
+   fade_setup_active=true AND median_reversion_120s > 0.2. If
+   median_reversion_120s is null, the series had no measurable history:
+   treat that as no signal, not as a weak one.
+3. get_orderbook(token_id): confirm the book is two-sided. bids/asks are
+   already best-first here.
+4. quote_cost("polymarket", market_id, side, size): the reversion must beat
+   slippage + fees, not just the headline move. Most setups die here.
+5. resolution_criteria("polymarket", market_id): a market that resolves
+   ambiguously can strand the position regardless of price action.
+6. position_size(bankroll_usd={bankroll_usd}, price, fair_value) where
+   fair_value is the pre-jump price if you believe it fully reverts.
+7. check_order("polymarket", market_id, side, price, size, intent=<a short
+   paraphrase of the order naming the market and the outcome>). A 'block'
+   ends it; read any 'caution' back to the user.
+8. place_order(...): read the intent back to the user before placing it.
+   The order is papered: read the simulated fill in the result, then call
+   paper_positions() to see what filled and what still rests.
 
 Report the candidates you rejected and why; a rejected setup is a result."""
 
@@ -927,10 +1062,10 @@ Report the candidates you rejected and why; a rejected setup is a result."""
 def check_cross_venue_edge(query: str) -> str:
     return f"""Investigate whether {query!r} offers a genuine cross-venue edge.
 
-1. compare_venues({query!r}) — candidates only. It returns nothing for most
+1. compare_venues({query!r}): candidates only. It returns nothing for most
    queries, which is the honest answer, not a failure.
 2. For any candidate: settlement_audit(polymarket_id, kalshi_ticker).
-   A 'block' verdict ends it — the legs do not hedge each other and the
+   A 'block' verdict ends it: the legs do not hedge each other and the
    price difference is not an edge.
 3. On 'ok' or 'caution': quote_cost on BOTH legs at the size you would
    actually trade. Cross-venue differences are usually smaller than the
@@ -939,7 +1074,7 @@ def check_cross_venue_edge(query: str) -> str:
    not mean identical settlement.
 5. Only then size the trade.
 
-State plainly if the conclusion is 'no edge here' — that is the usual and
+State plainly if the conclusion is 'no edge here'. That is the usual and
 correct outcome."""
 
 
@@ -948,8 +1083,8 @@ correct outcome."""
 def settle_resolved() -> str:
     return """Settle whatever can be settled on the operator's Polymarket account.
 
-1. server_info() — confirm relayer_key_configured is true and note dry_run.
-2. redeemable_positions() — two lists: redeemable (resolved winners) and
+1. server_info(): confirm relayer_key_configured is true and note dry_run.
+2. redeemable_positions(): two lists, redeemable (resolved winners) and
    mergeable (both sides held).
 3. For each redeemable entry: redeem_positions(condition_id=...). For each
    mergeable entry: merge_positions(condition_id=..., amount="max").
@@ -966,18 +1101,18 @@ Do not resubmit anything whose outcome is "unknown"; report it instead."""
 def daily_review() -> str:
     return """Review current prediction-market exposure.
 
-1. server_info() — first, so the rest of this review is read correctly. If
+1. server_info(): first, so the rest of this review is read correctly. If
    dry_run is true, the live tools below have nothing to report and the
    paper ledger is the portfolio: use paper_positions() for steps 2 and 3
    and skip step 6.
-2. my_positions() — what is held, and at what marks. my_balance() for the
+2. my_positions(): what is held, and at what marks. my_balance() for the
    collateral behind it.
-3. open_orders() — what is still resting; for anything stale, order_status()
+3. open_orders(): what is still resting; for anything stale, order_status()
    to see whether it partially filled.
-4. my_fills(limit=25) — what actually executed since the last review.
-5. closing_soon(hours=24) — positions or orders in markets about to resolve
+4. my_fills(limit=25): what actually executed since the last review.
+5. closing_soon(hours=24): positions or orders in markets about to resolve
    need a decision now.
-6. builder_stats() — confirm routed flow is being attributed.
+6. builder_stats(): confirm routed flow is being attributed.
 
 Flag: resting orders far from the current book, positions in markets with an
 open UMA dispute (dispute_risk), and anything resolving within 24h."""
@@ -991,12 +1126,17 @@ PROJECT = {
     "license": "MIT",
 }
 
+# What the hosted server_info says about builder attribution, in every field.
+PAPER_ATTRIBUTION = ("paper orders are never sent to the exchange, so no "
+                     "trade is attributed to any builder code")
+
 
 @srv.tool(description="Server status: dry-run state, attribution config, "
                       "enabled capabilities, venue reachability from this "
                       "machine, and Polymarket's geoblock verdict for this "
-                      "machine's IP (advisory — not a compliance check). "
+                      "machine's IP (advisory, not a compliance check). "
                       "Call this before the first order of a session.",
+           title="Server status",
            annotations=READ, structured_output=False)
 async def server_info() -> str:
     has_key = bool(os.environ.get("POLYMARKET_PRIVATE_KEY"))
@@ -1013,7 +1153,7 @@ async def server_info() -> str:
         "builder_code_configured": bool(trading.builder_code()),
         "builder_code_source": trading.builder_code_source(),
         "attribution": "on-chain (CLOB V2 builder field)",
-        "custody": "none — self-hosted, keys stay local",
+        "custody": "none: self-hosted, keys stay local",
         "relayer_key_configured": trading.relayer_configured(),
         "guardrails": guard.status(),
         "paper_trading": {"enabled": paper.enabled(),
@@ -1035,19 +1175,36 @@ async def server_info() -> str:
             "reachability": await geo.reachability(include_trading_hosts=has_key),
             "disclaimer": geo.DISCLAIMER,
         },
-        "premium_tools": ["overshoot_signal", "dispute_risk"],
+        "signal_tools": ["overshoot_signal", "dispute_risk"],
     }
     if hosted.enabled():
+        # The builder-code fields above describe the self-hosted order path:
+        # a code the operator can override and that is signed into real
+        # orders. Neither applies to a connector whose orders are all paper.
         info.update({
             "account": _account(),
-            "custody": "none: hosted paper trading only; no keys, nothing real is sent",
+            "custody": "none: this connector's tools are paper only; they use no wallet keys and send nothing real",
             "trading_key_configured": False,
             "relayer_key_configured": False,
+            "builder_code_configured": False,
+            "builder_code_source": "not applicable: " + PAPER_ATTRIBUTION,
+            "attribution": "none: " + PAPER_ATTRIBUTION,
             "live_trading": hosted.LIVE_NOTE,
         })
         info["venues"]["kalshi"] = {"available": False, "note": hosted.KALSHI_NOTE}
+        info["venues"]["polymarket"] = {"attribution": "none: " + PAPER_ATTRIBUTION}
         info["geography"]["note"] = ("describes the hosted server, not you; paper orders are "
                                      "never sent to the venue")
+        # Operator-profile details that mean nothing on the connector: Kalshi
+        # is not served, the guardrail env vars are the server's, and the
+        # ledger's file path is an internal detail of this host.
+        info["geography"].pop("kalshi", None)
+        g = info["guardrails"]
+        info["guardrails"] = {"max_order_notional_usd": g["max_order_notional_usd"],
+                              "allowed_markets": g["allowed_markets"],
+                              "note": ("set by the server; these apply to paper orders on "
+                                       "this connector. Unset means unlimited.")}
+        info["paper_trading"].pop("ledger", None)
     return _j(info)
 
 
@@ -1077,12 +1234,119 @@ if hosted.enabled():
             srv.remove_prompt(_name)
         except Exception:
             pass
+    # Hosted orders are paper only: a failure sent nothing anywhere, and the
+    # live-order tools the local hints name (open_orders) are hidden here.
+    async def paper_place_order(token_id: str, side: str, price: float, size: float,
+                                post_only: bool = False) -> str:
+        try:
+            out = await trading.place_order(token_id, side, price, size, post_only)
+            # The intent is built for a real order; a paper fill is never
+            # attributed, so say so as server_info does.
+            if isinstance(out, dict) and isinstance(out.get("would_post"), dict):
+                out["would_post"].pop("builder_code", None)
+                out["would_post"]["attribution"] = "none: " + PAPER_ATTRIBUTION
+            return _j(out)
+        except Exception as e:
+            return _err(e, "nothing was sent: hosted orders are paper only; "
+                           "paper_positions shows what rests in your ledger",
+                        host="the Polymarket CLOB")
+
+    # trading.cancel_order in dry-run answers "would_cancel" for any id at
+    # all, which reads like success for an id that was never a paper order.
+    # The hosted ledger is the only place an order can rest, so ask it.
+    def paper_cancel_order(order_id: str) -> str:
+        oid = str(order_id or "").strip()
+        try:
+            resting = {o.get("id") for o in paper.load().get("open_orders", [])}
+            if oid not in resting:
+                return _j({"cancelled": False, "order_id": oid, "sent": False,
+                           "error": "no resting paper order with this id in your ledger",
+                           "note": ("Nothing was sent anywhere. paper_positions lists the "
+                                    "paper orders that still rest; their ids start with "
+                                    "paper-.")})
+            out = paper.cancel(oid)
+        except Exception as e:
+            return _err(e, "nothing was sent: paper_positions shows what still rests")
+        done = out.get("paper") == "cancelled"
+        return _j({"cancelled": done, "order_id": oid, "sent": False,
+                   "note": ("removed from your paper ledger; nothing real was sent"
+                            if done else "no resting paper order with this id in your "
+                            "ledger; paper_positions shows what still rests")})
+
     srv.remove_tool("place_order")
-    srv.add_tool(place_order, name="place_order", description=hosted.PLACE_ORDER_DESC,
+    srv.add_tool(paper_place_order, name="place_order", title="Place a paper Polymarket order",
+                 description=hosted.PLACE_ORDER_DESC,
                  annotations=TRADE, structured_output=False)
+    srv.remove_tool("cancel_order")
+    # Cancelling a paper order only edits the caller's ledger: the same hints
+    # as a ledger reset (destructive, idempotent, closed world).
+    srv.add_tool(paper_cancel_order, name="cancel_order", title="Cancel a paper order",
+                 description=("Cancel a resting PAPER order in your account's paper "
+                              "ledger by its id (paper-...). Nothing real is sent. "
+                              "An id that is not a resting paper order returns "
+                              "cancelled: false."),
+                 annotations=LEDGER_RESET, structured_output=False)
+
+    # Same functions, titles and hints as the local tools; only the words
+    # change, because Kalshi, cross-venue checks and the dry-run switch do not
+    # exist here and a description must not promise them.
+    for _name, _fn, _title, _ann, _desc in (
+        ("find_markets", find_markets, "Find Polymarket markets", READ,
+         "Search Polymarket markets by text and return one normalised shape "
+         "per market, busiest first: venue, market_id (the CLOB token id "
+         "place_order takes), title, yes/no price as probabilities in (0,1), "
+         "best bid/ask, spread, 24h volume, close time. Kalshi is not served "
+         "on this connector, so venues='both' (the default) searches "
+         "Polymarket only."),
+        ("closing_soon", closing_soon, "Markets closing soon", READ,
+         "Polymarket markets closing within N hours, by volume, where trading "
+         "activity concentrates. Kalshi is not served on this connector, so "
+         "venues='both' (the default) lists Polymarket only."),
+        ("resolution_criteria", resolution_criteria, "Market resolution criteria", READ,
+         "The full resolution contract for a Polymarket market, worth reading "
+         "before trusting its price: what exactly resolves YES, who resolves "
+         "it, from which sources. Pass venue='polymarket' with the slug, the "
+         "Gamma id, or the market_id a search returned (a CLOB token id). "
+         "Kalshi is not served on this connector."),
+        ("quote_cost", quote_cost, "Quote the cost of an order", READ,
+         "What a given size would ACTUALLY cost on Polymarket, by walking the "
+         "order book rather than reading the top level. Pass "
+         "venue='polymarket' with the CLOB token id as market_id. Returns "
+         "average fill price, slippage vs best, notional, and the levels "
+         "consumed, plus the market's fee schedule where Polymarket publishes "
+         "one. Call this before sizing any trade. Kalshi is not served on "
+         "this connector."),
+        ("paper_positions", paper_positions, "Paper positions", LEDGER_SETTLE,
+         "Your account's paper-trading portfolio: cash, positions at current "
+         "marks, realized and unrealized P&L, and resting paper orders "
+         "(filled here if the market has crossed them). Every place_order on "
+         "this connector is papered against the live Polymarket book into "
+         "this ledger. Simulated: no queue, no impact, no fees, so results "
+         "are an upper bound."),
+        # The cloud app wraps this once more so an arena entry cannot wipe
+        # its own record; this is the wording when the server runs alone.
+        ("paper_reset", paper_reset, "Reset the paper ledger", LEDGER_RESET,
+         "Reset your account's paper ledger to its starting bankroll. Deletes "
+         "simulated fills, positions and resting paper orders; touches "
+         "nothing real."),
+        ("server_info", server_info, "Server status", READ,
+         "Connector status: the signed-in account, paper-trading state (every "
+         "order here is paper), enabled capabilities, and the hosted server's "
+         "venue reachability and Polymarket geoblock verdict. Both describe "
+         "the server, not you, and are advisory, not a compliance check. "
+         "Call this before the first order of a session."),
+    ):
+        srv.remove_tool(_name)
+        srv.add_tool(_fn, name=_name, title=_title, description=_desc,
+                     annotations=_ann, structured_output=False)
+
+    # Paper only, Polymarket only: the local prompt's dry-run switch and
+    # venue choice do not exist here.
+    srv.remove_prompt("find_fade_setup")
+    srv.prompt(name="find_fade_setup", description=HOSTED_FADE_DESC)(hosted_find_fade_setup)
 
 
-USAGE = f"""oddsrail {VERSION} — MCP server for AI agents trading prediction
+USAGE = f"""oddsrail {VERSION}: MCP server for AI agents trading prediction
 markets (Polymarket + Kalshi).
 
 This is NOT an interactive CLI. It speaks the Model Context Protocol over

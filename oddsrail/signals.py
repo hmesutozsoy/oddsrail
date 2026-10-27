@@ -1,4 +1,4 @@
-"""Signal tools: the premium layer of oddsrail.
+"""Signal tools: the signal layer of oddsrail.
 
 overshoot: adapted from the polymarket-wc in-play overshoot analyzer —
 detects endogenous price jumps in a recent price series and reports whether

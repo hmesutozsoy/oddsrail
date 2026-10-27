@@ -13,6 +13,13 @@ Operator-set guards enforce order limits. A separate deterministic
 ask your agent to call it before each order. It cannot guarantee that an
 agent will choose or execute a sound strategy.
 
+> **Disclosure.** oddsrail provides informational tools, not financial
+> advice. You decide every order: nothing real is sent unless you turn live
+> trading on with your own keys. Prediction markets are restricted in many
+> jurisdictions, and you are responsible for checking that you are eligible
+> to trade where you live. oddsrail is an independent project and is not
+> affiliated with or endorsed by Polymarket or Kalshi.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/hmesutozsoy/oddsrail/main/docs/img/check-order.png" alt="A real pre-trade check on a live Polymarket market: the agent's intent said NO, the order it built was on the YES side, and check_order blocked it" width="820">
 </p>
@@ -101,8 +108,8 @@ registry entries, September 2026), not from their marketing:
 | Custody | non-custodial; keys never leave your machine | yours | hosted mode: "PMXT handles custody, signing infrastructure"; self-hosted mode: your keys | self-custody, local signing | yours (documentation only) |
 | Attribution you control | yes: `ODDSRAIL_BUILDER_CODE` overrides the 0 bps default | n/a | not documented | not documented | documents builder headers for your own code |
 | Cost to the trader | 0 bps, free tools | free | hosted pricing not in the README | not documented | free |
-| Open source | MIT, full source | n/a | MIT, ~2.1k stars | not stated | docs; license not stated |
-| Operator guardrails | notional caps, open-order cap, allowed markets; enforced pre-request, in dry-run too | none | not documented | per-trade limits, daily caps, stop-loss/take-profit, kill switch | none |
+| Open source | MIT, full source of the MCP server | n/a | MIT, ~2.1k stars | not stated | docs; license not stated |
+| Operator guardrails | notional caps, open-order cap, allowed markets; checked before the order is sent. The per-order cap and the allowed markets apply in dry-run too; the session cap and the open-order cap count live orders only. | none | not documented | per-trade limits, daily caps, stop-loss/take-profit, kill switch | none |
 | Paper trading | dry-run fills against the live book, P&L | none | not documented | virtual $SIM sandbox, then graduate to real money | none |
 | Book-walked cost, settlement audit, jurisdiction-classified failures, dated venue-quirk notes | yes, all four | no | not documented | not documented | quirks partly documented |
 | Realtime | `watch_book`, bounded | websocket, yours to wire | not documented in the README | not documented | websocket documented |
@@ -121,40 +128,60 @@ those and encoded the fix.
 
 ## Free to use, and free of fees
 
-oddsrail ships with a project builder code
-registered at **0 bps**, so orders routed through it are attributed without
-adding a single basis point to anyone's trade. The project's income is a share
-of Polymarket's weekly builder reward pool, paid by Polymarket's own program,
-not by you. Running your own builder profile instead is one environment
-variable (`ODDSRAIL_BUILDER_CODE`), and `server_info` always tells you which
-code is in use. No fee tiers, no paywalled tools, no account required.
+By default, orders carry oddsrail's own builder code, registered at
+**0 bps**, so they are attributed to the project without adding a single
+basis point to anyone's trade. When you set `ODDSRAIL_BUILDER_CODE`, orders
+carry your code instead. The project's income is a share of Polymarket's
+weekly builder reward pool, paid by Polymarket's own program, not by you.
+`server_info` always tells you which code is in use. Every tool is free:
+there are no fee tiers, no paid tools and no account required, and no paid
+tier is offered today.
 
 ## Hosted: nothing to install
 
 `mcp.oddsrail.app` runs the same server as a remote MCP endpoint with
 accounts. Use an MCP client that supports remote HTTP connections and OAuth.
-Add `https://mcp.oddsrail.app/mcp`, then sign in with your email when your
-client requests authorization. Subsequent calls use that account.
+Add `https://mcp.oddsrail.app/mcp`, then sign in with your email (a one-time
+sign-in link) when your client requests authorization. Subsequent calls use
+that account. Example prompts and troubleshooting are in the
+[hosted connector docs](https://oddsrail.app/docs#hosted-connector).
 
 What the MCP endpoint is, in one breath: Polymarket market data, the signal
 tools, `check_order`, and **paper trading with a $1,000 virtual bankroll per
 account**, filled against the live book. What it is not: a place where money
-moves. It holds no wallet keys and executes no real order. Account-scoped
-tools such as
-`open_orders` and the gasless relayer tools are absent, because on a shared
-server they would describe nobody's account. Twenty-four tools remain: the
-public-data and paper tools plus `arena_register`, `arena_unregister` and
-`arena_status`, which put the account's paper ledger on the public board.
+moves. Its tools use no wallet keys, execute no real order and serve no
+Kalshi tools. Account-scoped and operator tools are removed, because on a shared
+server they would describe nobody's account or list other people's wallets:
+`open_orders`, `order_status`, `my_fills`, `my_positions`, `my_balance`,
+`cancel_all_orders`, the gasless relayer tools, `redeemable_positions`,
+`builder_stats`, `attribution_ledger`, `compare_venues`, `settlement_audit`
+and every `kalshi_` tool. Twenty-two tools remain:
+
+- Market data: `search_markets`, `find_markets`, `get_market`,
+  `get_orderbook`, `price_history`, `watch_book`, `closing_soon`,
+  `resolution_criteria`, `get_positions`
+- Signals and costs: `overshoot_signal`, `dispute_risk`, `quote_cost`,
+  `position_size`
+- Paper trading: `check_order`, `place_order`, `cancel_order`,
+  `paper_positions`, `paper_reset`
+- Public arena board: `arena_register`, `arena_unregister`, `arena_status`,
+  which put the account's paper ledger on a public board under a display
+  name you choose, and take it off again
+- Status: `server_info`
+
+`check_order` is opt-in here too: the agent calls it before `place_order`;
+it never runs on its own.
 
 Live trading through MCP stays self-hosted: `pip install oddsrail` with your own
 key, and the same `place_order` posts real orders when you set
 `ODDSRAIL_DRY_RUN=0`. The hosted runner is a separate service.
-The paper ledger you build up through MCP is yours to reset with
-`paper_reset`; nothing else about the account exists. Privacy policy:
+The account holds your email address, the OAuth records of the client you
+connected, the paper ledger (yours to reset with `paper_reset`) and, only if
+you set them up, an arena entry or a hosted paper agent. Privacy policy:
 [oddsrail.app/privacy](https://oddsrail.app/privacy). This repository holds
 the MCP server; `oddsrail/hosted.py` lists what the hosted profile removes.
 The hosted service and the website are developed in a separate, private
-repository.
+repository and are not open source.
 
 ## Builder page and competition
 
@@ -202,16 +229,17 @@ subsequent fixes to those users.
    Builders**. Set your fee rates there: taker up to 100 bps, maker up to
    50 bps, additive on top of platform fees, settled to your builder wallet.
 2. `export ODDSRAIL_BUILDER_CODE=0x...` where the server runs.
-3. Every order any agent routes through `place_order` has the code placed in
-   the V2 order struct's `builder` field **before signing**, so attribution is
-   on-chain, visible in every `OrderFilled` event on CTF Exchange V2.
+3. With it set, every order any agent routes through `place_order` has your
+   code placed in the V2 order struct's `builder` field **before signing**, so
+   attribution is on-chain, visible in every `OrderFilled` event on CTF
+   Exchange V2.
 4. Verify with the `builder_stats` tool (public builder-trades endpoint +
    leaderboard).
 
 If you skip this, orders carry the bundled oddsrail builder code
-(`0xa576c5ce…`, registered at 0 bps maker / 0 bps taker), costing you nothing
-and funding the project. If you set your own, yours wins; the default is a
-default, not a lock-in.
+(`0xa576c5ce…`, registered at 0 bps maker / 0 bps taker) in the same field,
+costing you nothing and attributing the volume to the project. If you set
+your own, yours wins; the default is a default, not a lock-in.
 
 The oddsrail builder profile is **Verified** in Polymarket's builder program
 (2026-09-02), and Polymarket's builder team confirmed builder-code attribution
@@ -222,7 +250,7 @@ the product, and the code is attached and signed by the operator's own wallet.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ODDSRAIL_DRY_RUN` | `1` | `1` = orders are simulated and returned, never posted. Set `0` to trade. |
+| `ODDSRAIL_DRY_RUN` | `1` | Orders are simulated and returned, never posted. Only `0`, `false` or `no` enables real trading; any other value stays in dry-run. |
 | `ODDSRAIL_BUILDER_CODE` | project default | Your bytes32 builder code. Overrides the bundled project default so attribution (and any reward-pool share) accrues to you instead. |
 | `POLYMARKET_PRIVATE_KEY` | unset | Operator wallet key; required only for real trading. Never leaves this machine. |
 | `POLYMARKET_WALLET_ADDRESS` | unset | Proxy/deposit wallet address, if the account uses one. |
@@ -235,6 +263,41 @@ the product, and the code is attached and signed by the operator's own wallet.
 | `ODDSRAIL_PAPER` | `1` | Paper-trade dry-run Polymarket orders against the live book. `0` disables. |
 | `ODDSRAIL_PAPER_LEDGER` | `~/.oddsrail/paper.json` | Where the paper ledger lives. One local JSON file. |
 | `ODDSRAIL_PAPER_BANKROLL` | `1000` | Starting paper cash in USDC. |
+
+## Privacy and network access
+
+The local server sends no telemetry, analytics or usage data, and it never
+contacts oddsrail.app or any other server the project runs. It talks only to
+the venue and blockchain hosts below, and only when a tool needs them. Each
+of them sees this machine's IP address.
+
+| Host | When | What is sent |
+|---|---|---|
+| `gamma-api.polymarket.com` | market search, details and listings (`search_markets`, `find_markets`, `get_market`, `closing_soon`, `resolution_criteria`, `check_order`, `dispute_risk`) | your search text and the market ids, slugs or token ids asked about |
+| `clob.polymarket.com` | order books (`get_orderbook`, `quote_cost`, `check_order`, paper fills), builder trades; with a trading key, orders, cancels and account reads | token ids and builder codes; with a key, orders signed on this machine and requests authenticated with credentials derived from the key. The private key itself is never sent. |
+| `data-api.polymarket.com` | price history, positions, fills, portfolio value, builder leaderboard | token ids and the wallet address being looked up (the configured wallet for `my_fills` and `my_positions`) |
+| `ws-subscriptions-clob.polymarket.com` | `watch_book` websocket | the token id subscribed to |
+| `polymarket.com/api/geoblock` | `server_info` | the request itself, so Polymarket can report this IP's jurisdiction verdict |
+| `relayer-v2.polymarket.com` | with a trading key, wallet checks when the trading client starts; with your relayer key, gasless `split_position`, `merge_positions`, `redeem_positions` | your wallet address, signed transactions and your relayer API key |
+| a public Polygon RPC (`polygon.drpc.org`, the default of the pinned `polymarket-client` SDK) | on-chain reads the SDK makes for the gasless tools, such as balances and gas estimates | public wallet and contract addresses |
+| `external-api.kalshi.com` (`external-api.demo.kalshi.co` with `KALSHI_DEMO=1`) | `kalshi_*` tools, `compare_venues` and `settlement_audit`, `find_markets` / `closing_soon` when `venues` includes Kalshi (the default is both), and `quote_cost` / `resolution_criteria` / `check_order` with `venue='kalshi'` | search text and tickers; with your Kalshi key, requests signed on this machine |
+
+`server_info` also sends one unauthenticated reachability request each to
+gamma-api, clob, data-api and external-api.kalshi.com (plus the relayer when
+a trading key is set). Installing with `pip` or `uvx` downloads the package
+and its dependencies from PyPI; that is your package manager, not the
+server.
+
+What stays on this machine: your keys, the guardrail counters and the paper
+ledger (`~/.oddsrail/paper.json` by default). Your AI client sees every tool
+call and result, under its provider's own policy. The hosted connector at
+`mcp.oddsrail.app` is a different service with an account; what it stores is
+in the [privacy policy](https://oddsrail.app/privacy).
+
+## Security
+
+Please report vulnerabilities privately, not in a public issue. See
+[SECURITY.md](SECURITY.md) for how, and for what is in scope.
 
 ## Status
 
@@ -316,11 +379,12 @@ regardless.
 ## Guardrails: limits the agent cannot argue with
 
 Anyone handing keys to an agent wants three things first: a cap on one order,
-a cap on a session, and a fence around which markets it may touch. All three
-are operator-set environment variables (table above), enforced *before* any
-request goes out, in dry-run as well as live, so the agent meets the fence in
-rehearsal. A refusal is a structured answer that names the rule, the limit
-and the request:
+a cap on a session, and a fence around which markets it may touch. All three,
+plus a cap on resting orders, are operator-set environment variables (table
+above), checked *before* the order is sent. The per-order cap and the allowed
+markets apply in dry-run too; the session cap and the open-order cap count
+live orders only. A refusal is a structured answer that names the rule, the
+limit and the request:
 
 ```json
 {"accepted": false, "blocked_by": "guardrail", "rule": "max_order_notional",
@@ -420,13 +484,16 @@ the expertise, which a flat tool list cannot convey.
 ## Pre-trade checks and sizing
 
 - **`check_order(venue, market_id, side, price, size, intent)`**: the last step
-  before `place_order`. Deterministic checks of the proposed order against the
-  operator's own words and the live market: does the market exist and accept
+  before `place_order`. Deterministic checks of the proposed order against a
+  short paraphrase of the requested order (market and outcome) and the live
+  market: does the market exist and accept
   orders, do the intent's words match the market and the YES/NO side, is the
   price sane against the book, is the size above Polymarket's $1 minimum and
   inside the guardrails, is there liquidity within the limit, is a resolution
   source named. Returns `ok` / `caution` / `block` with the evidence per check
   and a one-line read-back. No second model judges anything; nothing is sent.
+  It is opt-in: `place_order` never runs it for you, so ask your agent to
+  call it before each order.
 - **`position_size(bankroll_usd, price, fair_value)`**: fractional-Kelly sizing,
   capped, refusing negative-edge bets, returning its own assumptions.
 
@@ -434,9 +501,9 @@ the expertise, which a flat tool list cannot convey.
 
 - `search_markets`, `get_market`, `get_orderbook`, `price_history`,
   `get_positions`: read-only, no keys
-- `overshoot_signal`, premium: fresh panic-jump detection + this market's
-  historical reversion tendency (ported from the polymarket-wc analyzer)
-- `dispute_risk`, premium: transparent 0–100 heuristic for contested
+- `overshoot_signal`, free: fresh panic-jump detection and the median
+  reversion of earlier jumps in the same window (ported from the polymarket-wc analyzer)
+- `dispute_risk`, free: transparent 0 to 100 heuristic for contested
   (UMA-dispute-prone) resolutions
 - `place_order`, `cancel_order`, `open_orders`: trading, dry-run by default.
   `price` is a probability in (0,1), `size` is in SHARES, and the exchange
@@ -454,13 +521,6 @@ the expertise, which a flat tool list cannot convey.
   attach builder codes. Do not use it.
 - MCP SDK 2.0: `MCPServer` from `mcp.server.mcpserver` (the old
   `mcp.server.fastmcp.FastMCP` import is gone in 2.x).
-- x402 (planned): the official `x402` PyPI package (v2.20+) can wrap MCP
-  tools directly (`x402.mcp`, payment rides in tool-call `_meta`), but its
-  MCP helpers currently target mcp 1.x, so integrating means pinning
-  `mcp>=1.28,<2` or waiting for the 2.x-compatible release. Mainnet
-  settlement needs a facilitator (Coinbase CDP: 1,000 free settlements/mo,
-  then $0.001). Keep free tiers of both signals so registries can index the
-  server.
 
 ## Who this is for
 
@@ -485,4 +545,6 @@ built for.
 2. Register builder code (polymarket.com → Settings → Builders), set fees to
    0 bps at launch, export `ODDSRAIL_BUILDER_CODE`; first attributed order on
    a tiny size
-3. x402 paid wrapping for the two signals once the mcp-2.x conflict clears
+
+There is no paid tier, and none is offered today: every tool, including both
+signals, is free.

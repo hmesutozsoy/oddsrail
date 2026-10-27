@@ -10,22 +10,23 @@ Use the tools of the `oddsrail` MCP server (install: `pip install oddsrail`, the
 Find a fade setup on prediction markets related to: $ARGUMENTS.
 
 Work in this order and stop if a step fails:
-1. find_markets('$ARGUMENTS') — pick liquid candidates (volume_24h > 10000).
-2. For each candidate, overshoot_signal(token_id) — you want
+1. find_markets('$ARGUMENTS'): pick liquid candidates (volume_24h > 10000).
+2. For each candidate, overshoot_signal(token_id): you want
    fade_setup_active=true AND median_reversion_120s > 0.2. If
    median_reversion_120s is null, the series had no measurable history:
    treat that as no signal, not as a weak one.
-3. get_orderbook(token_id) — confirm the book is two-sided. bids/asks are
+3. get_orderbook(token_id): confirm the book is two-sided. bids/asks are
    already best-first here.
-4. quote_cost(venue, market_id, side, size) — the reversion must beat
+4. quote_cost(venue, market_id, side, size): the reversion must beat
    slippage + fees, not just the headline move. Most setups die here.
-5. resolution_criteria — a market that resolves ambiguously can strand the
+5. resolution_criteria: a market that resolves ambiguously can strand the
    position regardless of price action.
 6. position_size(bankroll_usd=<bankroll_usd>, price, fair_value) where
    fair_value is the pre-jump price if you believe it fully reverts.
-7. check_order(venue, market_id, side, price, size, intent=<the operator's
-   words>) — a 'block' ends it; read any 'caution' back to the operator.
-8. place_order(...) — dry-run first and read back the intent before setting
+7. check_order(venue, market_id, side, price, size, intent=<a short
+   paraphrase of the order naming the market and the outcome>). A 'block'
+   ends it; read any 'caution' back to the operator.
+8. place_order(...): dry-run first and read back the intent before setting
    ODDSRAIL_DRY_RUN=0.
 
 Report the candidates you rejected and why; a rejected setup is a result.

@@ -9,8 +9,8 @@ Use the tools of the `oddsrail` MCP server (install: `pip install oddsrail`, the
 
 Settle whatever can be settled on the operator's Polymarket account.
 
-1. server_info() — confirm relayer_key_configured is true and note dry_run.
-2. redeemable_positions() — two lists: redeemable (resolved winners) and
+1. server_info(): confirm relayer_key_configured is true and note dry_run.
+2. redeemable_positions(): two lists, redeemable (resolved winners) and
    mergeable (both sides held).
 3. For each redeemable entry: redeem_positions(condition_id=...). For each
    mergeable entry: merge_positions(condition_id=..., amount="max").

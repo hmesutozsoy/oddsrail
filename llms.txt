@@ -1,79 +1,115 @@
 # oddsrail
 
-> An MCP server that gives AI trading agents access to prediction markets
-> across Polymarket and Kalshi, with on-chain builder-code attribution on
-> routed Polymarket orders and premium signal tools.
+> Open-source (MIT) MCP server that gives AI agents Polymarket and Kalshi
+> market data, book-walked trade costs, a deterministic pre-trade check and
+> non-custodial order routing. Self-hosted: it starts in dry-run (paper)
+> mode and private keys never leave the operator's machine.
 
-Self-hosted and non-custodial: the operator runs the server themselves and
-private keys never leave their machine. Orders are dry-run by default.
-
-## What an agent can do with it
-
-- `search_markets(query, limit)` — find markets by text; returns token ids,
-  best bid/ask, spread, 24h volume, liquidity, end date, resolution status
-- `get_market(id_or_slug)` — one market's details
-- `get_orderbook(token_id)` — live bids/asks
-- `price_history(token_id, hours, fidelity_minutes)` — recent price series
-- `get_positions(address)` — a wallet's current positions
-- `overshoot_signal(token_id, hours, threshold)` — detects fresh price jumps
-  (panic moves) and reports whether a fade setup is active, plus that
-  market's historical reversion tendency
-- `dispute_risk(id_or_slug)` — 0-100 score for how likely a market's
-  resolution gets contested (UMA dispute risk), with transparent reasons
-- `place_order(token_id, side, price, size)` — limit order; price is an
-  implied probability in (0,1); dry-run unless the operator enables trading
-- `cancel_order(order_id)`, `open_orders()`
-- `builder_stats(time_period)` — public builder leaderboard and this
-  operator's attributed trades
-
-## Cross-venue tools (prefer these when the venue is not already decided)
-
-- `find_markets(query, limit, venues)` — searches both venues, one normalised
-  shape: venue, market_id, title, yes_price/no_price as probabilities in
-  (0,1), best_bid/best_ask, spread, volume_24h, close_time, trade_with
-- `quote_cost(venue, market_id, side, size)` — true cost of a size by walking
-  the book: avg_price, slippage_vs_best, notional, levels_consumed, fillable.
-  Call this before sizing any trade.
-- `compare_venues(query)` — candidate same-event listings across venues. NOT
-  arbitrage: a price difference is not profit, matches are fuzzy, and it
-  usually returns nothing. Verify resolution criteria by hand.
-
-## Kalshi tools
-
-- `kalshi_search_markets(query, limit, min_volume)`, `kalshi_get_market(ticker)`,
-  `kalshi_get_orderbook(ticker, depth)`, `kalshi_get_trades(ticker, limit)`
-- `kalshi_balance()`, `kalshi_positions()`, `kalshi_open_orders()`
-- `kalshi_place_order(ticker, outcome, action, price, count)` — outcome yes|no,
-  action buy|sell, price is the probability of THAT outcome in (0,1)
-- `kalshi_cancel_order(order_id)`
-
-Kalshi notes: prices are dollar strings not cents; the raw orderbook is
-bids-only on both sides (a NO bid at 0.99 is a YES ask at 0.01) but
-`kalshi_get_orderbook` returns a normal best-first bid/ask view. Kalshi needs
-the operator's own API key for private endpoints; read tools do not.
+Informational tools, not financial advice. The operator decides every order.
+Prediction markets are restricted in many jurisdictions, and the operator is
+responsible for their own eligibility. oddsrail is independent and is not
+affiliated with or endorsed by Polymarket or Kalshi.
 
 ## Install
 
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-Configure your MCP client with command /abs/path/oddsrail/.venv/bin/python
-and arguments ["-m", "oddsrail.server"] using its local stdio settings.
+- `pip install oddsrail`, then configure your MCP client with the local stdio
+  command `oddsrail` and no arguments (or `uvx oddsrail`).
+- Read tools need no keys. Live trading needs `POLYMARKET_PRIVATE_KEY` and
+  `ODDSRAIL_DRY_RUN` set to `0`, `false` or `no`; any other value stays in
+  dry-run.
+
+## The 42 tools on the local server, by group
+
+- Polymarket market data (read-only, no keys): `search_markets`,
+  `get_market`, `get_orderbook` (best-first), `price_history`,
+  `get_positions`, `watch_book` (bounded realtime), `resolution_criteria`,
+  `closing_soon`
+- Cross-venue: `find_markets`, `quote_cost` (walks the book: average fill,
+  slippage, notional, fillable), `compare_venues` (same-event candidates, not
+  arbitrage), `settlement_audit`
+- Signals and sizing (free): `overshoot_signal` (fresh price jumps and the
+  median reversion of earlier jumps in the same window), `dispute_risk` (0 to 100 score for a contested
+  resolution, with reasons), `position_size` (capped fractional Kelly)
+- Pre-trade check: `check_order` compares a proposed order with a
+  short paraphrase of the requested order (market and outcome), the live market and the guardrails, and returns
+  ok / caution / block with evidence. It is opt-in: the agent calls it before
+  `place_order`; it never runs automatically and sends nothing.
+- Trading (dry-run by default): `place_order`, `cancel_order`, `open_orders`,
+  `order_status`, `cancel_all_orders`
+- Operator account reads: `my_fills`, `my_positions`, `my_balance`,
+  `redeemable_positions`
+- Gasless position management with the operator's own relayer key:
+  `split_position`, `merge_positions`, `redeem_positions`
+- Paper trading: `paper_positions`, `paper_reset`
+- Attribution: `builder_stats`, `attribution_ledger`
+- Kalshi (private endpoints need the operator's own Kalshi key):
+  `kalshi_search_markets`, `kalshi_get_market`, `kalshi_get_orderbook`,
+  `kalshi_get_trades`, `kalshi_balance`, `kalshi_positions`,
+  `kalshi_open_orders`, `kalshi_place_order`, `kalshi_cancel_order`
+- Status: `server_info` (mode, builder code in use, guardrails, venue
+  reachability and Polymarket's advisory geoblock verdict for this machine)
+
+Workflow prompts: `find_fade_setup`, `check_cross_venue_edge`,
+`settle_resolved`, `daily_review`.
 
 ## Notes for agents
 
-- Prices are implied probabilities in (0,1), not cents.
-- `place_order` returns `{"dry_run": true, ...}` unless the operator has set
-  ODDSRAIL_DRY_RUN=0 — check this before assuming an order was placed.
+- Prices are implied probabilities in (0,1) on both venues, not cents.
+  Polymarket `size` is in shares, and the exchange enforces a $1 minimum
+  notional on marketable orders.
+- `place_order` returns `{"dry_run": true, ...}` unless the operator enabled
+  live trading; check this before assuming an order was placed.
+- Call `check_order` with a short paraphrase of the order (market and
+  outcome) as `intent` before each `place_order`. Nothing calls it for you.
+- Operator guardrails (`ODDSRAIL_MAX_ORDER_NOTIONAL`,
+  `ODDSRAIL_MAX_SESSION_NOTIONAL`, `ODDSRAIL_MAX_OPEN_ORDERS`,
+  `ODDSRAIL_ALLOWED_MARKETS`) cannot be changed by the agent. The per-order
+  cap and the allowed markets apply in dry-run too; the session cap and the
+  open-order cap count live orders only.
+- In dry-run, Polymarket orders fill against the live book into a local
+  paper ledger. Paper results assume no queue, no impact and no fees, so they
+  are an upper bound.
 - Geography affects trading, not reading. Polymarket restricts order
-  placement by jurisdiction (full list:
-  https://docs.polymarket.com/api-reference/geoblock — among them the US,
-  UK, France, Germany, Italy, Poland, Singapore, Australia, Brazil and four
-  Canadian provinces are close-only, meaning positions can be closed but not
-  opened; the OFAC tier, including Iran, Syria, Cuba and North Korea, is
-  blocked entirely). Reads work from
-  restricted places, so the first failure is usually a rejected order, not a
-  connection error. Kalshi's Member Agreement §VI restricts a heavily
-  overlapping set of countries from trading Event Contracts while expressly
-  permitting non-trading access. Separately, some national filters block the
-  Polymarket domains at the network level (Turkey does). Call server_info for
-  this machine's Polymarket geoblock verdict; it is advisory, not a
-  compliance check. As of 2026-08-31.
+  placement by jurisdiction (https://docs.polymarket.com/api-reference/geoblock)
+  and Kalshi's Member Agreement restricts an overlapping set, so the first
+  failure is usually a rejected order, not a connection error. `server_info`
+  reports an advisory verdict; it is not a compliance check.
+- Errors come back structured: `{error, error_type, http_status, url,
+  failure_class, hint}`. Do not retry in a loop on `geo_blocked`,
+  `unreachable`, `intercepted` or `local_tls`.
+
+## Attribution and cost
+
+By default, Polymarket orders carry oddsrail's builder code, registered at
+0 bps, so nothing is added to the trade. Setting `ODDSRAIL_BUILDER_CODE`
+replaces it with the operator's own code. `server_info` reports which code is
+in use. Every tool is free; no paid tier is offered.
+
+## Hosted connector (paper only)
+
+https://mcp.oddsrail.app/mcp is a remote MCP endpoint with accounts: OAuth,
+sign-in by email link. It is paper trading only: its tools use no wallet
+keys, send no real order and serve no Kalshi tools. Each account gets a paper
+ledger with a virtual $1,000 bankroll, filled against the live Polymarket
+book. It serves 22 tools: `search_markets`, `find_markets`, `get_market`,
+`get_orderbook`, `price_history`, `watch_book`, `closing_soon`,
+`resolution_criteria`, `get_positions`, `overshoot_signal`, `dispute_risk`,
+`quote_cost`, `position_size`, `check_order`, `place_order` (paper),
+`cancel_order`, `paper_positions`, `paper_reset`, `server_info`, and
+`arena_register`, `arena_unregister`, `arena_status` for an optional public
+board of paper ledgers. Live trading is self-hosted only. Setup, example
+prompts and troubleshooting: https://oddsrail.app/docs#hosted-connector
+
+## Privacy
+
+The local server sends no telemetry and contacts only the venue hosts listed
+in the README. The hosted connector's privacy policy:
+https://oddsrail.app/privacy
+
+## Links
+
+- Source and README: https://github.com/hmesutozsoy/oddsrail
+- Security reports: https://github.com/hmesutozsoy/oddsrail/blob/main/SECURITY.md
+- PyPI: https://pypi.org/project/oddsrail/
+- Documentation: https://oddsrail.app/docs
+- Changelog: https://github.com/hmesutozsoy/oddsrail/blob/main/CHANGELOG.md

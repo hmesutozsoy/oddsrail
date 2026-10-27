@@ -123,7 +123,7 @@ def evaluate(order: dict, market: dict, book: dict | None, intent: str,
             checks.append(_check("intent_matches_outcome", "ok", f"intent and order both say {have.upper()}"))
     else:
         checks.append(_check("intent_matches_market", "caution",
-                             "no intent text supplied; pass the operator's words so the market and outcome can be checked"))
+                             "no intent text supplied; pass a short paraphrase of the order (market and outcome) so both can be checked"))
 
     # 3. price sanity
     if not (0 < price < 1):

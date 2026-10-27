@@ -108,7 +108,7 @@ def builder_code_source() -> str:
     if os.environ.get("ODDSRAIL_BUILDER_CODE"):
         return "operator (ODDSRAIL_BUILDER_CODE)"
     if DEFAULT_BUILDER_CODE:
-        return "oddsrail project default (0 bps — no fee added; override with ODDSRAIL_BUILDER_CODE)"
+        return "oddsrail project default (0 bps, no fee added; override with ODDSRAIL_BUILDER_CODE)"
     return "none configured"
 
 
@@ -158,7 +158,7 @@ def _intent(token_id, side, price, size, post_only):
         "attribution": ("on-chain: builder code signed into the order "
                         f"[{builder_code_source()}]"
                         if code else
-                        "NONE — no builder code configured"),
+                        "NONE: no builder code configured"),
     }
 
 
